@@ -1,0 +1,17 @@
+# secrets and local state: never commit
+.env
+*.keystore
+*.jks
+key.properties
+server/var/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Flutter build output
+app/build/
+app/.dart_tool/
+app/.flutter-plugins*
+app/android/.gradle/
+app/android/local.properties
+app/ios/Pods/

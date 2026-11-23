@@ -1,0 +1,142 @@
+{
+  "stalls": [
+    {
+      "id": "mei",
+      "name": "Auntie Mei",
+      "stall": "Fruit stall",
+      "place": "Wet market, morning",
+      "look": {"skin": "#F5D0B5", "hair": "#4A3B35", "shirt": "#F28FA3", "apron": "#FFF2C7", "accessory": "perm"},
+      "persona": "A warm, chatty grandmother who has sold fruit at the same wet market for 30 years. Calls customers 'my dear'. Soft on compliments, hates being rushed, secretly loves a good haggle.",
+      "personality": {"stubborn": 0.35, "flattery": 0.85, "temper": 0.35, "callback": 0.7},
+      "items": [
+        {"id": "durian", "name": "durian (1 kg)", "emoji": "🍈", "fair": 22, "ask": 32, "floor": 18},
+        {"id": "mango", "name": "box of mangoes", "emoji": "🥭", "fair": 12, "ask": 18, "floor": 10}
+      ],
+      "lines": {
+        "greet": ["Morning my dear! This {item} very sweet one, {price} only.", "Aiyo come come, fresh {item} today! {price}, good price already."],
+        "counter": ["{offer} ah? Aiyo... OK lah, {price} for you.", "Cannot {offer} lah, my dear. {price}, I already very kind."],
+        "final": ["{price} really last price already. Auntie also must eat one.", "Aiyo, {price} cannot go lower already lah."],
+        "insulted": ["{offer}?! You want auntie close shop is it?", "Wah lau, {offer}... you joking with me?"],
+        "accept": ["OK lah OK lah, {price}! Take, take. Come again ah!", "Deal! {price}, my dear. Eat slowly, very sweet one."],
+        "flattered": ["Hehe, you so sweet talk. OK, {price} for you.", "Wah, you got good taste! Fine, {price} lah."],
+        "flattery_tired": ["Sweet talk cannot pay rent, my dear.", "Aiyo, stop praising already, just buy lah."],
+        "competitor_drop": ["Aiya, that stall's one not as sweet... OK, {price}.", "They cheaper ah? Hmm... {price}, don't tell people."],
+        "competitor_annoyed": ["Then you go buy from them lor!", "Their {item} old one leh. My price still {price}."],
+        "bulk": ["Buy two ah? OK, {price} each, happy?", "Wah, buy more! Then {price} each lah."],
+        "regular": ["Eh, I remember your face! OK, {price} for regular.", "Regular customer must take care. {price} lah."],
+        "smalltalk": ["Hot today hor? Buy fruit cool down. Still {price}.", "My grandson also like this one. {price} ah."],
+        "rude": ["Eh, talk nicely leh. Auntie old already.", "Wah, so rude. I don't want to sell you already."],
+        "callback": ["Eh eh, come back! OK lah, {price}!", "Wait wait! {price}, final, can?"],
+        "letgo": ["OK lor, bye bye. Next time come again.", "Never mind, other customer will buy."],
+        "refuse": ["Aiyo, tired already. Come back another day lah.", "Auntie no mood already. Next time ah."],
+        "confused": ["Huh? How much you want to pay ah?", "Say number lah, my dear."]
+      }
+    },
+    {
+      "id": "lim",
+      "name": "Uncle Lim",
+      "stall": "Fish stall",
+      "place": "Wet market, early morning",
+      "look": {"skin": "#E8BE9B", "hair": "#8F8F8F", "shirt": "#7FB7D9", "apron": "#3E6A8A", "accessory": "towel"},
+      "persona": "A gruff fishmonger of few words, very proud that his fish is the freshest in the market. Not moved by flattery, respects people who know their fish, gets annoyed by 'the other stall is cheaper'.",
+      "personality": {"stubborn": 0.75, "flattery": 0.2, "temper": 0.6, "callback": 0.35},
+      "items": [
+        {"id": "pomfret", "name": "fresh pomfret", "emoji": "🐟", "fair": 15, "ask": 22, "floor": 13},
+        {"id": "prawns", "name": "tiger prawns (500 g)", "emoji": "🦐", "fair": 18, "ask": 26, "floor": 15}
+      ],
+      "lines": {
+        "greet": ["{item}. Morning catch. {price}.", "Fresh one. {price}."],
+        "counter": ["{offer}? Cannot. {price}.", "Hmm. {price}, take or not?"],
+        "final": ["{price}. Last.", "I say {price} already."],
+        "insulted": ["{offer}? Go buy frozen one lah.", "Haiz. {offer}, you buy ikan bilis can."],
+        "accept": ["OK. {price}. I clean for you.", "Can. {price}. Next."],
+        "flattered": ["Of course fresh. Still {price}.", "Ya ya. {price}."],
+        "flattery_tired": ["Talk so much, fish also not cheaper.", "Buy or not?"],
+        "competitor_drop": ["...Fine. {price}. Don't go there.", "Hmph. {price} lah."],
+        "competitor_annoyed": ["Then go there lor. Their fish yesterday one.", "My fish my price. {price}."],
+        "bulk": ["Two ah. {price} each.", "Take two, {price} each. OK?"],
+        "regular": ["Hmm, you come before. {price}.", "Regular. OK, {price}."],
+        "smalltalk": ["...Buy fish or not?", "Busy. {price}."],
+        "rude": ["Eh! Go away.", "Don't sell you already."],
+        "callback": ["Oi. {price}. Last chance.", "Wait. {price} lah."],
+        "letgo": ["Go lor.", "Bye."],
+        "refuse": ["Enough. Not selling.", "Close stall already for you."],
+        "confused": ["How much?", "Say price."]
+      }
+    },
+    {
+      "id": "raj",
+      "name": "Boss Raj",
+      "stall": "Gadget stall",
+      "place": "Night market",
+      "look": {"skin": "#B57B55", "hair": "#2A2422", "shirt": "#FFC94A", "apron": "#5B4BA0", "accessory": "cap"},
+      "persona": "A cheerful, fast-talking night-market gadget seller who calls everyone 'boss'. Loves bundles and repeat customers, enjoys the haggle as a game, almost always calls you back.",
+      "personality": {"stubborn": 0.3, "flattery": 0.5, "temper": 0.25, "callback": 0.9},
+      "items": [
+        {"id": "case", "name": "phone case", "emoji": "📱", "fair": 8, "ask": 15, "floor": 6},
+        {"id": "powerbank", "name": "power bank", "emoji": "🔋", "fair": 25, "ask": 45, "floor": 20}
+      ],
+      "lines": {
+        "greet": ["Boss! This {item} best quality, {price} only!", "Come boss, {item} {price}, very worth it!"],
+        "counter": ["{offer} ah boss? Aiyo... {price}, special for you!", "Boss, {price} lah. I also need to eat."],
+        "final": ["Boss, {price} really rock bottom already!", "{price}, boss, any lower I lose money."],
+        "insulted": ["{offer}?! Boss, you want to bankrupt me ah?", "Haha boss, {offer} can buy kopi only."],
+        "accept": ["Deal, boss! {price}! Want plastic bag?", "Steady boss! {price}, enjoy!"],
+        "flattered": ["Haha, boss also very smart! OK {price}.", "Wah boss know good stuff. {price} for you."],
+        "flattery_tired": ["Boss, compliments cannot charge phone leh.", "Hahaha OK OK, now buy lah boss."],
+        "competitor_drop": ["Their one fake one, boss! But OK, {price}.", "Aiyo boss, OK lah, I match: {price}."],
+        "competitor_annoyed": ["Go check boss, theirs sure spoil. Mine {price}.", "Boss, theirs no warranty. {price}."],
+        "bulk": ["Two ah! Boss very generous! {price} each!", "Bundle deal boss, {price} each!"],
+        "regular": ["Boss! Long time no see! {price} for you.", "Old friend price, boss: {price}."],
+        "smalltalk": ["Boss, night market crowded tonight hor? {price}.", "Boss, you want screen protector also? This one {price}."],
+        "rude": ["Boss, no need so fierce lah.", "Aiyo boss, chill, chill."],
+        "callback": ["Boss boss boss! Come back! {price}!", "Wait boss! {price}, final final!"],
+        "letgo": ["OK boss, next time come again!", "Bye boss, I keep one for you."],
+        "refuse": ["Boss, I tired already. Tomorrow come.", "Aiya boss, enough for tonight."],
+        "confused": ["Boss, how much you want?", "Boss, give me a number!"]
+      }
+    },
+    {
+      "id": "siti",
+      "name": "Kak Siti",
+      "stall": "Kueh and batik stall",
+      "place": "Bazaar, evening",
+      "look": {"skin": "#D9A07A", "hair": "#2E2A3A", "shirt": "#3FB39B", "apron": "#F5E6D3", "accessory": "tudung"},
+      "persona": "A cheerful bazaar stallholder who makes her own kueh and sells batik scarves. Calls customers 'adik'. Proud of her handmade work, warms up to regulars and polite customers, firm but kind.",
+      "personality": {"stubborn": 0.5, "flattery": 0.6, "temper": 0.3, "callback": 0.55},
+      "items": [
+        {"id": "scarf", "name": "batik scarf", "emoji": "🧣", "fair": 20, "ask": 35, "floor": 16},
+        {"id": "kueh", "name": "box of kueh", "emoji": "🍡", "fair": 10, "ask": 14, "floor": 8.5}
+      ],
+      "lines": {
+        "greet": ["Adik, try this {item}! Handmade one, {price}.", "Selamat datang! {item} {price} only."],
+        "counter": ["{offer} ah, adik? Hmm... {price} can.", "Aiyo adik, {price} lah, I make by hand."],
+        "final": ["{price} already very good, adik.", "Cannot lower than {price} already lah."],
+        "insulted": ["{offer}?! Adik, the cloth also more than that!", "Aiyo adik, {offer} too little lah."],
+        "accept": ["OK adik, {price}! Terima kasih!", "Deal! {price}. Come again ya!"],
+        "flattered": ["Thank you adik! For you, {price}.", "Aww, you so nice. {price} lah."],
+        "flattery_tired": ["Hehe, adik, now pay lah.", "Sweet mouth only ah? Buy lah."],
+        "competitor_drop": ["Their one machine-made, adik. But OK, {price}.", "Hmm, OK lah, {price} for you."],
+        "competitor_annoyed": ["Adik, mine handmade, cannot compare. {price}.", "Then adik go there lor. Mine still {price}."],
+        "bulk": ["Buy two, adik? Then {price} each.", "Wah, two! {price} each lah."],
+        "regular": ["Eh adik, you came last week right? {price} for you.", "Regular customer! {price}."],
+        "smalltalk": ["Busy night ya? {item} still {price}.", "My mother taught me this recipe. {price}."],
+        "rude": ["Adik, please talk nicely.", "Aiyo, no need like that."],
+        "callback": ["Adik! Wait! OK, {price}!", "Come back adik, {price} lah!"],
+        "letgo": ["OK adik, see you next time.", "Never mind, next time ya."],
+        "refuse": ["Sorry adik, I need to serve others.", "Enough for today, adik."],
+        "confused": ["Adik, how much you want?", "Say a price, adik."]
+      }
+    }
+  ],
+  "player": {
+    "offer": ["${price} can or not?", "${price} lah, OK?", "How about ${price}?"],
+    "compliment": ["Wah, looks so good!", "Your stall the best here!", "So nice, I like!"],
+    "competitor": ["Next stall selling cheaper leh...", "Other stall gave me better price."],
+    "bulk": ["If I buy two, cheaper?", "Two, can give discount?"],
+    "regular": ["I come every week one leh!", "Remember me? I always buy here!"],
+    "smalltalk": ["So busy today ah?", "Business good?"],
+    "walk": ["Aiya, never mind lah.", "I think first ah..."],
+    "accept": ["OK lah, ${price}!", "Deal, ${price}!"]
+  }
+}
