@@ -1,0 +1,14 @@
+[Unit]
+Description=Hawker Haggle game server
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/projects/HawkerHaggle/server
+EnvironmentFile=-%h/projects/HawkerHaggle/server/.env
+Environment=HH_SERVE=1
+ExecStart=%h/projects/HawkerHaggle/server/.venv/bin/uvicorn hh.api:app --host 0.0.0.0 --port 8090 --proxy-headers
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
