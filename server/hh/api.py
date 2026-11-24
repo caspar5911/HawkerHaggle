@@ -21,7 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .accounts import AccountError, Accounts
+from .accounts import SAVE_MAX, AccountError, Accounts
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
 from .engine import Haggle, Item, Personality, State
 from .store import Store
@@ -51,11 +51,13 @@ GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS",
 # public side. Empty: nobody can use it. Kept in server/.env, not in the repo.
 ADMIN_LOGINS = {x.strip().lower() for x in os.environ.get("HH_ADMIN_LOGINS", "").split(",") if x.strip()}
 PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
-                "/ai/accounts/logout", "/ai/accounts/password"}
+                "/ai/accounts/logout", "/ai/accounts/password", "/ai/accounts/progress", "/ai/accounts/progress/save",
+                "/ai/accounts/progress/delete"}
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
 PUBLIC_AI_PER_DAY = 600        # per account (a haggle move is about 2 calls)
 PUBLIC_AI_DAY_CAP = 5000       # all public players together
+SAVES_PER_MINUTE = 30          # per account (the game saves after each haggle)
 RELAY_AT_ONCE = 2              # AI calls through the relay at the same time (the GX10 is shared with other work)
 RELAY_WAIT = 60                # seconds a call may wait for its turn
 
@@ -427,6 +429,43 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
             raise HTTPException(401, "Please log in again.")
         account_call(lambda: accounts.change_password(bearer(authorization), body.old, body.new))
         return {"ok": True}
+
+    # Game progress belongs to the account (any phone, Tailscale or not, that logs in sees the same progress).
+    def saver(request: Request, authorization: str):
+        row = accounts.who(bearer(authorization))
+        if row is not None and row["role"] == "admin" and not admin_ok(request):
+            row = None
+        if row is None:
+            raise HTTPException(401, "Please log in again.")
+        limit(f"save:{row['id']}", SAVES_PER_MINUTE)
+        return row
+
+    @app.post("/ai/accounts/progress")
+    def progress_get(request: Request, authorization: str = Header(default="")):
+        row = saver(request, authorization)
+        return account_call(lambda: accounts.progress(row))
+
+    @app.post("/ai/accounts/progress/save")
+    async def progress_save(request: Request, authorization: str = Header(default="")):
+        row = saver(request, authorization)
+        if int(request.headers.get("content-length") or 0) > SAVE_MAX + 1024:
+            raise HTTPException(413, "That progress is too big to keep.")
+        raw = await request.body()
+        if len(raw) > SAVE_MAX + 1024:
+            raise HTTPException(413, "That progress is too big to keep.")
+        try:
+            body = json.loads(raw)
+            data, rev = body["data"], body["rev"]
+            if not isinstance(data, str) or not isinstance(rev, int) or not isinstance(json.loads(data), dict):
+                raise ValueError
+        except (ValueError, KeyError, TypeError):
+            raise HTTPException(400, "Bad progress.")
+        return account_call(lambda: accounts.save_progress(row, data, rev))
+
+    @app.post("/ai/accounts/progress/delete")
+    def progress_delete(request: Request, authorization: str = Header(default="")):
+        row = saver(request, authorization)
+        return account_call(lambda: accounts.delete_progress(row))
 
     def admin_only(request: Request, authorization: str) -> None:
         row = accounts.who(bearer(authorization))

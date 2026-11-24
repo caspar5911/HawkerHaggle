@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, usern
 CREATE TABLE IF NOT EXISTS logins (token_hash TEXT PRIMARY KEY, account_id INTEGER NOT NULL, created_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS ai_calls (account_id INTEGER NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL,
     PRIMARY KEY (account_id, day));
+CREATE TABLE IF NOT EXISTS saves (account_id INTEGER PRIMARY KEY, data TEXT NOT NULL, rev INTEGER NOT NULL,
+    updated_at TEXT NOT NULL);
 """
 
 ADMIN = "admin"
@@ -31,6 +33,7 @@ STATUSES = ("pending", "approved", "rejected", "removed")
 USERNAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{2,19}")
 PW_MIN, PW_MAX = 4, 128      # 4 so the admin's own "admin" fits; the screens suggest 8+
 MAX_PENDING = 50             # sign-ups stop while this many wait for the admin
+SAVE_MAX = 512 * 1024        # one account's game progress (a full one, 500 haggles, is about 160 KB)
 FAILS_BEFORE_LOCK, LOCK_SECONDS = 5, 15 * 60
 SCRYPT = dict(n=2**14, r=8, p=1, dklen=32)
 
@@ -191,6 +194,46 @@ class Accounts:
     def calls_today(self) -> int:
         with self._db() as db:
             return db.execute("SELECT COALESCE(SUM(n),0) FROM ai_calls WHERE day=?", (dt.date.today().isoformat(),)).fetchone()[0]
+
+    # ------------------------------------------------------------------ game progress (one copy per account)
+    @staticmethod
+    def _can_save(row) -> None:
+        if row is None:
+            raise AccountError(401, "Please log in again.")
+        if row["status"] not in ("pending", "approved"):
+            raise AccountError(403, "This account can't keep progress.")
+
+    def progress(self, row) -> dict:
+        self._can_save(row)
+        with self._db() as db:
+            r = db.execute("SELECT data, rev FROM saves WHERE account_id=?", (row["id"],)).fetchone()
+        return {"data": r["data"], "rev": r["rev"]} if r else {"data": None, "rev": 0}
+
+    def save_progress(self, row, data: str, rev: int) -> dict:
+        """rev is the copy the phone started from; if another phone saved since, refuse (409) so the phone takes the
+        newer copy instead of overwriting it."""
+        self._can_save(row)
+        if not isinstance(data, str) or len(data.encode()) > SAVE_MAX:
+            raise AccountError(413, "That progress is too big to keep.")
+        with self._db() as db:
+            r = db.execute("SELECT rev FROM saves WHERE account_id=?", (row["id"],)).fetchone()
+            current = r["rev"] if r else 0
+            if rev != current:
+                raise AccountError(409, "Newer progress was saved from another phone.")
+            db.execute("INSERT INTO saves (account_id, data, rev, updated_at) VALUES (?,?,?,?) ON CONFLICT(account_id) "
+                       "DO UPDATE SET data=excluded.data, rev=excluded.rev, updated_at=excluded.updated_at",
+                       (row["id"], data, current + 1, now()))
+        return {"rev": current + 1}
+
+    def delete_progress(self, row) -> dict:
+        """Delete my data: the account starts over (the rev keeps counting so other phones notice)."""
+        self._can_save(row)
+        with self._db() as db:
+            r = db.execute("SELECT rev FROM saves WHERE account_id=?", (row["id"],)).fetchone()
+            if r is None:
+                return {"rev": 0}
+            db.execute("UPDATE saves SET data='', rev=rev+1, updated_at=? WHERE account_id=?", (now(), row["id"]))
+            return {"rev": r["rev"] + 1}
 
     # ------------------------------------------------------------------ admin
     def list(self) -> list[dict]:

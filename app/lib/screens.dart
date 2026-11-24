@@ -1356,6 +1356,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    _reloadAll();
+  }
+
+  /// Logging in or out switches whose progress this is: show its name and settings.
+  void _reloadAll() {
     () async {
       await widget.api.ensureDevice();
       final n = await widget.api.reportCount();
@@ -1406,7 +1411,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 6),
           const Text(
             'Hawker Haggle is a game. Stallholders are made-up characters and the game decides every price. '
-            'Everything is kept on this phone: no account, no email. If you set an AI below, what you type in chats '
+            'Everything is kept on this phone, unless you log in to a market account (then your progress is kept on '
+            'that market server, so any phone you log in on shows it). No email. If you set an AI below, what you type in chats '
             'is sent to that AI to read and to write the replies in "✨" bubbles.',
             style: TextStyle(height: 1.4),
           ),
@@ -1543,12 +1549,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 28),
           AccountSection(
             api: api,
-            onAiChanged: () => setState(() {
-              _endpoint.text = api.ai.endpoint;
-              _model.text = api.ai.model;
-              _key.text = api.ai.apiKey;
-              _testResult = null;
-            }),
+            onAiChanged: () {
+              setState(() => _testResult = null);
+              _reloadAll();
+            },
           ),
           const SizedBox(height: 28),
           const Text('Your reports', style: _title),
@@ -1577,9 +1581,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 context: context,
                 builder: (c) => AlertDialog(
                   title: const Text('Delete my data?'),
-                  content: const Text(
-                    'Your haggles, stars, player name and reports are removed from this phone. Your AI settings stay. '
-                    'This cannot be undone.',
+                  content: Text(
+                    api.account != null && !api.account!.admin
+                        ? 'Your haggles, stars, player name and reports are removed from this phone and from your account '
+                              '${api.account!.username}. Your account and AI settings stay. This cannot be undone.'
+                        : 'Your haggles, stars, player name and reports are removed from this phone. Your AI settings stay. '
+                              'This cannot be undone.',
                   ),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep')),

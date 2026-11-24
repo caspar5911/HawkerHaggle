@@ -123,6 +123,13 @@ class AccountClient {
   Future<void> changePassword(String token, String old, String neu) =>
       _post('accounts/password', token: token, body: {'old': old, 'new': neu});
 
+  // game progress, one copy per account: {data: text or null, rev}
+  Future<Map<String, dynamic>> progress(String token) => _post('accounts/progress', token: token);
+  Future<int> saveProgress(String token, String data, int rev) async =>
+      ((await _post('accounts/progress/save', token: token, body: {'data': data, 'rev': rev}))['rev'] as num).toInt();
+  Future<int> deleteProgress(String token) async =>
+      ((await _post('accounts/progress/delete', token: token))['rev'] as num).toInt();
+
   // admin
   Future<Map<String, dynamic>> players(String token) => _post('admin/players', token: token);
   Future<Map<String, dynamic>> decide(String token, int id, String action) =>

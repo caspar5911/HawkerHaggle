@@ -68,7 +68,8 @@ class _AccountSectionState extends State<AccountSection> {
         if (a == null) ...[
           const Text(
             'Playing without Tailscale? Make an account on the market server. Once the admin approves you, the '
-            'stallholders chat with AI. (On Tailscale you don\'t need one.)',
+            'stallholders chat with AI. (On Tailscale you don\'t need one.) Your progress is kept on your account, '
+            'so any phone you log in on shows it.',
             style: TextStyle(height: 1.4, color: Palette.soft),
           ),
           const SizedBox(height: 10),
@@ -97,6 +98,14 @@ class _AccountSectionState extends State<AccountSection> {
           if (!a.admin) ...[
             const SizedBox(height: 4),
             Text(statusText(a.status), key: const ValueKey('account_status')),
+            const SizedBox(height: 2),
+            Text(
+              api.progressSaved
+                  ? '☁️ Your progress is kept on this account'
+                  : '☁️ Your progress will be saved to this account when the market server can be reached',
+              key: const ValueKey('account_progress'),
+              style: const TextStyle(color: Palette.soft, fontSize: 13),
+            ),
           ],
           const SizedBox(height: 10),
           Wrap(
@@ -184,6 +193,7 @@ class _SignInDialogState extends State<SignInDialog> {
         username: _user.text,
         password: _pw.text,
         signUp: signUp,
+        bringProgress: _askBring,
       );
       if (mounted) Navigator.of(context).pop(acc);
     } on AccountError catch (e) {
@@ -194,6 +204,41 @@ class _SignInDialogState extends State<SignInDialog> {
         });
       }
     }
+  }
+
+  /// The account has no progress yet and this phone has some: start fresh, or bring it along?
+  Future<bool> _askBring(int haggles) async {
+    final bring = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        backgroundColor: Palette.cream,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Text(
+          'New account',
+          style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+        ),
+        content: Text(
+          'This account has no progress yet. This phone has $haggles haggle${haggles == 1 ? '' : 's'} of yours.\n\n'
+          'Start fresh, or bring this phone\'s progress into the account? Either way, this phone\'s progress comes '
+          'back when you log out.',
+          style: const TextStyle(height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            key: const ValueKey('bring_fresh'),
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Start fresh'),
+          ),
+          TextButton(
+            key: const ValueKey('bring_yes'),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Bring my progress'),
+          ),
+        ],
+      ),
+    );
+    return bring == true;
   }
 
   @override

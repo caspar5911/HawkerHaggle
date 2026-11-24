@@ -155,9 +155,38 @@ class Game {
   Map<String, Map> get _stalls => {for (final s in content['stalls'] as List) (s as Map)['id'] as String: s};
   Map get _playerLines => content['player'] as Map;
 
-  // ---------------------------------------------------------------- profile (on the phone only)
+  // ---------------------------------------------------------------- profile (kept on the phone)
+  /// Where the progress lives in [store]: 'profile' for playing without an account, another key for each account's
+  /// copy (the account's server keeps the real one).
+  String profileKey = 'profile';
+
+  /// Called after every save (the account copy is sent to the server a moment later).
+  void Function()? onSaved;
+
+  /// Switch to another profile: haggles in progress are dropped.
+  Future<void> useProfile(String key) async {
+    _sessions.clear();
+    profileKey = key;
+    await load();
+  }
+
+  /// The progress as text (to keep it on the account's server), and back.
+  String exportProfile() => jsonEncode(_profile);
+  Future<void> importProfile(String raw) async {
+    _sessions.clear();
+    if (raw.trim().isEmpty) {
+      await store.delete(profileKey);
+    } else {
+      await store.write(profileKey, raw);
+    }
+    await load();
+  }
+
+  /// Finished haggles in this profile (0: nothing worth keeping yet).
+  int get haggleCount => _done.length;
+
   Future<void> load() async {
-    final raw = await store.read('profile');
+    final raw = await store.read(profileKey);
     _profile = raw == null ? {} : Map<String, Object?>.from(jsonDecode(raw) as Map);
     if (_profile['name'] == null) {
       _profile = {'name': randomName(), 'haggles': <Object>[], 'reports': <Object>[]};
@@ -197,7 +226,11 @@ class Game {
     return progress.profile(id);
   }
 
-  Future<void> _save() => store.write('profile', jsonEncode(_profile));
+  Future<void> _save() async {
+    await store.write(profileKey, jsonEncode(_profile));
+    onSaved?.call();
+  }
+
   List<Map> get _done => [for (final h in (_profile['haggles'] as List? ?? const [])) h as Map];
   List<Map> get reports => [for (final r in (_profile['reports'] as List? ?? const [])) r as Map];
 
@@ -255,7 +288,7 @@ class Game {
   /// Delete my data: everything this app kept on the phone.
   Future<void> deleteAll() async {
     _sessions.clear();
-    await store.delete('profile');
+    await store.delete(profileKey);
     await load();
   }
 

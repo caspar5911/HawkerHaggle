@@ -188,3 +188,74 @@ def test_no_admin_logins_set_means_no_admin_at_all(tmp_path):
     c = TestClient(create_app(Store(":memory:"), AI(base_url=""), Accounts(tmp_path / "a.db"), gate=True,
                               admin_logins=set()))
     assert c.post("/ai/accounts/login", json={"username": "admin", "password": "admin"}, headers=ME).status_code == 401
+
+
+# ------------------------------------------------------------------ game progress, one copy per account
+def signup(c, name, who=GATEWAY):
+    r = c.post("/ai/accounts/signup", json={"username": name, "password": "kopi-o-kosong"}, headers=who)
+    assert r.status_code == 200, r.text
+    return r.json()["token"]
+
+
+@pytest.mark.parametrize("who", [GATEWAY, NOBODY, FRIEND, ME])
+def test_progress_follows_the_account_from_any_phone(app, who):
+    c, _, _ = app
+    tok = signup(c, "JingQi", who)          # pending accounts keep progress too (it costs no AI)
+    assert c.post("/ai/accounts/progress", headers=bearer(tok, who)).json() == {"data": None, "rev": 0}
+    r = c.post("/ai/accounts/progress/save", json={"data": '{"name": "Jing Qi"}', "rev": 0}, headers=bearer(tok, who))
+    assert r.status_code == 200 and r.json() == {"rev": 1}
+    # another phone logs in to the same account and sees the same progress
+    other = c.post("/ai/accounts/login", json={"username": "jingqi", "password": "kopi-o-kosong"}, headers=who)
+    got = c.post("/ai/accounts/progress", headers=bearer(other.json()["token"], who)).json()
+    assert got == {"data": '{"name": "Jing Qi"}', "rev": 1}
+
+
+def test_progress_needs_a_login_and_is_private(app):
+    c, _, _ = app
+    a, b = signup(c, "Aaa"), signup(c, "Bbb")
+    c.post("/ai/accounts/progress/save", json={"data": '{"name": "A"}', "rev": 0}, headers=bearer(a, GATEWAY))
+    assert c.post("/ai/accounts/progress", headers=bearer(b, GATEWAY)).json()["data"] is None
+    for path in ("/ai/accounts/progress", "/ai/accounts/progress/save", "/ai/accounts/progress/delete"):
+        assert c.post(path, json={"data": "{}", "rev": 0}, headers=GATEWAY).status_code == 401
+        assert c.post(path, json={"data": "{}", "rev": 0}, headers=bearer("hh_nope", NOBODY)).status_code == 401
+
+
+def test_a_stale_phone_cannot_overwrite_newer_progress(app):
+    c, _, _ = app
+    tok = signup(c, "JingQi")
+    h = bearer(tok, GATEWAY)
+    assert c.post("/ai/accounts/progress/save", json={"data": '{"n": 1}', "rev": 0}, headers=h).json()["rev"] == 1
+    assert c.post("/ai/accounts/progress/save", json={"data": '{"n": 2}', "rev": 1}, headers=h).json()["rev"] == 2
+    r = c.post("/ai/accounts/progress/save", json={"data": '{"n": 0}', "rev": 1}, headers=h)   # the other phone
+    assert r.status_code == 409
+    assert c.post("/ai/accounts/progress", headers=h).json() == {"data": '{"n": 2}', "rev": 2}
+
+
+def test_bad_or_huge_progress_is_refused(app):
+    c, _, _ = app
+    h = bearer(signup(c, "JingQi"), GATEWAY)
+    for body in ({"data": "not json", "rev": 0}, {"data": "[1]", "rev": 0}, {"data": {"a": 1}, "rev": 0}, {"rev": 0},
+                 {"data": "{}", "rev": "0"}):
+        assert c.post("/ai/accounts/progress/save", json=body, headers=h).status_code == 400, body
+    big = '{"x": "' + "a" * (600 * 1024) + '"}'
+    assert c.post("/ai/accounts/progress/save", json={"data": big, "rev": 0}, headers=h).status_code == 413
+    assert c.post("/ai/accounts/progress", headers=h).json()["rev"] == 0
+
+
+def test_delete_my_data_clears_the_account_copy(app):
+    c, _, _ = app
+    h = bearer(signup(c, "JingQi"), GATEWAY)
+    c.post("/ai/accounts/progress/save", json={"data": '{"n": 1}', "rev": 0}, headers=h)
+    assert c.post("/ai/accounts/progress/delete", headers=h).json() == {"rev": 2}
+    assert c.post("/ai/accounts/progress", headers=h).json() == {"data": "", "rev": 2}
+
+
+def test_removed_and_rejected_accounts_keep_no_progress(app):
+    c, accounts, _ = app
+    rej, rem = signup(c, "Rejected"), signup(c, "Removed")
+    ids = {p["username"]: p["id"] for p in accounts.list()}
+    adm = admin_token(c)
+    c.post("/ai/admin/decide", json={"id": ids["Rejected"], "action": "reject"}, headers=bearer(adm, ME))
+    c.post("/ai/admin/decide", json={"id": ids["Removed"], "action": "remove"}, headers=bearer(adm, ME))
+    assert c.post("/ai/accounts/progress", headers=bearer(rej, GATEWAY)).status_code == 403
+    assert c.post("/ai/accounts/progress", headers=bearer(rem, GATEWAY)).status_code == 401   # logged out everywhere

@@ -13,6 +13,10 @@ import 'package:hawker_haggle/sfx.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'dart:math' as math;
+
+import 'game_sweep_test.dart' show content;
+
 import 'widget_test.dart' show Fake, settle;
 
 /// A pretend market server with the same rules as server/hh/accounts.py (the server's own tests cover the real one).
@@ -22,6 +26,7 @@ class Market {
   };
   final tokens = <String, String>{};
   final seen = <String>[];
+  final saves = <String, Map<String, Object?>>{}; // username: {data, rev}
   var n = 1;
 
   Map<String, Object?> pub(Map u) => {
@@ -65,6 +70,21 @@ class Market {
         who['pw'] = body['new'];
         who['default'] = false;
         return out(200, {'ok': true});
+      case '/ai/accounts/progress':
+        if (who == null) return out(401, {'detail': 'Please log in again.'});
+        return out(200, saves[tokens[tok]] ?? {'data': null, 'rev': 0});
+      case '/ai/accounts/progress/save':
+        if (who == null) return out(401, {'detail': 'Please log in again.'});
+        final rev = (saves[tokens[tok]]?['rev'] ?? 0) as int;
+        if (body['rev'] != rev) return out(409, {'detail': 'Newer progress was saved from another phone.'});
+        saves[tokens[tok]!] = {'data': body['data'], 'rev': rev + 1};
+        return out(200, {'rev': rev + 1});
+      case '/ai/accounts/progress/delete':
+        if (who == null) return out(401, {'detail': 'Please log in again.'});
+        final had = saves[tokens[tok]];
+        if (had == null) return out(200, {'rev': 0});
+        saves[tokens[tok]!] = {'data': '', 'rev': (had['rev'] as int) + 1};
+        return out(200, {'rev': (had['rev'] as int) + 1});
       case '/ai/admin/players':
         if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
         return out(200, {
@@ -104,6 +124,29 @@ Api apiWith(Market m, {String accountServer = ''}) => Api(
   builtInModel: 'gx10-current',
   accountServer: accountServer,
 );
+
+/// A phone with the real game on it (its progress lives in [store], like secure storage on a real phone).
+Api phone(Market m, [MemoryKeyValue? store]) {
+  final kv = store ?? MemoryKeyValue();
+  return Api(
+    game: Game(content: content, store: kv, random: math.Random(4), unlockAll: true, surprises: false),
+    content: content,
+    store: kv,
+    aiHttp: m.client,
+    builtInEndpoint: 'https://glm.example/v1',
+    builtInModel: 'gx10-current',
+    syncDelay: const Duration(milliseconds: 1),
+  );
+}
+
+/// Finish one haggle at Auntie Mei's (the first stall).
+Future<void> haggleOnce(Api api) async {
+  final s = (content['stalls'] as List).first as Map;
+  final g = await api.start('${s['id']}', '${((s['items'] as List).first as Map)['id']}');
+  await api.move('${g['id']}', move: 'buy');
+}
+
+Future<Map<String, dynamic>> me(Api api) => api.me();
 
 void main() {
   setUp(() {
@@ -272,5 +315,150 @@ void main() {
     expect(m.users['admin']!['pw'], 'teh-tarik-88');
     expect(find.byKey(const ValueKey('default_pw_warning')), findsNothing);
     await settle(tester, 4000);
+  });
+
+  group('progress follows the account', () {
+    test('a new account starts fresh if you say so; another phone sees it; logging out brings yours back', () async {
+      final m = Market();
+      final a = phone(m);
+      await a.setName('Guest Me');
+      await haggleOnce(a);
+      expect((await me(a))['haggles'], 1);
+      int? asked;
+      await a.signIn(
+        server: 'market.example.com',
+        username: 'JingQi',
+        password: 'kopi1234',
+        signUp: true,
+        bringProgress: (n) async {
+          asked = n;
+          return false;
+        },
+      );
+      expect(asked, 1);
+      expect((await me(a))['haggles'], 0); // the new account's own (empty) progress
+      expect((await me(a))['named'], isFalse); // so the market asks for a name
+      await a.setName('Jing Qi');
+      await haggleOnce(a);
+      await a.syncNow();
+      expect(a.progressSaved, isTrue);
+      expect('${m.saves['jingqi']!['data']}', contains('Jing Qi'));
+
+      // another phone, same account: same progress, no question asked
+      final b = phone(m);
+      await b.setName('Someone Else');
+      await b.signIn(
+        server: 'market.example.com',
+        username: 'jingqi',
+        password: 'kopi1234',
+        bringProgress: (_) async => fail('the account already has progress'),
+      );
+      expect((await me(b))['name'], 'Jing Qi');
+      expect((await me(b))['haggles'], 1);
+
+      // log out: this phone's own progress again
+      await a.signOut();
+      expect((await me(a))['name'], 'Guest Me');
+      expect((await me(a))['haggles'], 1);
+      await b.signOut();
+      expect((await me(b))['name'], 'Someone Else');
+    });
+
+    test('or bring this phone\'s progress into the new account (the phone keeps its own copy)', () async {
+      final m = Market();
+      final a = phone(m);
+      await a.setName('Ah Boy');
+      await haggleOnce(a);
+      await a.signIn(
+        server: 'market.example.com',
+        username: 'ahboy',
+        password: 'kopi1234',
+        signUp: true,
+        bringProgress: (_) async => true,
+      );
+      expect((await me(a))['name'], 'Ah Boy');
+      expect((await me(a))['haggles'], 1);
+      await haggleOnce(a);
+      await a.syncNow();
+      expect(jsonDecode('${m.saves['ahboy']!['data']}')['haggles'], hasLength(2));
+      await a.signOut();
+      expect((await me(a))['haggles'], 1); // the guest progress didn't move
+    });
+
+    test('an empty phone just starts the account fresh without asking', () async {
+      final m = Market();
+      final a = phone(m);
+      await a.signIn(
+        server: 'market.example.com',
+        username: 'newbie',
+        password: 'kopi1234',
+        signUp: true,
+        bringProgress: (_) async => fail('nothing to bring'),
+      );
+      expect((await me(a))['haggles'], 0);
+      expect(m.saves['newbie']!['rev'], 1);
+    });
+
+    test('the account\'s progress is still there after the app restarts, and picks up the newest copy', () async {
+      final m = Market();
+      final store = MemoryKeyValue();
+      final a = phone(m, store);
+      await a.signIn(server: 'market.example.com', username: 'jingqi', password: 'kopi1234', signUp: true);
+      await a.setName('Jing Qi');
+      await a.syncNow();
+      // meanwhile another phone plays a haggle on the same account
+      final b = phone(m);
+      await b.signIn(server: 'market.example.com', username: 'jingqi', password: 'kopi1234');
+      await haggleOnce(b);
+      await b.syncNow();
+      final again = phone(m, store); // the app opens again
+      expect((await me(again))['name'], 'Jing Qi');
+      expect((await me(again))['haggles'], 1);
+    });
+
+    test('two phones at once: the older one takes the newer progress instead of overwriting it', () async {
+      final m = Market();
+      final a = phone(m), b = phone(m);
+      await a.signIn(server: 'market.example.com', username: 'jingqi', password: 'kopi1234', signUp: true);
+      await b.signIn(server: 'market.example.com', username: 'jingqi', password: 'kopi1234');
+      await b.setName('From B');
+      await b.syncNow();
+      await a.setName('From A'); // A hasn't seen B's save
+      await a.syncNow();
+      expect((await me(a))['name'], 'From B');
+      expect('${m.saves['jingqi']!['data']}', contains('From B'));
+    });
+
+    test('delete my data while logged in clears the account copy too', () async {
+      final m = Market();
+      final a = phone(m);
+      await a.setName('Guest Me');
+      await haggleOnce(a);
+      await a.signIn(
+        server: 'market.example.com',
+        username: 'jingqi',
+        password: 'kopi1234',
+        signUp: true,
+        bringProgress: (_) async => true,
+      );
+      await a.syncNow();
+      await a.deleteMe();
+      await a.syncNow();
+      expect((await me(a))['haggles'], 0);
+      expect(jsonDecode('${m.saves['jingqi']!['data']}')['haggles'], isEmpty);
+      await a.signOut();
+      expect((await me(a))['haggles'], 0); // this phone's own copy went too
+    });
+
+    test('the admin login doesn\'t switch progress', () async {
+      final m = Market();
+      final a = phone(m);
+      await a.setName('Owner');
+      await haggleOnce(a);
+      await a.signIn(server: 'relay.example', username: 'admin', password: 'admin');
+      expect((await me(a))['name'], 'Owner');
+      expect((await me(a))['haggles'], 1);
+      expect(m.saves, isEmpty);
+    });
   });
 }
