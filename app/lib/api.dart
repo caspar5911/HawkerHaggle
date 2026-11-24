@@ -38,11 +38,22 @@ class SecureKeyValue implements KeyValue {
 // Named parameters can't be private, so these fields are set in the initializer list.
 // ignore_for_file: prefer_initializing_formals
 class Api {
-  Api({KeyValue? store, http.Client? aiHttp, Map? content, Game? game})
-    : _store = store ?? SecureKeyValue(),
-      _aiHttp = aiHttp,
-      _content = content,
-      _game = game;
+  Api({
+    KeyValue? store,
+    http.Client? aiHttp,
+    Map? content,
+    Game? game,
+    this.builtInEndpoint = defaultEndpoint,
+    this.builtInModel = defaultModel,
+  }) : _store = store ?? SecureKeyValue(),
+       _aiHttp = aiHttp,
+       _content = content,
+       _game = game;
+
+  /// The AI this build came with (empty in the public build).
+  final String builtInEndpoint;
+  final String builtInModel;
+  bool get hasBuiltInAi => builtInEndpoint.isNotEmpty;
 
   final KeyValue _store;
   final http.Client? _aiHttp;
@@ -58,8 +69,8 @@ class Api {
   Future<void> _init() async {
     _content ??= jsonDecode(await rootBundle.loadString('assets/content/stalls.json')) as Map;
     _ai = AiConfig(
-      endpoint: await _store.read('ai_endpoint') ?? defaultEndpoint,
-      model: await _store.read('ai_model') ?? defaultModel,
+      endpoint: await _store.read('ai_endpoint') ?? builtInEndpoint,
+      model: await _store.read('ai_model') ?? builtInModel,
       apiKey: await _store.read('ai_key') ?? '',
     );
     _game ??= Game(content: _content!, store: _store);
@@ -99,6 +110,9 @@ class Api {
     await _store.write('ai_key', _ai.apiKey);
     _game!.ai = AiClient(_ai, client: _aiHttp);
   }
+
+  /// Settings > "Use default AI": back to the AI this build came with.
+  Future<void> useBuiltInAi() => setAi(endpoint: builtInEndpoint, model: builtInModel, apiKey: '');
 
   Future<String> testAi({required String endpoint, required String model, required String apiKey}) async {
     final c = AiClient(

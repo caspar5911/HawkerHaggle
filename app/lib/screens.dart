@@ -1134,6 +1134,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Leave the address empty to play in simple mode (taps and ready-made lines, works offline).',
             style: TextStyle(height: 1.4, color: Palette.soft),
           ),
+          if (api.hasBuiltInAi) ...[
+            const SizedBox(height: 10),
+            Bouncy(
+              onTap: () async {
+                await api.useBuiltInAi();
+                if (!mounted) return;
+                setState(() {
+                  _endpoint.text = api.ai.endpoint;
+                  _model.text = api.ai.model;
+                  _key.text = '';
+                  _testResult = null;
+                });
+                _toast('Default AI set. Tap Test to check it.');
+              },
+              child: const Pill(text: 'Use default AI', icon: '✨', color: Palette.teal, textColor: Colors.white),
+            ),
+          ],
           const SizedBox(height: 10),
           TextField(
             key: const ValueKey('ai_endpoint'),

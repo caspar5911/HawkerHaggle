@@ -311,6 +311,41 @@ void main() {
     await settle(tester, 4000);
   });
 
+  testWidgets('a build with a default AI shows "Use default AI", which fills and saves it', (tester) async {
+    final store = MemoryKeyValue();
+    await store.write('ai_endpoint', ''); // an empty address was saved earlier
+    final api = Api(
+      game: Fake([]),
+      content: const {},
+      store: store,
+      builtInEndpoint: 'https://my-model.example/v1',
+      builtInModel: 'my-model',
+    );
+    await tester.pumpWidget(HawkerHaggleApp(api: api));
+    await settle(tester, 2000);
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await settle(tester);
+    expect(api.ai.endpoint, ''); // the saved choice wins over the default...
+    await tester.dragUntilVisible(find.text('Use default AI'), find.byType(ListView).last, const Offset(0, -200));
+    await tester.tap(find.text('Use default AI'));
+    await settle(tester, 1000);
+    expect(api.ai.endpoint, 'https://my-model.example/v1'); // ...until you tap the button
+    expect(api.ai.model, 'my-model');
+    expect(await store.read('ai_endpoint'), 'https://my-model.example/v1');
+    expect(find.text('https://my-model.example/v1'), findsOneWidget);
+    await settle(tester, 4000);
+  });
+
+  testWidgets('the public build has no default, so no button', (tester) async {
+    final api = apiFor(Fake([]));
+    await tester.pumpWidget(HawkerHaggleApp(api: api));
+    await settle(tester, 2000);
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await settle(tester);
+    expect(find.text('Use default AI', skipOffstage: false), findsNothing);
+    await settle(tester, 2000);
+  });
+
   test('faces match the moment', () {
     expect(faceFor('clarify', 0), Face.surprised);
     expect(faceFor('confirm', 0), Face.happy);
