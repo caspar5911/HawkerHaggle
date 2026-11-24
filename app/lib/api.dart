@@ -99,10 +99,10 @@ class Api {
       await _loadSync(a!);
       _game!.profileKey = _keyFor(a);
       if (await _store.read(_keyFor(a)) == null) {
-        // logged in before progress followed the account: this phone's progress becomes the account's
-        final guest = await _store.read('profile');
-        if (guest != null) await _store.write(_keyFor(a), guest);
-        _dirty = true;
+        // logged in before progress followed the account: take the account's copy from its server (or start the
+        // account fresh). This phone's own progress stays where it is and comes back on logout.
+        _rev = 0;
+        _dirty = false;
       }
     }
     await _quietly(() => _game!.load());

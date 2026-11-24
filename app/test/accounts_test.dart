@@ -450,6 +450,32 @@ void main() {
       expect((await me(a))['haggles'], 0); // this phone's own copy went too
     });
 
+    test('logged in on an older version: the account doesn\'t take this phone\'s progress', () async {
+      final m = Market();
+      final store = MemoryKeyValue();
+      final old = phone(m, store);
+      await old.setName('Caspar');
+      await haggleOnce(old);
+      // what an older version left behind: logged in, but the progress never moved
+      final t = m.login('arella');
+      m.users['arella'] = {'id': 9, 'username': 'Arella', 'pw': 'x', 'status': 'pending'};
+      await store.write(
+        'account',
+        jsonEncode(
+          Account(server: 'https://market.example.com', username: 'Arella', token: t, status: 'pending').toJson(),
+        ),
+      );
+      final now = phone(m, store);
+      expect((await me(now))['name'], isNot('Caspar'));
+      expect((await me(now))['haggles'], 0);
+      await now.setName('Arella');
+      await now.syncNow();
+      expect('${m.saves['arella']!['data']}', isNot(contains('Caspar')));
+      await now.signOut();
+      expect((await me(now))['name'], 'Caspar');
+      expect((await me(now))['haggles'], 1);
+    });
+
     test('the admin login doesn\'t switch progress', () async {
       final m = Market();
       final a = phone(m);
