@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Little sound effects. Short, original synth sounds (see tools/make_sounds.py), mixed with the player's own
@@ -38,7 +39,11 @@ class Sfx {
 
   static Future<AudioPool> _pool(String n) => _pools.putIfAbsent(
     n,
-    () => AudioPool.createFromAsset(path: 'sfx/$n.wav', maxPlayers: 3, playerMode: PlayerMode.lowLatency),
+    () => AudioPool.createFromAsset(
+      path: 'sfx/$n.wav',
+      maxPlayers: 3,
+      playerMode: kIsWeb ? PlayerMode.mediaPlayer : PlayerMode.lowLatency,
+    ),
   );
 
   static void play(String name, {double volume = 0.8}) {

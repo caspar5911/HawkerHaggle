@@ -10,6 +10,8 @@ from hh.store import Store
 
 
 class FakeResp:
+    status_code = 200
+
     def __init__(self, content):
         self.content = content
 
@@ -511,3 +513,42 @@ def test_private_downloads_only_serve_apks_from_the_folder(tmp_path, monkeypatch
     assert r.headers["content-type"] == "application/vnd.android.package-archive"
     for bad in ("secret.txt", "..%2Fsecret.txt", "../hh/api.py", "nope.apk"):
         assert c.get(f"/download/{bad}").status_code == 404
+
+
+def test_ai_relay_for_the_web_version_forwards_only_chat_and_uses_the_server_model():
+    model = FakeModel(line="Aiyo, hello from the relay")
+    c, ai = client(model)
+    r = c.post("/ai/v1/chat/completions", json={"model": "something-else", "stream": True,
+                                                "messages": [{"role": "user", "content": "hi"}]})
+    assert r.status_code == 200 and r.json()["choices"][0]["message"]["content"] == "Aiyo, hello from the relay"
+    sent = model.calls[-1]
+    assert sent["model"] == ai.model and sent["stream"] is False
+    assert c.post("/ai/v1/chat/completions", json={"nope": 1}).status_code == 400
+    assert c.post("/ai/v1/chat/completions", content=b"x" * 70_000).status_code == 413
+    assert c.get("/ai/v1/models").status_code in (404, 405)        # nothing else is passed through
+
+
+def test_ai_relay_needs_an_ai_and_is_rate_limited(monkeypatch):
+    import hh.api
+    c, _ = client()                                                 # no AI on this server
+    assert c.post("/ai/v1/chat/completions", json={"messages": []}).status_code == 503
+    monkeypatch.setattr(hh.api, "RELAY_PER_MINUTE", 3)
+    c, _ = client(FakeModel())
+    codes = [c.post("/ai/v1/chat/completions", json={"messages": []}).status_code for _ in range(4)]
+    assert codes == [200, 200, 200, 429]
+
+
+def test_only_the_games_own_web_page_may_use_the_relay_from_another_site():
+    c, _ = client(FakeModel())
+    ok = {"Origin": "https://caspar5911.github.io", "Access-Control-Request-Method": "POST",
+          "Access-Control-Request-Private-Network": "true"}
+    r = c.options("/ai/v1/chat/completions", headers=ok)
+    assert r.status_code == 204 and r.headers["access-control-allow-origin"] == "https://caspar5911.github.io"
+    assert r.headers["access-control-allow-private-network"] == "true"
+    bad = {**ok, "Origin": "https://evil.example"}
+    r = c.options("/ai/v1/chat/completions", headers=bad)
+    assert r.status_code == 403 and "access-control-allow-origin" not in r.headers
+    r = c.post("/ai/v1/chat/completions", json={"messages": []}, headers={"Origin": "https://caspar5911.github.io"})
+    assert r.headers["access-control-allow-origin"] == "https://caspar5911.github.io"
+    r = c.get("/v1/stalls", headers={"Origin": "https://caspar5911.github.io"})
+    assert "access-control-allow-origin" not in r.headers                  # nothing else is opened up

@@ -16,7 +16,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
@@ -32,7 +33,11 @@ PLAYER_LINES = CONTENT["player"]
 OLD_APP_LIVE_LEFT = 999
 MOVES_PER_MINUTE = 40
 TRUSTED_PROXIES = {"127.0.0.1", "::1"}
-DOWNLOADS = Path(os.environ.get("HH_DOWNLOADS", str(ROOT / "server" / "var" / "downloads")))       # tailscale serve / a relay on this machine
+DOWNLOADS = Path(os.environ.get("HH_DOWNLOADS", str(ROOT / "server" / "var" / "downloads")))
+WEB = Path(os.environ.get("HH_WEB", str(ROOT / "server" / "var" / "web")))   # the web version of the game (built)
+RELAY_PER_MINUTE = 60
+# Web pages elsewhere that may use the AI relay (the game's GitHub Pages copy). Everything else stays same-origin.
+RELAY_ORIGINS = [o for o in os.environ.get("HH_RELAY_ORIGINS", "https://caspar5911.github.io").split(",") if o]       # tailscale serve / a relay on this machine
 
 
 class Move(BaseModel):
@@ -50,6 +55,27 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
     store = store or Store(os.environ.get("HH_DB", str(ROOT / "server" / "var" / "hh.db")))
     ai = ai or AI()
     app = FastAPI(title="Hawker Haggle", version="1")
+
+    @app.middleware("http")
+    async def relay_cors(request: Request, call_next):
+        """Let the GitHub Pages copy of the game call the AI relay (and nothing else). Chrome also asks permission
+        before a public page talks to a private (Tailscale) address: say yes for the relay."""
+        origin = request.headers.get("origin", "")
+        allowed = origin in RELAY_ORIGINS and request.url.path.startswith("/ai/")
+        if request.method == "OPTIONS" and request.url.path.startswith("/ai/"):
+            from starlette.responses import Response
+            resp = Response(status_code=204 if allowed else 403)
+        else:
+            resp = await call_next(request)
+        if allowed:
+            resp.headers["Access-Control-Allow-Origin"] = origin
+            resp.headers["Vary"] = "Origin"
+            resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            resp.headers["Access-Control-Allow-Headers"] = "content-type, authorization"
+            resp.headers["Access-Control-Max-Age"] = "600"
+            if request.headers.get("access-control-request-private-network"):
+                resp.headers["Access-Control-Allow-Private-Network"] = "true"
+        return resp
     hits: dict[str, deque] = defaultdict(deque)
 
     def limit(key: str, per_minute: int) -> None:
@@ -295,7 +321,9 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
                        for f in files) or "<li>Nothing here yet.</li>"
         return ("<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
                 "<body style='font-family:sans-serif;max-width:560px;margin:40px auto;padding:0 16px'>"
-                f"<h2>Hawker Haggle test builds</h2><ul style='line-height:2'>{rows}</ul>"
+                "<h2>Hawker Haggle</h2><p><a href='https://caspar5911.github.io/HawkerHaggle/' style='font-size:1.2em'>"
+                "🎮 Play in your browser</a></p>"
+                f"<h3>Android test builds</h3><ul style='line-height:2'>{rows}</ul>"
                 "<p>Tap a file to download it, then open it to install.</p></body></html>")
 
     @app.get("/download/{name}")
@@ -303,6 +331,50 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         if not re.fullmatch(r"[A-Za-z0-9._-]+\.apk", name) or not (DOWNLOADS / name).is_file():
             raise HTTPException(404, "No such file")
         return FileResponse(DOWNLOADS / name, media_type="application/vnd.android.package-archive", filename=name)
+
+    @app.post("/ai/v1/chat/completions")
+    async def relay(request: Request):
+        """The web version of the game talks to the AI through here, so the page and the AI share one address (a
+        browser won't let a page call another site that doesn't allow it). Only chat completions, size-limited,
+        rate-limited per player address, to the AI set in the server's .env. Reachable only on the owner's
+        Tailscale."""
+        limit("relay:" + client_ip(request), RELAY_PER_MINUTE)
+        if not ai.enabled:
+            raise HTTPException(503, "No AI set on this server")
+        body = await request.body()
+        if len(body) > 64_000:
+            raise HTTPException(413, "Too big")
+        try:
+            data = json.loads(body)
+        except ValueError:
+            raise HTTPException(400, "Bad JSON")
+        if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
+            raise HTTPException(400, "Need messages")
+        data["model"] = ai.model                    # always the server's model
+        data["stream"] = False
+        headers = {"Content-Type": "application/json"}
+        if ai.api_key:
+            headers["Authorization"] = f"Bearer {ai.api_key}"
+
+        def call():
+            return ai.http.post(f"{ai.base_url.rstrip('/')}/chat/completions", json=data, headers=headers, timeout=90)
+
+        try:
+            from starlette.concurrency import run_in_threadpool
+            r = await run_in_threadpool(call)
+        except Exception:                           # noqa: BLE001 - any network trouble is a 502 for the page
+            raise HTTPException(502, "The AI didn't answer")
+        try:
+            return JSONResponse(r.json(), status_code=r.status_code)
+        except ValueError:
+            raise HTTPException(502, "The AI sent something odd")
+
+    @app.get("/play")
+    def play_root():
+        return RedirectResponse("/play/")
+
+    if WEB.is_dir():
+        app.mount("/play", StaticFiles(directory=str(WEB), html=True), name="play")
 
     @app.get("/delete", response_class=HTMLResponse)
     def delete_page():

@@ -23,6 +23,13 @@ flutter build apk --release --split-per-abi --dart-define=AI_ENDPOINT=https://ho
 AI_ENDPOINT=https://host/v1 AI_MODEL=name dart run tool/live_matrix.dart report.md
 ```
 
+## Web version (GitHub Pages)
+
+`tools/publish_web.sh "test N" https://<relay>/ai/v1 <model>` builds the web version and publishes it to
+https://caspar5911.github.io/HawkerHaggle/. Browsers reach the AI through the game server's relay
+(`/ai/v1/chat/completions`), which allows only that page; players need Tailscale access to the relay, and Chrome
+asks once to "allow access to local network devices". Without it the web game plays in simple mode.
+
 ## Server (reference and older test builds)
 
 `server/` is the original Python version of the game. It stays as the **reference**: the app's Dart core is

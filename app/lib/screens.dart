@@ -506,7 +506,21 @@ class _HaggleScreenState extends State<HaggleScreen> {
                           top: 0,
                           left: 0,
                           right: 0,
-                          child: SurpriseBanner(_banner(g), urgent: g?['surprise'] == 'rival'),
+                          // a soft fade behind the banner so the chat scrolling underneath doesn't show through
+                          child: DecoratedBox(
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [Palette.tile, Palette.tile, Color(0x00FDEBCB)],
+                                stops: [0, 0.8, 1],
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: SurpriseBanner(_banner(g), urgent: g?['surprise'] == 'rival'),
+                            ),
+                          ),
                         ),
                     ],
                   ),
