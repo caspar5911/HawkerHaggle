@@ -215,7 +215,7 @@ void main() {
 
   testWidgets('walking away shows the walked-away card', (tester) async {
     await openHaggle(tester, [game('OK lor, bye bye.', event: 'letgo', result: 'walked')]);
-    await tester.tap(find.text('Walk away'));
+    await tester.tap(find.byKey(const ValueKey('walk')));
     await settle(tester, 2500);
     expect(find.text('You walked away 🚶'), findsOneWidget);
     expect(find.textContaining('secret lowest price'), findsOneWidget);

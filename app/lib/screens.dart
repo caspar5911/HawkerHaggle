@@ -574,7 +574,7 @@ class _Scene extends StatelessWidget {
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
     return Container(
-      height: 300 + top,
+      height: 262 + top,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -596,7 +596,7 @@ class _Scene extends StatelessWidget {
             right: 0,
             bottom: 52,
             child: Center(
-              child: Stallholder(look: look, face: face, reactKey: react, size: 170),
+              child: Stallholder(look: look, face: face, reactKey: react, size: 146),
             ),
           ),
           // wooden counter with the item
@@ -702,16 +702,20 @@ class _Controls extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (pending != null)
-            _ConfirmDeal(price: pending, busy: busy, send: send)
-          else ...[
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: [
-                for (var i = 0; i < sugs.length; i++)
-                  Bouncy(
+          if (pending != null) ...[
+            _ConfirmDeal(price: pending, busy: busy, send: send),
+            const SizedBox(height: 8),
+          ] else if (sugs.isNotEmpty) ...[
+            // the suggestions sit in one row you can swipe, so the chat keeps its room
+            SizedBox(
+              height: 52,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                clipBehavior: Clip.none,
+                itemCount: sugs.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (_, i) => Center(
+                  child: Bouncy(
                     enabled: !busy,
                     onTap: () => send(pick: i, mine: sugs[i]['text'] as String),
                     // hold to make it your own: it goes into the typing box to edit before sending
@@ -722,51 +726,70 @@ class _Controls extends StatelessWidget {
                       color: Palette.cream,
                     ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _OkLahButton(
-                    key: ValueKey(g['ask']),
-                    ask: g['ask'] as num,
-                    busy: busy,
-                    onConfirmed: () => send(move: 'buy', mine: g['accept_text'] as String),
-                  ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Bouncy(
-                    enabled: !busy,
-                    onTap: () => send(move: 'walk', mine: g['walk_text'] as String),
-                    child: const Pill(text: 'Walk away', icon: '🚶'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 8),
-          // Typing opens a box in the middle of the screen, above the keyboard, so nothing gets hidden.
-          Bouncy(
-            enabled: !busy,
-            onTap: () => _openTypeBox(context),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(20)),
-              child: Row(
-                children: [
-                  const Text('✍️', style: TextStyle(fontSize: 18)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Say anything… (or hold an idea to edit it)',
-                      style: const TextStyle(color: Palette.soft, fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
               ),
             ),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            children: [
+              // Typing opens a box in the middle of the screen, above the keyboard, so nothing gets hidden.
+              Expanded(
+                child: Bouncy(
+                  enabled: !busy,
+                  onTap: () => _openTypeBox(context),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(20)),
+                    child: const Row(
+                      children: [
+                        Text('✍️', style: TextStyle(fontSize: 18)),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Say anything…',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Palette.soft, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (pending == null) ...[
+                const SizedBox(width: 8),
+                _OkLahButton(
+                  key: ValueKey(g['ask']),
+                  ask: g['ask'] as num,
+                  busy: busy,
+                  onConfirmed: () => send(move: 'buy', mine: g['accept_text'] as String),
+                ),
+                const SizedBox(width: 8),
+                Semantics(
+                  label: 'Walk away',
+                  button: true,
+                  child: Bouncy(
+                    key: const ValueKey('walk'),
+                    enabled: !busy,
+                    onTap: () => send(move: 'walk', mine: g['walk_text'] as String),
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.black.withValues(alpha: 0.06), width: 2),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), offset: const Offset(0, 4))],
+                      ),
+                      child: const Text('🚶', style: TextStyle(fontSize: 22)),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -869,6 +892,7 @@ class _TypeBox extends StatelessWidget {
                       style: const TextStyle(fontSize: 17, color: Palette.ink),
                       decoration: InputDecoration(
                         hintText: 'Type your reply…',
+                        helperText: 'Tip: hold a suggestion to bring it here and edit it.',
                         counterText: '',
                         filled: true,
                         fillColor: Palette.cream,
@@ -997,13 +1021,12 @@ class _OkLahButtonState extends State<_OkLahButton> {
       child: _asking
           ? Row(
               key: const ValueKey('confirm'),
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(
-                  child: Bouncy(
-                    enabled: !widget.busy,
-                    onTap: _tap,
-                    child: Pill(text: 'Confirm $price', icon: '✅', color: Palette.teal, textColor: Colors.white),
-                  ),
+                Bouncy(
+                  enabled: !widget.busy,
+                  onTap: _tap,
+                  child: Pill(text: 'Confirm $price', icon: '✅', color: Palette.teal, textColor: Colors.white),
                 ),
                 const SizedBox(width: 4),
                 Bouncy(
