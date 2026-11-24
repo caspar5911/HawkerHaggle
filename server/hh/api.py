@@ -8,6 +8,7 @@ import json
 import math
 import os
 import random
+import re
 import secrets
 import time
 from collections import defaultdict, deque
@@ -15,7 +16,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
@@ -30,7 +31,8 @@ PLAYER_LINES = CONTENT["player"]
 # "live_left" stays in responses only so older test builds of the app keep working.
 OLD_APP_LIVE_LEFT = 999
 MOVES_PER_MINUTE = 40
-TRUSTED_PROXIES = {"127.0.0.1", "::1"}       # tailscale serve / a relay on this machine
+TRUSTED_PROXIES = {"127.0.0.1", "::1"}
+DOWNLOADS = Path(os.environ.get("HH_DOWNLOADS", str(ROOT / "server" / "var" / "downloads")))       # tailscale serve / a relay on this machine
 
 
 class Move(BaseModel):
@@ -281,6 +283,24 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
                                               "reply": them.get("text"), "context": chat[max(0, i - 7):i - 1]})
                 return {"thanks": True}
         raise HTTPException(400, "Nothing to report yet")
+
+    @app.get("/download", response_class=HTMLResponse)
+    def downloads():
+        """Private test builds for people on the owner's Tailscale (the files live in server/var/downloads, outside
+        git). Only .apk files in that folder are listed or served."""
+        files = sorted(DOWNLOADS.glob("*.apk"), key=lambda f: f.stat().st_mtime, reverse=True) if DOWNLOADS.is_dir() else []
+        rows = "".join(f"<li><a href='/download/{f.name}'>{f.name}</a> ({f.stat().st_size // 1_000_000} MB)</li>"
+                       for f in files) or "<li>Nothing here yet.</li>"
+        return ("<html><head><meta name='viewport' content='width=device-width,initial-scale=1'></head>"
+                "<body style='font-family:sans-serif;max-width:560px;margin:40px auto;padding:0 16px'>"
+                f"<h2>Hawker Haggle test builds</h2><ul style='line-height:2'>{rows}</ul>"
+                "<p>Tap a file to download it, then open it to install.</p></body></html>")
+
+    @app.get("/download/{name}")
+    def download(name: str):
+        if not re.fullmatch(r"[A-Za-z0-9._-]+\.apk", name) or not (DOWNLOADS / name).is_file():
+            raise HTTPException(404, "No such file")
+        return FileResponse(DOWNLOADS / name, media_type="application/vnd.android.package-archive", filename=name)
 
     @app.get("/delete", response_class=HTMLResponse)
     def delete_page():

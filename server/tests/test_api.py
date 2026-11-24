@@ -496,3 +496,18 @@ def test_she_may_repeat_the_other_stalls_price():
     assert r["event"].startswith("competitor")
     if r["event"] == "competitor_annoyed":
         assert r["ai_line"]                                         # not thrown away for quoting their $10
+
+
+def test_private_downloads_only_serve_apks_from_the_folder(tmp_path, monkeypatch):
+    import hh.api
+    (tmp_path / "HawkerHaggle-mine.apk").write_bytes(b"PK fake apk")
+    (tmp_path / "secret.txt").write_text("no")
+    monkeypatch.setattr(hh.api, "DOWNLOADS", tmp_path)
+    c, _ = client()
+    page = c.get("/download").text
+    assert "HawkerHaggle-mine.apk" in page and "secret.txt" not in page
+    r = c.get("/download/HawkerHaggle-mine.apk")
+    assert r.status_code == 200 and r.content == b"PK fake apk"
+    assert r.headers["content-type"] == "application/vnd.android.package-archive"
+    for bad in ("secret.txt", "..%2Fsecret.txt", "../hh/api.py", "nope.apk"):
+        assert c.get(f"/download/{bad}").status_code == 404
