@@ -9,7 +9,7 @@ import math
 import random
 from dataclasses import asdict, dataclass, field
 
-MOVES = ("offer", "budget", "plead", "pity", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
+MOVES = ("offer", "budget", "plead", "pity", "flirt", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
 ONCE = ("competitor", "bulk", "regular")    # tactics that only work once per haggle
 MAX_ROUNDS = 12
 
@@ -164,9 +164,9 @@ class Haggle:
         if kind not in MOVES:
             kind = "smalltalk"
         if kind in ONCE and kind in self.s.used:
-            kind = "smalltalk"
+            kind = "offer" if price is not None else "smalltalk"   # "2 for $40" again: still an offer
         self.s.rounds += 1
-        out = getattr(self, f"_{kind}")(price) if kind in ("offer", "budget") else getattr(self, f"_{kind}")()
+        out = getattr(self, f"_{kind}")(price) if kind in ("offer", "budget", "bulk") else getattr(self, f"_{kind}")()
         if out.event == "confirm":
             return out              # a deal on the table always gets its confirmation step
         if not self.s.done and self.s.patience <= 0:
@@ -262,12 +262,41 @@ class Haggle:
         self._tire(14)
         return self._out("competitor_annoyed")
 
-    def _bulk(self, _=None) -> Outcome:
+    def _bulk(self, price: float | None = None) -> Outcome:
         self.s.used.append("bulk")
         self.s.qty = 2
         self._concede(self.floor_now(), 0.35 * (1.2 - self.p.stubborn))
         self._tire(4)
+        if price is not None:
+            return self._offer(price)        # "2 for $40": $20 each, judged against the two-piece price
         return self._out("bulk")
+
+    def _flirt(self, _=None) -> Outcome:
+        """Flirting or creepy talk: they laugh it off and steer back to business. It doesn't help."""
+        self.s.mood = clamp(self.s.mood - 0.5, -3, 3)
+        self._tire(8)
+        return self._out("deflect")
+
+    def side(self, kind: str) -> None:
+        """The mood part of a second thing said in the same message ("so nice, 20 can?"): no round, no event,
+        and the same limits as saying it on its own (compliments wear off, a regular or a sad story counts once)."""
+        if self.s.done:
+            return
+        if kind == "compliment" and self.s.compliments < 2:
+            self.s.compliments += 1
+            self.s.mood = clamp(self.s.mood + 1.0 * self.p.flattery, -3, 3)
+        elif kind == "regular" and "regular" not in self.s.used:
+            self.s.used.append("regular")
+            self.s.mood = clamp(self.s.mood + 0.7, -3, 3)
+        elif kind == "pity" and self.s.pities < 1:
+            self.s.pities += 1
+            self.s.mood = clamp(self.s.mood + 1.5 * self.p.kind, -3, 3)
+        elif kind == "flirt":
+            self.s.mood = clamp(self.s.mood - 0.5, -3, 3)
+            self._tire(4)
+        elif kind == "rude":
+            self.s.mood = clamp(self.s.mood - 1, -3, 3)
+            self._tire(12)
 
     def _regular(self, _=None) -> Outcome:
         self.s.used.append("regular")

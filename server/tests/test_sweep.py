@@ -22,12 +22,13 @@ from hh.store import Store
 
 EVENTS_ALL = {"greet", "counter", "final", "insulted", "accept", "flattered", "flattery_tired", "competitor_drop",
               "competitor_annoyed", "bulk", "regular", "smalltalk", "rude", "callback", "letgo", "refuse", "confused",
-              "plead", "plead_no", "clarify", "confirm", "unsure", "budget_best", "pity", "pity_tired"}
+              "plead", "plead_no", "clarify", "confirm", "unsure", "budget_best", "pity", "pity_tired", "deflect"}
 
 TYPED = ["15 can?", "$12 lah", "ok lah", "can cheaper?", "wah so nice", "next stall cheaper leh", "I buy two",
          "I come every week", "how's your day", "stupid", "never mind", "deal", "I buy 100 for 150?", "hmm ok",
          "😂😂", "asdfgh", "3 for 20?", "ok lah but my wallet crying", "my budget only 10", "I only have $9",
-         "I only have $16", "I'm starving, nothing to eat", "no money lah", "12 can?", "12 can?"]
+         "I only have $16", "I'm starving, nothing to eat", "no money lah", "12 can?", "12 can?", "$2 less can?",
+         "meet halfway lah", "round down lah", "2 for 30?", "wah so nice, 14 can?", "go on a date with me", "15"]
 
 
 def play(c, h, stall, item, style, rnd, seen):
@@ -59,6 +60,8 @@ def play(c, h, stall, item, style, rnd, seen):
         elif style == "sweet_talk_then_budget":            # compliments until tired, then "I only have $X"
             body = {"move": "confirm"} if pending else \
                 ({"text": "wah so nice"} if n < 4 else {"text": f"I only have ${max(1, int(g['ask'] * 0.6))}"})
+        elif style == "flatter_and_offer":                 # "so nice, $X can?" again and again
+            body = {"move": "confirm"} if pending else {"text": f"wah so nice, {max(1, int(g['ask']) - 1)} can?"}
         elif style == "walk":
             body = {"move": "confirm"} if pending else {"move": "walk"}
         else:
@@ -106,7 +109,7 @@ def api(monkeypatch):
 
 
 STYLES = ["bold", "safe", "tactic", "random_tap", "typed", "old_app_accept_spam", "cancel_reoffer", "button_buy",
-          "sweet_talk_then_budget", "walk"]
+          "sweet_talk_then_budget", "flatter_and_offer", "walk"]
 
 
 def test_sweep_every_stall_item_and_play_style(api):

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import os
 import random
 import secrets
@@ -17,7 +18,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from .ai import AI, money, plain_yes, rules
+from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
 from .engine import Haggle, Item, Personality, State
 from .store import Store
 
@@ -91,6 +92,39 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         return [{"move": s["move"], "price": s["price"],
                  "text": player_text(s["move"], s["price"], f"{sid}-{h.s.rounds}-{i}")}
                 for i, s in enumerate(h.suggestions())]
+
+    def read(text: str, h: Haggle, chat: list, stall: dict, item: dict) -> Heard:
+        """What a typed message means. Plain offers and a bare yes take the fast path (no AI reading); a price
+        described in words is worked out here from the real prices, never by the model."""
+        base = h.s.pending if h.s.pending is not None else h.s.ask
+        fast = fast_offer(text, base)
+        if fast is not None:
+            heard = Heard("offer", fast, False, reading="plain offer")
+        elif h.s.pending is not None and plain_yes(text):
+            heard = Heard("accept", None, False, reading="plain yes")
+        elif ai.enabled:
+            heard = ai.understand(text, chat, h.s.ask, item["name"], stall["name"], pending=h.s.pending,
+                                  last_offer=h.s.last_offer)
+        else:
+            heard = heard_by_rules(text)
+        if heard.rel_op:
+            if heard.rel_op == "less" and heard.rel_amount:
+                price = base - heard.rel_amount
+            elif heard.rel_op == "halfway" and h.s.last_offer:
+                price = (base + h.s.last_offer) / 2
+            elif heard.rel_op == "round_down":
+                price = math.floor(base) if base != math.floor(base) else (math.ceil(base / 5) - 1) * 5
+            else:
+                return heard._replace(move="clarify", price=None, unclear="what price they want to pay")
+            if price <= 0:
+                return heard._replace(move="clarify", price=None, unclear="what price they want to pay")
+            heard = heard._replace(move="offer" if heard.move not in ("budget",) else heard.move, price=price)
+        if heard.move == "bulk" and heard.price:
+            if heard.per == "total":
+                heard = heard._replace(price=heard.price / 2)
+            elif heard.per != "each":
+                return heard._replace(move="clarify", price=None, unclear="whether the price is for both or each")
+        return heard
 
     def view(sid: str, stall: dict, item: dict, h: Haggle, said: str, event: str, out, you: str | None,
              live_left: int, ai_line: bool) -> dict:
@@ -169,13 +203,11 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         if h.s.done:
             raise HTTPException(409, "This haggle is over")
         chat = sess["chat"]
-        use_ai, unclear = False, ""
+        use_ai, read_ai, unclear, heard = False, False, "", Heard("smalltalk", None, False)
         if body.text:
-            if ai.enabled:
-                heard = ai.understand(body.text, chat, h.s.ask, item["name"], stall["name"], pending=h.s.pending)
-                kind, price, use_ai, unclear = heard.move, heard.price, heard.ai, heard.unclear
-            else:
-                kind, price = rules(body.text)
+            heard = read(body.text, h, chat, stall, item)
+            kind, price, read_ai, unclear = heard.move, heard.price, heard.ai, heard.unclear
+            use_ai = ai.enabled                 # her reply is AI-written even when the reading took the fast path
             you = body.text.strip()
         elif body.move in ("confirm", "cancel"):
             kind, price = body.move, None
@@ -194,7 +226,7 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         else:
             raise HTTPException(400, "Send pick, move or text")
         if h.s.pending is not None and body.text and (
-                (kind == "accept" and not (price and price < h.s.pending)) or (not use_ai and plain_yes(body.text))):
+                (kind == "accept" and not (price and price < h.s.pending)) or (not read_ai and plain_yes(body.text))):
             kind = "confirm"        # a typed yes to "deal at $X, confirm?" (the word rules know a bare "ok lah" too)
         if kind == "accept" and price and price < h.s.ask:
             kind = "offer"          # "ok 24 lah" while they ask 26 is an offer of 24, not a yes to 26
@@ -202,6 +234,8 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             # Not sure what they mean: ask back. Nothing changes: no price move, no patience, no round used.
             out, event = None, "clarify"
         else:
+            if heard.also and kind not in ("accept", "confirm", "walk", "buy", "cancel"):
+                h.side(heard.also)              # "so nice, 20 can?": the compliment counts too (within its limits)
             out = h.move(kind, price)
             event = out.event
         said, ai_line = None, False
@@ -209,21 +243,43 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             said = ai.say(stall, item, event, {"ask": h.s.ask, "offer": out.offer if out else None,
                                                "deal": h.s.deal or h.s.pending},
                           history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening],
-                          unclear=unclear, budget=h.s.budget)
+                          unclear=unclear, budget=h.s.budget, patience=h.s.patience, also=heard.also)
             ai_line = said is not None
             store.add_ai_use(p["id"], today())          # usage stats only, not a limit
         said = said or line(stall, item, event, h, offer=out.offer if out else None, seed=sess["seed"], chat=chat)
-        chat = chat + [{"who": "you", "text": you[:300], "move": kind},
+        you_entry = {"who": "you", "text": you[:300], "move": kind}
+        if heard.reading or heard.also:
+            you_entry.update(reading=heard.reading, also=heard.also)
+        chat = chat + [you_entry,
                        {"who": "them", "text": said, "ask": h.s.ask}]
         store.save_session(sid, p["id"], stall["id"], item["id"], sess["seed"], asdict(h.s), h.rng.getstate(), out,
                            chat=chat)
         return view(sid, stall, item, h, said, event, out, you, OLD_APP_LIVE_LEFT, ai_line)
 
+    @app.post("/v1/haggle/{sid}/flag")
+    def flag(sid: str, p: dict = Depends(player)):
+        """"She misunderstood me": keep the player's last typed message, how it was read, and her reply, so the
+        owner can review real misreads and add them to the tests."""
+        limit(f"flag{p['id']}", 10)
+        sess = store.session(sid, p["id"])
+        if not sess:
+            raise HTTPException(404, "No such haggle")
+        chat = sess["chat"]
+        for i in range(len(chat) - 1, 0, -1):
+            you, them = chat[i - 1], chat[i]
+            if you.get("who") == "you" and them.get("who") == "them":
+                store.add_flag(p["id"], sid, {"you": you.get("text"), "read_as": you.get("move"),
+                                              "reading": you.get("reading", ""), "also": you.get("also", ""),
+                                              "reply": them.get("text"), "context": chat[max(0, i - 7):i - 1]})
+                return {"thanks": True}
+        raise HTTPException(400, "Nothing to report yet")
+
     @app.get("/delete", response_class=HTMLResponse)
     def delete_page():
         return ("<html><body style='font-family:sans-serif;max-width:560px;margin:40px auto;padding:0 16px'>"
                 "<h2>Delete your Hawker Haggle data</h2><p>Open the app, go to Settings and tap "
-                "<b>Delete my data</b>. Everything linked to your device (haggles, stars, name) is removed at once. "
+                "<b>Delete my data</b>. Everything linked to your device (haggles, chats, stars, name and any 'she misunderstood "
+                "me' reports) is removed at once. "
                 "There is no account, email or other personal information to delete beyond that.</p></body></html>")
 
     return app

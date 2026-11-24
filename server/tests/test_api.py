@@ -1,4 +1,5 @@
 import json
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -347,3 +348,134 @@ def test_the_ok_lah_button_after_its_confirm_tap_closes_the_deal_in_one_step():
     ask = g["ask"] if not g.get("pending") else g["pending"]
     r = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "buy"}, headers=h).json()
     assert r["done"] and r["result"] == "deal" and r["deal"] == ask and r["event"] == "accept"
+
+
+def haggle_with(model, stall="mei", item="durian"):
+    c, ai = client(model)
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": stall, "item": item}, headers=h).json()
+    return c, h, g
+
+
+def move(c, h, g, **body):
+    return c.post(f"/v1/haggle/{g['id']}/move", json=body, headers=h).json()
+
+
+def test_dollars_less_is_worked_out_from_the_real_price():
+    c, h, g = haggle_with(FakeModel(move='{"move": "offer", "price": null, "relative": {"op": "less", "amount": 2}}'))
+    r = move(c, h, g, text="auntie $2 less can?")
+    assert r["event"] in ("confirm", "counter", "final") and r["you_said"] == "auntie $2 less can?"
+    assert r.get("pending") in (None, 30) and r["event"] != "confused"
+
+
+def test_meet_halfway_needs_an_earlier_offer():
+    model = FakeModel(move='{"move": "offer", "price": null, "relative": {"op": "halfway"}}')
+    c, h, g = haggle_with(model)
+    assert move(c, h, g, text="meet halfway lah")["event"] == "clarify"           # halfway between what?
+    move(c, h, g, text="20")                                                       # fast path offer
+    r = move(c, h, g, text="ok meet halfway lah")
+    assert r["event"] != "clarify"
+
+
+def test_two_for_a_total_becomes_a_per_piece_offer_and_unclear_ones_are_asked():
+    c, h, g = haggle_with(FakeModel(move='{"move": "bulk", "price": 50, "per": "total"}'))
+    r = move(c, h, g, text="2 for 50 can?")
+    assert r["qty"] == 2 and r["event"] in ("confirm", "counter", "final", "budget_best", "insulted")
+    c, h, g = haggle_with(FakeModel(move='{"move": "bulk", "price": 50, "per": null}'))
+    assert move(c, h, g, text="two 50")["event"] == "clarify"
+
+
+def test_a_compliment_with_an_offer_counts_both():
+    c, h, g = haggle_with(FakeModel(move='{"move": "offer", "price": 22, "also": "compliment"}'))
+    r = move(c, h, g, text="wah so fresh, 22 can?")
+    assert r["mood"] > 0                                                             # the compliment landed
+
+
+def test_plain_offers_skip_the_ai_reading_but_her_reply_is_still_ai():
+    model = FakeModel(line="Aiyo, $20 cannot lah")
+    c, h, g = haggle_with(model)
+    n = len(model.calls)
+    r = move(c, h, g, text="20 can?")
+    reads = [x for x in model.calls[n:] if x.get("response_format")]
+    assert reads == [] and len(model.calls) > n                                      # no reading call, one reply call
+    assert r["event"] in ("counter", "final", "insulted", "confirm")
+
+
+def test_flirting_is_deflected_in_character():
+    c, h, g = haggle_with(FakeModel(move='{"move": "flirt", "price": null}', line="Aiyo, auntie got grandson already!"))
+    r = move(c, h, g, text="auntie you so pretty, go on a date with me")
+    assert r["event"] == "deflect" and r["ask"] == g["ask"]
+
+
+def test_word_rules_understand_the_new_readings():
+    from hh.ai import heard_by_rules
+    assert heard_by_rules("$2 less can?").rel_op == "less"
+    assert heard_by_rules("meet halfway").rel_op == "halfway"
+    assert heard_by_rules("2 for 40").per == "total"
+    assert heard_by_rules("so nice, 20 can?").also == "compliment"
+    assert heard_by_rules("go on a date with me").move == "flirt"
+
+
+def test_her_reply_prompt_has_her_voice_facts_mood_and_varied_openings():
+    model = FakeModel(move='{"move": "smalltalk", "price": null}', line="Musang King from Pahang one, my dear!")
+    c, h, g = haggle_with(model)
+    move(c, h, g, text="where is this durian from?")
+    system = model.calls[-1]["messages"][0]["content"]
+    assert "Musang King from Pahang" in system and "30 years" in system          # facts
+    assert "my dear" in system and "under 30 words" in system                    # voice and length
+    assert "Never flirt" in system
+    move(c, h, g, text="is it sweet?")
+    openers = re.search(r"don't open with: ([^)]*)", model.calls[-1]["messages"][0]["content"]).group(1)
+    assert "Musang" in openers                                                    # her last opener
+    r = move(c, h, g, text="where is this durian from?")
+    assert r["ai_line"] and "Pahang" in r["line"]                                   # fact numbers/words pass the check
+
+
+def test_low_patience_shows_in_her_tone():
+    from hh.ai import mood_line
+    assert "last chance" in mood_line("counter", 20, "")
+    assert "decide soon" in mood_line("plead", 45, "")
+    assert mood_line("confirm", 10, "") == ""                    # never on the deal itself
+    assert "don't flirt back" in mood_line("counter", 90, "flirt")
+
+
+def test_uncle_lim_rambling_is_retried():
+    class Rambly(FakeModel):
+        def post(self, url, json=None, headers=None, timeout=None):
+            self.calls.append(json)
+            if json.get("response_format"):
+                return FakeResp('{"move": "smalltalk", "price": null}')
+            n = len([x for x in self.calls if not x.get("response_format")])
+            return FakeResp(("Aiyo " * 40 + "fresh fish $22.") if n == 1 else "Fresh. $22.")
+    model = Rambly()
+    c, h, g = haggle_with(model, "lim", "pomfret")
+    r = move(c, h, g, text="fresh or not?")
+    assert r["line"] == "Fresh. $22." and "too long" in model.calls[-1]["messages"][1]["content"]
+
+
+def test_she_misunderstood_me_reports_are_kept_private_and_deleted_with_the_player():
+    model = FakeModel(move='{"reading": "they agree", "move": "clarify", "price": null}', line="You take or not?")
+    c, h, g = haggle_with(model)
+    assert c.post(f"/v1/haggle/{g['id']}/flag", headers=h).status_code == 400          # nothing typed yet
+    move(c, h, g, text="I want the one on the left")
+    assert c.post(f"/v1/haggle/{g['id']}/flag", headers=h).json() == {"thanks": True}
+    other, _ = register(c)
+    assert c.post(f"/v1/haggle/{g['id']}/flag", headers=other).status_code == 404     # not your haggle
+    c.delete("/v1/me", headers=h)
+    assert "misunderstood" in c.get("/delete").text
+
+
+def test_flag_records_the_reading():
+    from hh.store import Store
+    st = Store(":memory:")
+    c = TestClient(create_app(st, AI(base_url="http://model/v1", session=FakeModel(
+        move='{"reading": "they want the left one", "move": "smalltalk", "price": null}', line="Left one also same!"))))
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "mango"}, headers=h).json()
+    c.post(f"/v1/haggle/{g['id']}/move", json={"text": "the one on the left"}, headers=h)
+    c.post(f"/v1/haggle/{g['id']}/flag", headers=h)
+    [f] = st.flags()
+    assert f["exchange"]["you"] == "the one on the left" and f["exchange"]["read_as"] == "smalltalk"
+    assert f["exchange"]["reading"] == "they want the left one" and f["exchange"]["reply"] == "Left one also same!"
+    c.delete("/v1/me", headers=h)
+    assert st.flags() == []                                                             # gone with the player

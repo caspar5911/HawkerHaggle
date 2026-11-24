@@ -271,10 +271,12 @@ class _Oops extends StatelessWidget {
 
 // ======================================================================= haggle
 class _Msg {
-  _Msg(this.text, this.mine, {this.sparkle = false});
+  _Msg(this.text, this.mine, {this.sparkle = false, this.typed = false});
   final String text;
   final bool mine;
   final bool sparkle;
+  final bool typed; // the player typed it (only typed messages can be misunderstood)
+  bool flagged = false;
 }
 
 class HaggleScreen extends StatefulWidget {
@@ -363,7 +365,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
     if (g == null || _busy || g['done'] == true) return;
     setState(() {
       _busy = true;
-      _msgs.add(_Msg(mine, true));
+      _msgs.add(_Msg(mine, true, typed: text != null));
     });
     _scrollDown();
     try {
@@ -371,6 +373,23 @@ class _HaggleScreenState extends State<HaggleScreen> {
     } on ApiError catch (e) {
       _toast(e.message);
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Her last reply answered something the player typed: they can say she got it wrong.
+  bool get _canFlag =>
+      !_busy && _msgs.length >= 2 && !_msgs.last.mine && _msgs[_msgs.length - 2].mine && _msgs[_msgs.length - 2].typed;
+
+  Future<void> _flag() async {
+    final g = _g;
+    if (g == null || _msgs.last.flagged) return;
+    setState(() => _msgs.last.flagged = true);
+    try {
+      await widget.api.flag(g['id'] as String);
+      _toast('Thanks! We\'ll teach ${widget.stall['name']} to understand that better.');
+    } on ApiError catch (e) {
+      if (mounted) setState(() => _msgs.last.flagged = false);
+      _toast(e.message);
     }
   }
 
@@ -406,6 +425,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
                     children: [
                       for (final m in _msgs) Bubble(key: ObjectKey(m), text: m.text, mine: m.mine, sparkle: m.sparkle),
+                      if (_canFlag) _FlagChip(flagged: _msgs.last.flagged, onTap: _flag),
                       if (_busy) const Typing(),
                     ],
                   ),
@@ -800,6 +820,28 @@ class _TypeBox extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The small "she misunderstood me" link under her reply.
+class _FlagChip extends StatelessWidget {
+  const _FlagChip({required this.flagged, required this.onTap});
+  final bool flagged;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: Padding(
+      padding: const EdgeInsets.only(left: 6, bottom: 6),
+      child: Bouncy(
+        enabled: !flagged,
+        onTap: onTap,
+        child: Text(
+          flagged ? '✓ Reported, thank you' : '🤔 She misunderstood me',
+          style: TextStyle(fontSize: 12, color: Palette.soft.withValues(alpha: 0.9), fontWeight: FontWeight.w600),
+        ),
+      ),
+    ),
+  );
 }
 
 /// "OK lah, $X": the first tap turns the button into "Confirm $X" (with a way back); the second tap buys.

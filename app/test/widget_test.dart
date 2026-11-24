@@ -61,6 +61,7 @@ class Fake {
   Fake(this.replies);
   final List<Map<String, dynamic>> replies;
   final sent = <Map<String, dynamic>>[];
+  int flags = 0;
   bool down = false;
 
   MockClient get client => MockClient((req) async {
@@ -89,6 +90,7 @@ class Fake {
       },
       '/v1/haggle' => game('Morning my dear! \$18 only.'),
       '/v1/haggle/g1/move' => replies.removeAt(0),
+      '/v1/haggle/g1/flag' => {'thanks': (++flags) > 0},
       _ => {'detail': 'nope'},
     };
     return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
@@ -285,6 +287,30 @@ void main() {
     await tester.tap(find.text('Use this server'));
     await settle(tester, 1500);
     expect(api.server, 'https://example.test');
+    await settle(tester, 4000);
+  });
+
+  testWidgets('after a typed message you can say she misunderstood; taps cannot be reported', (tester) async {
+    final fake = await openHaggle(tester, [
+      game('Hehe, nice try. Still \$18.', event: 'smalltalk'),
+      game('Left one also \$18 lah!', event: 'smalltalk'),
+    ]);
+    await tester.tap(find.text('Wah, looks so good!')); // a tap: nothing to report
+    await settle(tester);
+    expect(find.text('🤔 She misunderstood me', skipOffstage: false), findsNothing);
+
+    await tester.tap(find.textContaining('Say anything'));
+    await settle(tester, 600);
+    await tester.enterText(find.byType(TextField), 'I want the one on the left');
+    await tester.tap(find.text('Send'));
+    await settle(tester, 1500);
+    final chip = find.text('🤔 She misunderstood me', skipOffstage: false);
+    expect(chip, findsOneWidget);
+    await tester.ensureVisible(chip);
+    await tester.tap(chip);
+    await settle(tester, 1500);
+    expect(fake.flags, 1);
+    expect(find.text('✓ Reported, thank you', skipOffstage: false), findsOneWidget);
     await settle(tester, 4000);
   });
 

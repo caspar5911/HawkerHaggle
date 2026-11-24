@@ -210,3 +210,32 @@ def test_pity_softens_kind_stallholders_more_and_wears_off():
 
 def test_nice_up_never_rounds_below():
     assert nice_up(13.01) == 13.5 and nice_up(13.0) == 13.0 and nice_up(20.2) == 21.0
+
+
+def test_two_for_a_total_is_judged_as_a_per_piece_offer_in_one_round():
+    h = Haggle(FISH, SOFT)
+    out = h.move("bulk", 14)                        # "2 for $28" -> $14 each
+    assert h.s.qty == 2 and h.s.rounds == 1
+    assert out.event in ("confirm", "counter", "final", "budget_best") and out.offer == 14
+    again = h.move("bulk", 13.5)                    # bulk only once, but a price is still an offer
+    assert again.event in ("confirm", "counter", "final", "insulted", "budget_best")
+
+
+def test_side_effects_respect_the_same_limits():
+    h = Haggle(FISH, SOFT)
+    for _ in range(6):
+        h.side("compliment")
+    assert h.s.compliments == 2                     # can't farm mood with "so nice, 20 can?" x 6
+    mood = h.s.mood
+    h.side("regular"); h.side("regular")
+    assert h.s.mood == min(3, mood + 0.7)
+    assert h.move("compliment").event == "flattery_tired"     # the side compliments counted
+    rounds = h.s.rounds
+    h.side("pity")
+    assert h.s.rounds == rounds                     # side effects never use a round
+
+
+def test_flirting_gets_deflected_and_does_not_help():
+    h = Haggle(FISH, SOFT)
+    out = h.move("flirt")
+    assert out.event == "deflect" and h.s.ask == FISH.ask and h.s.mood < 0

@@ -27,7 +27,14 @@
           "emoji": "🍈",
           "fair": 22,
           "ask": 32,
-          "floor": 18
+          "floor": 18,
+          "facts": [
+            "Musang King from Pahang, Malaysia",
+            "Bitter-sweet, very creamy, golden flesh",
+            "Choose by smell, and shake it: the seeds should not knock around",
+            "Best eaten within 2 days; wrap it tight in the fridge or the whole house smells",
+            "Sold as a 1 kg box, already opened for you"
+          ]
         },
         {
           "id": "mango",
@@ -35,7 +42,14 @@
           "emoji": "🥭",
           "fair": 12,
           "ask": 18,
-          "floor": 10
+          "floor": 10,
+          "facts": [
+            "Thai honey mangoes (Nam Dok Mai)",
+            "Very sweet, no fibre",
+            "Ripe when the stem end smells sweet and it gives a little when pressed",
+            "Keeps 3 days outside, about a week in the fridge",
+            "6 mangoes in a box"
+          ]
         }
       ],
       "lines": {
@@ -150,8 +164,18 @@
         "pity_tired": [
           "My dear, everybody also got story one. Still {price}.",
           "Aiyo, auntie also hungry leh. {price} lah."
+        ],
+        "deflect": [
+          "Aiyo, auntie got grandson already lah! Durian talk only, {price}.",
+          "Hehe, save your sweet words for your girlfriend. Still {price}, my dear."
         ]
-      }
+      },
+      "voice": "Warm, chatty grandmother. Says 'my dear', 'come come', sometimes 'aiyo'. Gentle teasing, never harsh.",
+      "max_words": 30,
+      "facts": [
+        "Has sold fruit at this wet market for 30 years",
+        "Her grandson helps on Saturdays"
+      ]
     },
     {
       "id": "lim",
@@ -180,7 +204,14 @@
           "emoji": "🐟",
           "fair": 15,
           "ask": 22,
-          "floor": 13
+          "floor": 13,
+          "facts": [
+            "Silver pomfret from this morning's catch at Jurong Fishery Port",
+            "Fresh means clear eyes, red gills, firm flesh",
+            "Best steamed Teochew style with salted vegetable and tomato",
+            "Eat today, at most 1 day in the fridge",
+            "About 500 g each"
+          ]
         },
         {
           "id": "prawns",
@@ -188,7 +219,13 @@
           "emoji": "🦐",
           "fair": 18,
           "ask": 26,
-          "floor": 15
+          "floor": 15,
+          "facts": [
+            "Sea prawns (ang kar), 500 g pack",
+            "Fresh means shiny shells and heads firmly on",
+            "Good for prawn noodle soup or garlic butter",
+            "Cook today"
+          ]
         }
       ],
       "lines": {
@@ -303,8 +340,18 @@
         "pity_tired": [
           "Sad story don't sell fish. {price}.",
           "Everyone also say that. {price}."
+        ],
+        "deflect": [
+          "Don't play play. {price}.",
+          "Buy fish or not? {price}."
         ]
-      }
+      },
+      "voice": "Gruff fishmonger of very few words. Short, blunt sentences of 2 to 6 words. Rarely says 'aiyo'. Proud, dry humour.",
+      "max_words": 14,
+      "facts": [
+        "Has sold fish here for 40 years, took over from his father",
+        "Goes to Jurong Fishery Port at 3am every day"
+      ]
     },
     {
       "id": "raj",
@@ -333,7 +380,12 @@
           "emoji": "📱",
           "fair": 8,
           "ask": 15,
-          "floor": 6
+          "floor": 6,
+          "facts": [
+            "Shockproof phone case with air-cushion corners",
+            "Fits most iPhone and Samsung models",
+            "1 month exchange if it cracks"
+          ]
         },
         {
           "id": "powerbank",
@@ -341,7 +393,12 @@
           "emoji": "🔋",
           "fair": 25,
           "ask": 45,
-          "floor": 20
+          "floor": 20,
+          "facts": [
+            "20,000 mAh, charges a phone about 4 times",
+            "Fast charging, 2 USB ports and 1 USB-C",
+            "6 months warranty"
+          ]
         }
       ],
       "lines": {
@@ -456,8 +513,17 @@
         "pity_tired": [
           "Boss, story very nice, but price still {price}!",
           "Aiyo boss, now you acting already! {price}."
+        ],
+        "deflect": [
+          "Haha boss, I only date my gadgets! {price}.",
+          "Boss, focus focus! This one {price}."
         ]
-      }
+      },
+      "voice": "Cheerful, fast-talking night-market salesman. Calls everyone 'boss', loves exclamation marks and jokes, very persuasive.",
+      "max_words": 28,
+      "facts": [
+        "Has run this night-market stall every Friday to Sunday for 8 years"
+      ]
     },
     {
       "id": "siti",
@@ -486,7 +552,13 @@
           "emoji": "🧣",
           "fair": 20,
           "ask": 35,
-          "floor": 16
+          "floor": 16,
+          "facts": [
+            "Hand-drawn batik (batik tulis) she makes herself",
+            "Pure cotton, soft, the colours won't run",
+            "Takes about 3 days to make one",
+            "Hand wash in cold water"
+          ]
         },
         {
           "id": "kueh",
@@ -494,7 +566,13 @@
           "emoji": "🍡",
           "fair": 10,
           "ask": 14,
-          "floor": 8.5
+          "floor": 8.5,
+          "facts": [
+            "Kueh lapis and ondeh-ondeh made fresh this morning",
+            "Pandan and gula melaka, from her mother's recipe",
+            "Eat within 1 day, no preservatives",
+            "10 pieces in a box"
+          ]
         }
       ],
       "lines": {
@@ -609,8 +687,18 @@
         "pity_tired": [
           "Adik, kak also need to feed my family. Still {price}.",
           "Hmm adik, {price} already very kind ya."
+        ],
+        "deflect": [
+          "Eh adik, behave ya! {item} {price} only.",
+          "Adik, kak married already lah. {price}, buy or not?"
         ]
-      }
+      },
+      "voice": "Cheerful, kind bazaar stallholder. Calls customers 'adik', sprinkles in Malay words (boleh, terima kasih, kesian, alamak). Proud of handmade work.",
+      "max_words": 28,
+      "facts": [
+        "Makes everything herself at home",
+        "Learned batik and kueh from her mother"
+      ]
     }
   ],
   "player": {

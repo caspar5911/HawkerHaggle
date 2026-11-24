@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, player_id INTEGER NOT 
     item TEXT NOT NULL, seed INTEGER NOT NULL, state TEXT NOT NULL, rng TEXT NOT NULL, created_at TEXT NOT NULL,
     done INTEGER NOT NULL DEFAULT 0, result TEXT NOT NULL DEFAULT '', deal REAL, stars INTEGER NOT NULL DEFAULT 0,
     saved REAL NOT NULL DEFAULT 0, chat TEXT NOT NULL DEFAULT '[]');
+CREATE TABLE IF NOT EXISTS flags (id INTEGER PRIMARY KEY AUTOINCREMENT, player_id INTEGER NOT NULL,
+    session_id TEXT NOT NULL, created_at TEXT NOT NULL, exchange TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS ai_use (player_id INTEGER NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL,
     PRIMARY KEY (player_id, day));
 """
@@ -79,9 +81,21 @@ class Store:
 
     def delete_player(self, pid: int) -> None:
         with self.conn() as c:
-            for t in ("sessions", "ai_use"):
+            for t in ("sessions", "ai_use", "flags"):
                 c.execute(f"DELETE FROM {t} WHERE player_id=?", (pid,))
             c.execute("DELETE FROM players WHERE id=?", (pid,))
+
+    # ------------------------------------------------------------------ "she misunderstood me" reports
+    def add_flag(self, pid: int, sid: str, exchange: dict) -> None:
+        with self.conn() as c:
+            c.execute("INSERT INTO flags (player_id, session_id, created_at, exchange) VALUES (?,?,?,?)",
+                      (pid, sid, now(), json.dumps(exchange, ensure_ascii=False)))
+
+    def flags(self, limit: int = 200) -> list[dict]:
+        with self.conn() as c:
+            rows = c.execute("SELECT f.id, f.created_at, s.stall, s.item, f.exchange FROM flags f "
+                             "LEFT JOIN sessions s ON s.id = f.session_id ORDER BY f.id DESC LIMIT ?", (limit,)).fetchall()
+        return [{**dict(r), "exchange": json.loads(r["exchange"])} for r in rows]
 
     # ------------------------------------------------------------------ sessions
     def save_session(self, sid: str, pid: int, stall: str, item: str, seed: int, state: dict, rng, outcome=None,

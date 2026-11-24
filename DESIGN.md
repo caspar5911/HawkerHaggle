@@ -60,3 +60,24 @@ Every item has a secret lowest price (`floor`). A good mood can take up to 10% o
   Far under is an insult. The stallholder remembers the budget for the rest of the chat.
 - **Pity** ("starving, no money, lost my job") works once, by personality (`kind`): Auntie Mei and Kak Siti soften
   a lot, Uncle Lim hardly. A second sob story tires them. Nobody goes below the lowest price.
+
+## How messages are read (and how fast)
+- **Fast path:** a plain offer ("15", "$12 can?") or a bare yes to a waiting deal is read by code, no AI call.
+  Her reply is still written by the AI.
+- **Two things at once:** "wah so nice, 20 can?" is an offer *and* a compliment. The second part only changes her
+  mood, within the same limits as saying it alone (compliments wear off; a regular or a sad story counts once).
+- **Prices in words:** "$2 less", "meet halfway", "round down" are worked out in code from the real prices.
+  Halfway with no earlier offer is asked back.
+- **"2 for $40"** is $20 each. If it's unclear whether a price is for both or each, she asks.
+- **Flirting** is deflected in character; it never helps.
+
+## How she replies
+Each stallholder has a **voice** (with a word limit: Uncle Lim is terse), a **fact sheet** per item (answers are
+true and consistent, never made up), and a **mood line**: as patience drops she tells you to decide. She is told
+her recent first words so she varies them. Replies that are far too long, mention a price the game didn't give,
+or don't ask for a yes on a deal are retried once, then a ready-made line is used.
+
+## "She misunderstood me"
+After a typed message, the player can report her reply. The report keeps the message, how it was read, and her
+reply, and is deleted with the player's data. Review them with `tools/flags.py`, then add real misreads to
+`server/tests/live_matrix.py` with the right expected move.

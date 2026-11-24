@@ -61,6 +61,9 @@ class Api {
   Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text}) =>
       _send('POST', '/v1/haggle/$id/move', body: {'pick': ?pick, 'move': ?move, 'text': ?text});
 
+  /// "She misunderstood me": reports the last typed message and her reply so the game can learn from it.
+  Future<void> flag(String id) => _send('POST', '/v1/haggle/$id/flag');
+
   Future<void> deleteMe() async {
     await _send('DELETE', '/v1/me');
     await _storage.delete(key: 'token');
