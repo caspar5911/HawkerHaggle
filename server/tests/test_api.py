@@ -150,6 +150,7 @@ def test_word_rules():
     assert rules("wah so fresh!") == ("compliment", None)
     assert rules("never mind lah") == ("walk", None)
     assert rules("ok deal") == ("accept", None)
+    assert rules("ok lah") == ("clarify", None)
     assert rules("how's your day") == ("smalltalk", None)
 
 
@@ -206,3 +207,22 @@ def test_ready_made_lines_do_not_repeat_while_fresh_ones_are_left():
 def test_can_cheaper_without_a_number_is_understood_by_word_rules():
     assert rules("wah so ex, can cheaper?") == ("plead", None)
     assert rules("give discount la")[0] == "plead"
+
+
+def test_unclear_ok_lah_asks_back_and_changes_nothing():
+    model = FakeModel(move='{"reading": "maybe yes, maybe bargaining", "move": "clarify", "price": null, '
+                           '"unclear": "whether they take it at the current price"}', line="Eh, you take at $32 or not?")
+    c, _ = client(model)
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
+    r = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "ok lah but my wallet crying"}, headers=h).json()
+    assert r["event"] == "clarify" and not r["done"] and r["deal"] is None
+    assert r["ask"] == g["ask"] and r["patience"] == g["patience"]
+    assert "whether they take it" in model.calls[-1]["messages"][0]["content"]   # the AI knows what to ask
+
+
+def test_word_rules_never_close_a_deal_on_a_vague_ok():
+    for vague in ("ok lah", "can lah", "hmm ok", "ok lah but my wallet crying", "no deal", "I take it if got bag"):
+        assert rules(vague)[0] != "accept", vague
+    for yes in ("deal", "ok deal", "ok I take it", "auntie ok lah, I buy", "pack for me"):
+        assert rules(yes)[0] == "accept", yes

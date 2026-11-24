@@ -46,3 +46,9 @@ phone -> game server -> GLM on the owner's GX10 (private Tailscale link; never e
 
 Privacy policy URL, Play Data safety form, account deletion URL, content rating, a hosted server
 (not a home PC), `--dart-define=API_BASE=` pointing at it, a release keystore kept outside the repo.
+
+## Reading typed messages
+The AI first writes what the player means in one plain sentence, then picks a move. A deal only closes on a clear
+yes ("deal", "OK I take it", "pack for me"). A vague "ok lah", "can lah" or "ok but..." becomes **clarify**: the
+stallholder asks back, and nothing changes (no price move, no patience, no round used). The word-rule fallback
+follows the same rule. Every haggle keeps its chat, so the AI reads each message with the whole conversation.

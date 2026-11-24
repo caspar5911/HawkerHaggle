@@ -18,6 +18,7 @@ Face faceFor(String event, double mood) {
       return Face.happy;
     case 'callback':
     case 'confused':
+    case 'clarify':
       return Face.surprised;
     case 'final':
     case 'competitor_annoyed':

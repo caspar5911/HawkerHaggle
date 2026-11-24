@@ -125,6 +125,10 @@
         "plead_no": [
           "Cheaper cheaper, how much you want? Say lah. Still {price}.",
           "My dear, give a number. Now {price}."
+        ],
+        "clarify": [
+          "Eh my dear, you mean you take at {price} or still want to bargain?",
+          "Hah? You buy already or not? Still {price} ah."
         ]
       }
     },
@@ -253,6 +257,10 @@
         "plead_no": [
           "Cheaper how much? Say. Still {price}.",
           "Say a number. {price} now."
+        ],
+        "clarify": [
+          "So? Take at {price} or not?",
+          "You buying or talking? {price}."
         ]
       }
     },
@@ -381,6 +389,10 @@
         "plead_no": [
           "Boss, cheaper is how much? Give number! Still {price}.",
           "Boss, you say a price, I see. Now {price}."
+        ],
+        "clarify": [
+          "Boss, you taking at {price} or still thinking? Say clearly!",
+          "Boss boss, that one yes or no? {price}!"
         ]
       }
     },
@@ -509,6 +521,10 @@
         "plead_no": [
           "Adik, cheaper how much? Say a number. Still {price}.",
           "Adik, give a price lah. Now {price}."
+        ],
+        "clarify": [
+          "Adik, you mean you take at {price}, or not yet?",
+          "Sorry adik, you want it at {price} or still thinking?"
         ]
       }
     }

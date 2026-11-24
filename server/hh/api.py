@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from .ai import AI, money
+from .ai import AI, money, rules
 from .engine import Haggle, Item, Personality, State
 from .store import Store
 
@@ -157,12 +157,12 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             raise HTTPException(409, "This haggle is over")
         live_left = max(0, LIVE_PER_DAY - store.ai_used(p["id"], today()))
         chat = sess["chat"]
-        use_ai = False
+        use_ai, unclear = False, ""
         if body.text:
             if live_left > 0 and ai.enabled:
-                kind, price, use_ai = ai.understand(body.text, chat, h.s.ask, item["name"], stall["name"])
+                heard = ai.understand(body.text, chat, h.s.ask, item["name"], stall["name"])
+                kind, price, use_ai, unclear = heard.move, heard.price, heard.ai, heard.unclear
             else:
-                from .ai import rules
                 kind, price = rules(body.text)
             you = body.text.strip()
         elif body.move in ("walk", "accept"):
@@ -177,20 +177,26 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             raise HTTPException(400, "Send pick, move or text")
         if kind == "accept" and price and price < h.s.ask:
             kind = "offer"          # "ok 24 lah" while they ask 26 is an offer of 24, not a yes to 26
-        out = h.move(kind, price)
+        if kind == "clarify":
+            # Not sure what they mean: ask back. Nothing changes: no price move, no patience, no round used.
+            out, event = None, "clarify"
+        else:
+            out = h.move(kind, price)
+            event = out.event
         said, ai_line = None, False
         if use_ai:
-            said = ai.say(stall, item, out.event, {"ask": h.s.ask, "offer": out.offer, "deal": h.s.deal},
-                          history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening])
+            said = ai.say(stall, item, event, {"ask": h.s.ask, "offer": out.offer if out else None, "deal": h.s.deal},
+                          history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening],
+                          unclear=unclear)
             ai_line = said is not None
-        if use_ai:
             store.add_ai_use(p["id"], today())
             live_left = max(0, live_left - 1)
-        said = said or line(stall, item, out.event, h, offer=out.offer, seed=sess["seed"], chat=chat)
-        chat = chat + [{"who": "you", "text": you[:300]}, {"who": "them", "text": said, "ask": h.s.ask}]
+        said = said or line(stall, item, event, h, offer=out.offer if out else None, seed=sess["seed"], chat=chat)
+        chat = chat + [{"who": "you", "text": you[:300], "move": kind},
+                       {"who": "them", "text": said, "ask": h.s.ask}]
         store.save_session(sid, p["id"], stall["id"], item["id"], sess["seed"], asdict(h.s), h.rng.getstate(), out,
                            chat=chat)
-        return view(sid, stall, item, h, said, out.event, out, you, live_left, ai_line)
+        return view(sid, stall, item, h, said, event, out, you, live_left, ai_line)
 
     @app.get("/delete", response_class=HTMLResponse)
     def delete_page():
