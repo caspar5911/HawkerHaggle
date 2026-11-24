@@ -13,6 +13,9 @@ import 'core/game.dart';
 const defaultEndpoint = String.fromEnvironment('AI_ENDPOINT');
 const defaultModel = String.fromEnvironment('AI_MODEL');
 
+/// Which build this is, shown at the bottom of Settings: flutter build ... --dart-define=BUILD_LABEL="test 11".
+const buildLabel = String.fromEnvironment('BUILD_LABEL', defaultValue: 'dev');
+
 class ApiError implements Exception {
   ApiError(this.code, this.message);
   final int code;
@@ -69,14 +72,17 @@ class Api {
   Future<void> _init() async {
     _content ??= jsonDecode(await rootBundle.loadString('assets/content/stalls.json')) as Map;
     _ai = AiConfig(
-      endpoint: await _store.read('ai_endpoint') ?? builtInEndpoint,
-      model: await _store.read('ai_model') ?? builtInModel,
+      // A build that comes with an AI uses it unless another address was saved (an empty one doesn't count).
+      endpoint: _orDefault(await _store.read('ai_endpoint'), builtInEndpoint),
+      model: _orDefault(await _store.read('ai_model'), builtInModel),
       apiKey: await _store.read('ai_key') ?? '',
     );
     _game ??= Game(content: _content!, store: _store);
     _game!.ai = AiClient(_ai, client: _aiHttp);
     await _game!.load();
   }
+
+  static String _orDefault(String? saved, String builtIn) => (saved == null || saved.trim().isEmpty) ? builtIn : saved;
 
   Future<T> _run<T>(FutureOr<T> Function(Game g) f) async {
     try {

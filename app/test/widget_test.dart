@@ -325,7 +325,10 @@ void main() {
     await settle(tester, 2000);
     await tester.tap(find.byIcon(Icons.settings_rounded));
     await settle(tester);
-    expect(api.ai.endpoint, ''); // the saved choice wins over the default...
+    expect(api.ai.endpoint, 'https://my-model.example/v1'); // an empty saved address falls back to the default
+    await store.write('ai_endpoint', 'https://other.example/v1');
+    await api.setAi(endpoint: 'https://other.example/v1', model: 'other', apiKey: '');
+    expect(api.ai.endpoint, 'https://other.example/v1'); // another saved address wins...
     await tester.dragUntilVisible(find.text('Use default AI'), find.byType(ListView).last, const Offset(0, -200));
     await tester.tap(find.text('Use default AI'));
     await settle(tester, 1000);
@@ -333,6 +336,12 @@ void main() {
     expect(api.ai.model, 'my-model');
     expect(await store.read('ai_endpoint'), 'https://my-model.example/v1');
     expect(find.text('https://my-model.example/v1'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('build_label')),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    expect(find.textContaining('your build, AI built in'), findsOneWidget);
     await settle(tester, 4000);
   });
 

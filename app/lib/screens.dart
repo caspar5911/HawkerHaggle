@@ -1273,6 +1273,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
             child: const Pill(text: 'Delete my data', icon: '🗑️', color: Palette.red, textColor: Colors.white),
           ),
+          const SizedBox(height: 28),
+          Center(
+            child: Text(
+              'Version: $buildLabel · ${api.hasBuiltInAi ? 'your build, AI built in' : 'public build'}',
+              key: const ValueKey('build_label'),
+              style: const TextStyle(color: Palette.soft, fontSize: 12),
+            ),
+          ),
         ],
       ),
     );
