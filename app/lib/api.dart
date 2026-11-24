@@ -94,16 +94,19 @@ class Api {
     _game ??= Game(content: _content!, store: _store);
     _game!.ai = AiClient(_ai, client: _aiHttp);
     _game!.onSaved = _changed;
-    final a = _account;
+    var a = _account;
+    if (a != null && await _store.read(_keyFor(a)) == null) {
+      // logged in on a version from before progress followed the account: log in again, which asks whether to
+      // bring this phone's progress or start the account fresh
+      final old = a;
+      a = null;
+      await _saveAccount(null);
+      if (_ai.apiKey == old.token) await _applyAi(endpoint: builtInEndpoint, model: builtInModel, apiKey: '');
+      unawaited(_accounts(old.server).logOut(old.token).catchError((_) {}));
+    }
     if (_syncs(a)) {
       await _loadSync(a!);
       _game!.profileKey = _keyFor(a);
-      if (await _store.read(_keyFor(a)) == null) {
-        // logged in before progress followed the account: take the account's copy from its server (or start the
-        // account fresh). This phone's own progress stays where it is and comes back on logout.
-        _rev = 0;
-        _dirty = false;
-      }
     }
     await _quietly(() => _game!.load());
     if (_syncs(a)) await _sync().timeout(const Duration(seconds: 6), onTimeout: () {});
@@ -179,10 +182,10 @@ class Api {
   // ---------------------------------------------------------------- accounts (playing without Tailscale)
   AccountClient _accounts(String server) => AccountClient(server, client: _aiHttp);
 
-  /// Sign up or log in. A player's login becomes their AI key for that server's relay, and the game shows that
-  /// account's progress (kept on the server, so any phone that logs in sees the same). An account with no progress
-  /// yet starts fresh, or takes this phone's progress if [bringProgress] says so (asked only when there is some).
-  /// The admin's login changes neither (the owner plays over Tailscale).
+  /// Sign up or log in: the game shows that account's progress (kept on the server, so any phone that logs in sees
+  /// the same). An account with no haggles yet starts fresh, or takes this phone's progress if [bringProgress] says
+  /// so (asked only when this phone has some). A player's login also becomes their AI key for that server's relay;
+  /// the admin's doesn't touch the AI settings (the owner plays over Tailscale).
   Future<Account> signIn({
     required String server,
     required String username,
@@ -195,10 +198,6 @@ class Api {
     final c = _accounts(server);
     final info = signUp ? await c.signUp(username, password) : await c.logIn(username, password);
     final acc = Account(server: c.server, username: '', token: '', status: '').withInfo(info);
-    if (acc.admin) {
-      await _saveAccount(acc);
-      return acc;
-    }
     Map<String, dynamic>? saved;
     try {
       saved = await c.progress(acc.token);
@@ -207,28 +206,28 @@ class Api {
     }
     final data = '${saved?['data'] ?? ''}';
     final key = _keyFor(acc);
-    if (data.isNotEmpty) {
+    final here = _game!.haggleCount;
+    if (_haggles(data) == 0 && here > 0 && bringProgress != null && await bringProgress(here)) {
+      await _store.write(key, _game!.exportProfile());
+      _dirty = true;
+    } else if (data.isNotEmpty) {
       await _store.write(key, data);
       _dirty = false;
     } else {
-      final here = _game!.haggleCount;
-      final bring = here > 0 && bringProgress != null && await bringProgress(here);
-      if (bring) {
-        await _store.write(key, _game!.exportProfile());
-      } else {
-        await _store.delete(key);
-      }
+      await _store.delete(key);
       _dirty = true;
     }
     _rev = ((saved?['rev'] ?? 0) as num).toInt();
     await _saveAccount(acc);
     await _writeSync(acc);
     await _quietly(() => _game!.useProfile(key));
-    await _applyAi(
-      endpoint: relayFor(acc.server),
-      model: _ai.model.isEmpty ? (builtInModel.isEmpty ? 'gx10-current' : builtInModel) : _ai.model,
-      apiKey: acc.token,
-    );
+    if (!acc.admin) {
+      await _applyAi(
+        endpoint: relayFor(acc.server),
+        model: _ai.model.isEmpty ? (builtInModel.isEmpty ? 'gx10-current' : builtInModel) : _ai.model,
+        apiKey: acc.token,
+      );
+    }
     await syncNow();
     return acc;
   }
@@ -241,10 +240,20 @@ class Api {
   int _edits = 0;
   bool _switching = false;
 
-  /// Logged in as a player and everything is on the server.
+  /// Logged in and everything is on the server.
   bool get progressSaved => !_dirty;
 
-  static bool _syncs(Account? a) => a != null && !a.admin;
+  static bool _syncs(Account? a) => a != null;
+
+  /// Finished haggles in a saved copy (0 for none, an empty one or one that can't be read).
+  static int _haggles(String data) {
+    try {
+      return ((jsonDecode(data) as Map)['haggles'] as List).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   static String _who(Account a) => '${a.server}|${a.username.toLowerCase()}';
   static String _keyFor(Account a) => 'profile@${_who(a)}';
   static String _syncKey(Account a) => 'sync@${_who(a)}';

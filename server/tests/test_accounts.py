@@ -259,3 +259,13 @@ def test_removed_and_rejected_accounts_keep_no_progress(app):
     c.post("/ai/admin/decide", json={"id": ids["Removed"], "action": "remove"}, headers=bearer(adm, ME))
     assert c.post("/ai/accounts/progress", headers=bearer(rej, GATEWAY)).status_code == 403
     assert c.post("/ai/accounts/progress", headers=bearer(rem, GATEWAY)).status_code == 401   # logged out everywhere
+
+
+def test_admin_progress_only_from_the_owners_login(app):
+    c, _, _ = app
+    adm = admin_token(c)
+    r = c.post("/ai/accounts/progress/save", json={"data": '{"name": "Caspar"}', "rev": 0}, headers=bearer(adm, ME))
+    assert r.status_code == 200
+    assert c.post("/ai/accounts/progress", headers=bearer(adm, ME)).json()["rev"] == 1
+    for who in (FRIEND, GATEWAY, NOBODY):
+        assert c.post("/ai/accounts/progress", headers=bearer(adm, who)).status_code in (401, 404)

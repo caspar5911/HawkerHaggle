@@ -450,7 +450,7 @@ void main() {
       expect((await me(a))['haggles'], 0); // this phone's own copy went too
     });
 
-    test('logged in on an older version: the account doesn\'t take this phone\'s progress', () async {
+    test('logged in on an older version: logged out once, so logging in again asks properly', () async {
       final m = Market();
       final store = MemoryKeyValue();
       final old = phone(m, store);
@@ -465,26 +465,52 @@ void main() {
           Account(server: 'https://market.example.com', username: 'Arella', token: t, status: 'pending').toJson(),
         ),
       );
+      await store.write('ai_key', t);
       final now = phone(m, store);
-      expect((await me(now))['name'], isNot('Caspar'));
-      expect((await me(now))['haggles'], 0);
-      await now.setName('Arella');
-      await now.syncNow();
-      expect('${m.saves['arella']!['data']}', isNot(contains('Caspar')));
-      await now.signOut();
-      expect((await me(now))['name'], 'Caspar');
+      await now.ensureDevice();
+      expect(now.account, isNull);
+      expect(now.ai.apiKey, '');
+      expect((await me(now))['name'], 'Caspar'); // nothing moved
       expect((await me(now))['haggles'], 1);
-    });
-
-    test('the admin login doesn\'t switch progress', () async {
-      final m = Market();
-      final a = phone(m);
-      await a.setName('Owner');
-      await haggleOnce(a);
-      await a.signIn(server: 'relay.example', username: 'admin', password: 'admin');
-      expect((await me(a))['name'], 'Owner');
-      expect((await me(a))['haggles'], 1);
       expect(m.saves, isEmpty);
     });
+
+    test(
+      'admin progress follows the admin account too (from your own phone, the question; elsewhere, the same)',
+      () async {
+        final m = Market();
+        // the owner tries a fresh browser first: nothing to bring, so the admin account starts empty
+        final incognito = phone(m);
+        await incognito.signIn(
+          server: 'relay.example',
+          username: 'admin',
+          password: 'admin',
+          bringProgress: (_) async => fail('nothing to bring'),
+        );
+        expect(incognito.ai.endpoint, 'https://glm.example/v1'); // the admin's AI doesn't change
+        // then on their own phone, with real progress: the empty admin copy doesn't count, so it asks
+        final mine = phone(m);
+        await mine.setName('Caspar');
+        await haggleOnce(mine);
+        int? asked;
+        await mine.signIn(
+          server: 'relay.example',
+          username: 'admin',
+          password: 'admin',
+          bringProgress: (n) async {
+            asked = n;
+            return true;
+          },
+        );
+        expect(asked, 1);
+        expect((await me(mine))['name'], 'Caspar');
+        await mine.syncNow();
+        // back in the fresh browser: log in again and it's Caspar's progress
+        await incognito.signOut();
+        await incognito.signIn(server: 'relay.example', username: 'admin', password: 'admin');
+        expect((await me(incognito))['name'], 'Caspar');
+        expect((await me(incognito))['haggles'], 1);
+      },
+    );
   });
 }

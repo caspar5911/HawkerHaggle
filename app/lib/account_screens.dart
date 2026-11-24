@@ -98,15 +98,15 @@ class _AccountSectionState extends State<AccountSection> {
           if (!a.admin) ...[
             const SizedBox(height: 4),
             Text(statusText(a.status), key: const ValueKey('account_status')),
-            const SizedBox(height: 2),
-            Text(
-              api.progressSaved
-                  ? '☁️ Your progress is kept on this account'
-                  : '☁️ Your progress will be saved to this account when the market server can be reached',
-              key: const ValueKey('account_progress'),
-              style: const TextStyle(color: Palette.soft, fontSize: 13),
-            ),
           ],
+          const SizedBox(height: 2),
+          Text(
+            api.progressSaved
+                ? '☁️ Your progress is kept on this account'
+                : '☁️ Your progress will be saved to this account when the market server can be reached',
+            key: const ValueKey('account_progress'),
+            style: const TextStyle(color: Palette.soft, fontSize: 13),
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
