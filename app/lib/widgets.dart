@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'sfx.dart';
+
 class Palette {
   static const cream = Color(0xFFFFF6E5);
   static const tile = Color(0xFFFDEBCB);
@@ -41,7 +43,10 @@ class _Tiles extends CustomPainter {
     final dot = Paint()..color = Palette.grout;
     for (var y = 0.0; y < size.height + s; y += s) {
       for (var x = ((y / s).floor().isEven ? 0.0 : s / 2) - s; x < size.width + s; x += s) {
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(x + 3, y + 3, s - 6, s - 6), const Radius.circular(8)), tile);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(Rect.fromLTWH(x + 3, y + 3, s - 6, s - 6), const Radius.circular(8)),
+          tile,
+        );
         canvas.drawCircle(Offset(x + s / 2, y + s / 2), 3, dot);
       }
     }
@@ -57,8 +62,11 @@ class Awning extends StatelessWidget {
   final List<Color> colors;
   final double height;
   @override
-  Widget build(BuildContext context) =>
-      SizedBox(height: height, width: double.infinity, child: CustomPaint(painter: _AwningPainter(colors)));
+  Widget build(BuildContext context) => SizedBox(
+    height: height,
+    width: double.infinity,
+    child: CustomPaint(painter: _AwningPainter(colors)),
+  );
 }
 
 class _AwningPainter extends CustomPainter {
@@ -102,6 +110,7 @@ class _BouncyState extends State<Bouncy> {
           ? (_) {
               setState(() => _down = false);
               HapticFeedback.lightImpact();
+              Sfx.play('pop', volume: 0.5);
               widget.onTap();
             }
           : null,
@@ -109,7 +118,11 @@ class _BouncyState extends State<Bouncy> {
         scale: _down ? 0.92 : 1,
         duration: const Duration(milliseconds: 110),
         curve: Curves.easeOutBack,
-        child: AnimatedOpacity(opacity: widget.enabled ? 1 : 0.45, duration: const Duration(milliseconds: 200), child: widget.child),
+        child: AnimatedOpacity(
+          opacity: widget.enabled ? 1 : 0.45,
+          duration: const Duration(milliseconds: 200),
+          child: widget.child,
+        ),
       ),
     );
   }
@@ -132,12 +145,23 @@ class Pill extends StatelessWidget {
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), offset: const Offset(0, 4), blurRadius: 0)],
         border: Border.all(color: Colors.black.withValues(alpha: 0.06), width: 2),
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (icon != null) Padding(padding: const EdgeInsets.only(right: 8), child: Text(icon!, style: const TextStyle(fontSize: 18))),
-        Flexible(
-            child: Text(text,
-                style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 15), textAlign: TextAlign.center)),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(icon!, style: const TextStyle(fontSize: 18)),
+            ),
+          Flexible(
+            child: Text(
+              text,
+              style: TextStyle(color: textColor, fontWeight: FontWeight.w600, fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -158,20 +182,32 @@ class PriceTag extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), offset: const Offset(0, 4))],
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (shown < opening)
-          Text(money(opening),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (shown < opening)
+            Text(
+              money(opening),
               style: TextStyle(
-                  fontSize: 13, color: Palette.ink.withValues(alpha: 0.55), decoration: TextDecoration.lineThrough)),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 450),
-          transitionBuilder: (child, a) => ScaleTransition(
+                fontSize: 13,
+                color: Palette.ink.withValues(alpha: 0.55),
+                decoration: TextDecoration.lineThrough,
+              ),
+            ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 450),
+            transitionBuilder: (child, a) => ScaleTransition(
               scale: CurvedAnimation(parent: a, curve: Curves.elasticOut),
-              child: FadeTransition(opacity: a, child: child)),
-          child: Text(money(shown),
-              key: ValueKey(shown), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Palette.ink)),
-        ),
-      ]),
+              child: FadeTransition(opacity: a, child: child),
+            ),
+            child: Text(
+              money(shown),
+              key: ValueKey(shown),
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Palette.ink),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -208,31 +244,43 @@ class _PatienceBarState extends State<PatienceBar> with SingleTickerProviderStat
     final color = Color.lerp(Palette.red, Palette.green, v)!;
     return AnimatedBuilder(
       animation: _shake,
-      builder: (context, child) =>
-          Transform.translate(offset: Offset(math.sin(_shake.value * math.pi * 6) * 5 * (1 - _shake.value), 0), child: child),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(v > 0.6 ? '😊 Patience' : (v > 0.3 ? '😐 Patience' : '😤 Patience'),
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Palette.soft)),
-        const SizedBox(height: 4),
-        Container(
-          width: 120,
-          height: 14,
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 2)),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(end: v),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOutCubic,
-              builder: (_, x, _) => FractionallySizedBox(
-                widthFactor: x.clamp(0.0, 1.0),
-                child: Container(decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6))),
+      builder: (context, child) => Transform.translate(
+        offset: Offset(math.sin(_shake.value * math.pi * 6) * 5 * (1 - _shake.value), 0),
+        child: child,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            v > 0.6 ? '😊 Patience' : (v > 0.3 ? '😐 Patience' : '😤 Patience'),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Palette.soft),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 120,
+            height: 14,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.08), width: 2),
+            ),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(end: v),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.easeOutCubic,
+                builder: (_, x, _) => FractionallySizedBox(
+                  widthFactor: x.clamp(0.0, 1.0),
+                  child: Container(
+                    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -251,7 +299,11 @@ class Bubble extends StatelessWidget {
       curve: Curves.easeOutBack,
       builder: (context, t, child) => Opacity(
         opacity: t.clamp(0.0, 1.0),
-        child: Transform.scale(scale: 0.6 + 0.4 * t, alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft, child: child),
+        child: Transform.scale(
+          scale: 0.6 + 0.4 * t,
+          alignment: mine ? Alignment.bottomRight : Alignment.bottomLeft,
+          child: child,
+        ),
       ),
       child: Align(
         alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -269,8 +321,10 @@ class Bubble extends StatelessWidget {
             ),
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), offset: const Offset(0, 3))],
           ),
-          child: Text((sparkle ? '✨ ' : '') + text,
-              style: TextStyle(fontSize: 15, color: mine ? Colors.white : Palette.ink, height: 1.3)),
+          child: Text(
+            (sparkle ? '✨ ' : '') + text,
+            style: TextStyle(fontSize: 15, color: mine ? Colors.white : Palette.ink, height: 1.3),
+          ),
         ),
       ),
     );
@@ -285,7 +339,8 @@ class Typing extends StatefulWidget {
 }
 
 class _TypingState extends State<Typing> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
+    ..repeat();
   @override
   void dispose() {
     _c.dispose();
@@ -302,15 +357,21 @@ class _TypingState extends State<Typing> with SingleTickerProviderStateMixin {
         decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
         child: AnimatedBuilder(
           animation: _c,
-          builder: (_, _) => Row(mainAxisSize: MainAxisSize.min, children: [
-            for (var i = 0; i < 3; i++)
-              Transform.translate(
-                offset: Offset(0, -4 * math.max(0, math.sin((_c.value - i * 0.15) * 2 * math.pi))),
-                child: Container(
-                    width: 8, height: 8, margin: const EdgeInsets.symmetric(horizontal: 3),
-                    decoration: const BoxDecoration(color: Palette.soft, shape: BoxShape.circle)),
-              ),
-          ]),
+          builder: (_, _) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < 3; i++)
+                Transform.translate(
+                  offset: Offset(0, -4 * math.max(0, math.sin((_c.value - i * 0.15) * 2 * math.pi))),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: const BoxDecoration(color: Palette.soft, shape: BoxShape.circle),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -325,19 +386,24 @@ class Stars extends StatelessWidget {
   final bool animate;
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (var i = 0; i < 3; i++)
-        TweenAnimationBuilder<double>(
-          tween: Tween(begin: animate ? 0 : 1, end: 1),
-          duration: Duration(milliseconds: 500 + i * 260),
-          curve: Interval(i * 0.3, 1, curve: Curves.elasticOut),
-          builder: (_, t, _) => Transform.scale(
-            scale: t,
-            child: Text(i < count ? '⭐' : '☆',
-                style: TextStyle(fontSize: size, color: i < count ? null : Palette.soft.withValues(alpha: 0.4))),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < 3; i++)
+          TweenAnimationBuilder<double>(
+            tween: Tween(begin: animate ? 0 : 1, end: 1),
+            duration: Duration(milliseconds: 500 + i * 260),
+            curve: Interval(i * 0.3, 1, curve: Curves.elasticOut),
+            builder: (_, t, _) => Transform.scale(
+              scale: t,
+              child: Text(
+                i < count ? '⭐' : '☆',
+                style: TextStyle(fontSize: size, color: i < count ? null : Palette.soft.withValues(alpha: 0.4)),
+              ),
+            ),
           ),
-        ),
-    ]);
+      ],
+    );
   }
 }
 
@@ -349,7 +415,8 @@ class Confetti extends StatefulWidget {
 }
 
 class _ConfettiState extends State<Confetti> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))..forward();
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))
+    ..forward();
   final _bits = List.generate(70, (i) {
     final r = math.Random(i * 7919);
     return (
@@ -399,9 +466,12 @@ class _ConfettiPainter extends CustomPainter {
         canvas.drawCircle(Offset.zero, b.size * 0.6, Paint()..color = const Color(0xFFFFE08A).withValues(alpha: fade));
       } else {
         canvas.drawRRect(
-            RRect.fromRectAndRadius(Rect.fromCenter(center: Offset.zero, width: b.size, height: b.size * 0.55),
-                const Radius.circular(2)),
-            Paint()..color = (b.color as Color).withValues(alpha: fade));
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset.zero, width: b.size, height: b.size * 0.55),
+            const Radius.circular(2),
+          ),
+          Paint()..color = (b.color as Color).withValues(alpha: fade),
+        );
       }
       canvas.restore();
     }

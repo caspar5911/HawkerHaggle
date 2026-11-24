@@ -50,12 +50,10 @@ class Stallholder extends StatefulWidget {
 }
 
 class _StallholderState extends State<Stallholder> with TickerProviderStateMixin {
-  late final AnimationController _idle =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))..repeat();
-  late final AnimationController _blink =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 140));
-  late final AnimationController _react =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+  late final AnimationController _idle = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600))
+    ..repeat();
+  late final AnimationController _blink = AnimationController(vsync: this, duration: const Duration(milliseconds: 140));
+  late final AnimationController _react = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
   Timer? _blinkTimer;
   final _rng = math.Random();
 
@@ -143,7 +141,13 @@ class _StallholderState extends State<Stallholder> with TickerProviderStateMixin
 }
 
 class _ChibiPainter extends CustomPainter {
-  _ChibiPainter({required this.look, required this.face, required this.blink, required this.breathe, required this.talking});
+  _ChibiPainter({
+    required this.look,
+    required this.face,
+    required this.blink,
+    required this.breathe,
+    required this.talking,
+  });
 
   final Map<String, dynamic> look;
   final Face face;
@@ -168,34 +172,52 @@ class _ChibiPainter extends CustomPainter {
 
     // body (breathes a little)
     final bodyTop = h * 0.60 - breathe * 1.2;
-    final body = RRect.fromRectAndCorners(Rect.fromLTRB(w * 0.2, bodyTop, w * 0.8, h * 0.98),
-        topLeft: Radius.circular(w * 0.22), topRight: Radius.circular(w * 0.22),
-        bottomLeft: Radius.circular(w * 0.08), bottomRight: Radius.circular(w * 0.08));
+    final body = RRect.fromRectAndCorners(
+      Rect.fromLTRB(w * 0.2, bodyTop, w * 0.8, h * 0.98),
+      topLeft: Radius.circular(w * 0.22),
+      topRight: Radius.circular(w * 0.22),
+      bottomLeft: Radius.circular(w * 0.08),
+      bottomRight: Radius.circular(w * 0.08),
+    );
     p.color = shirt;
     canvas.drawRRect(body, p);
     // arms + hands
     for (final side in [-1, 1]) {
       final ax = w / 2 + side * w * 0.31;
       p.color = shirt;
-      canvas.drawRRect(RRect.fromRectAndRadius(
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
           Rect.fromCenter(center: Offset(ax, bodyTop + h * 0.13), width: w * 0.13, height: h * 0.2),
-          Radius.circular(w * 0.07)), p);
+          Radius.circular(w * 0.07),
+        ),
+        p,
+      );
       p.color = skin;
       canvas.drawCircle(Offset(ax, bodyTop + h * 0.23), w * 0.06, p);
     }
     // apron with a pocket
     p.color = apron;
-    final apronRect = RRect.fromRectAndRadius(Rect.fromLTRB(w * 0.3, bodyTop + h * 0.07, w * 0.7, h * 0.96),
-        Radius.circular(w * 0.06));
+    final apronRect = RRect.fromRectAndRadius(
+      Rect.fromLTRB(w * 0.3, bodyTop + h * 0.07, w * 0.7, h * 0.96),
+      Radius.circular(w * 0.06),
+    );
     canvas.drawRRect(apronRect, p);
     p.color = Colors.black.withValues(alpha: 0.06);
-    canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(w * 0.4, h * 0.8, w * 0.6, h * 0.89), Radius.circular(w * 0.03)), p);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Rect.fromLTRB(w * 0.4, h * 0.8, w * 0.6, h * 0.89), Radius.circular(w * 0.03)),
+      p,
+    );
 
     // towel round the neck (fishmonger)
     if (acc == 'towel') {
       p.color = Colors.white;
-      canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(w * 0.24, bodyTop - h * 0.01, w * 0.76, bodyTop + h * 0.06),
-          Radius.circular(w * 0.05)), p);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTRB(w * 0.24, bodyTop - h * 0.01, w * 0.76, bodyTop + h * 0.06),
+          Radius.circular(w * 0.05),
+        ),
+        p,
+      );
       p.color = const Color(0xFF7FB7D9);
       canvas.drawRect(Rect.fromLTRB(w * 0.24, bodyTop + h * 0.02, w * 0.76, bodyTop + h * 0.03), p);
     }
@@ -208,8 +230,12 @@ class _ChibiPainter extends CustomPainter {
       p.color = shirt.withValues(alpha: 1);
       final scarf = Path()
         ..addOval(Rect.fromCircle(center: c, radius: r * 1.12))
-        ..addRRect(RRect.fromRectAndRadius(Rect.fromLTRB(c.dx - r * 1.05, c.dy, c.dx + r * 1.05, bodyTop + h * 0.08),
-            Radius.circular(r * 0.5)));
+        ..addRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(c.dx - r * 1.05, c.dy, c.dx + r * 1.05, bodyTop + h * 0.08),
+            Radius.circular(r * 0.5),
+          ),
+        );
       canvas.drawPath(scarf, p);
       p.color = Color.lerp(shirt, Colors.white, 0.25)!;
       canvas.drawCircle(Offset(c.dx + r * 0.75, c.dy - r * 0.55), r * 0.12, p);
@@ -238,14 +264,24 @@ class _ChibiPainter extends CustomPainter {
           canvas.drawCircle(c.translate(-r * 0.62 + i * r * 0.25, -r * 0.72 + (i.isEven ? 0 : r * 0.06)), r * 0.24, p);
         }
       } else {
-        canvas.drawArc(Rect.fromCircle(center: c.translate(0, -r * 0.05), radius: r), math.pi * 1.08, math.pi * 0.84, false,
-            p..style = PaintingStyle.fill);
+        canvas.drawArc(
+          Rect.fromCircle(center: c.translate(0, -r * 0.05), radius: r),
+          math.pi * 1.08,
+          math.pi * 0.84,
+          false,
+          p..style = PaintingStyle.fill,
+        );
       }
       if (acc == 'cap') {
         p.color = apron;
         canvas.drawArc(Rect.fromCircle(center: c.translate(0, -r * 0.18), radius: r * 1.02), math.pi, math.pi, true, p);
-        canvas.drawRRect(RRect.fromRectAndRadius(Rect.fromLTRB(c.dx - r * 0.2, c.dy - r * 0.3, c.dx + r * 1.35, c.dy - r * 0.12),
-            Radius.circular(r * 0.1)), p);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(c.dx - r * 0.2, c.dy - r * 0.3, c.dx + r * 1.35, c.dy - r * 0.12),
+            Radius.circular(r * 0.1),
+          ),
+          p,
+        );
         p.color = Colors.white.withValues(alpha: 0.9);
         canvas.drawCircle(c.translate(0, -r * 0.78), r * 0.1, p);
       }
@@ -254,7 +290,10 @@ class _ChibiPainter extends CustomPainter {
     // blush
     p.color = const Color(0xFFFF8FA3).withValues(alpha: face == Face.angry ? 0.75 : 0.45);
     for (final side in [-1, 1]) {
-      canvas.drawOval(Rect.fromCenter(center: c.translate(side * r * 0.55, r * 0.32), width: r * 0.36, height: r * 0.2), p);
+      canvas.drawOval(
+        Rect.fromCenter(center: c.translate(side * r * 0.55, r * 0.32), width: r * 0.36, height: r * 0.2),
+        p,
+      );
     }
 
     _eyes(canvas, c, r, ink);
@@ -264,13 +303,24 @@ class _ChibiPainter extends CustomPainter {
   }
 
   void _eyes(Canvas canvas, Offset c, double r, Color ink) {
-    final p = Paint()..color = ink..isAntiAlias = true;
-    final line = Paint()..color = ink..style = PaintingStyle.stroke..strokeWidth = r * 0.07..strokeCap = StrokeCap.round;
+    final p = Paint()
+      ..color = ink
+      ..isAntiAlias = true;
+    final line = Paint()
+      ..color = ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.07
+      ..strokeCap = StrokeCap.round;
     for (final side in [-1, 1]) {
       final e = c.translate(side * r * 0.36, r * 0.02);
       if (face == Face.happy) {
-        canvas.drawArc(Rect.fromCenter(center: e.translate(0, r * 0.06), width: r * 0.3, height: r * 0.28), math.pi * 1.1,
-            math.pi * 0.8, false, line);
+        canvas.drawArc(
+          Rect.fromCenter(center: e.translate(0, r * 0.06), width: r * 0.3, height: r * 0.28),
+          math.pi * 1.1,
+          math.pi * 0.8,
+          false,
+          line,
+        );
         continue;
       }
       final openness = (1 - blink) * (face == Face.annoyed ? 0.55 : (face == Face.surprised ? 1.25 : 1.0));
@@ -290,7 +340,11 @@ class _ChibiPainter extends CustomPainter {
 
   void _brows(Canvas canvas, Offset c, double r, Color ink) {
     if (face == Face.neutral || face == Face.happy) return;
-    final line = Paint()..color = ink..style = PaintingStyle.stroke..strokeWidth = r * 0.06..strokeCap = StrokeCap.round;
+    final line = Paint()
+      ..color = ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.06
+      ..strokeCap = StrokeCap.round;
     for (final side in [-1, 1]) {
       final b = c.translate(side * r * 0.36, -r * 0.27);
       final tilt = switch (face) {
@@ -300,14 +354,22 @@ class _ChibiPainter extends CustomPainter {
         _ => -0.04,
       };
       final lift = face == Face.surprised ? -r * 0.08 : 0.0;
-      canvas.drawLine(b.translate(-side * r * 0.13, -tilt * r + lift), b.translate(side * r * 0.13, tilt * r + lift), line);
+      canvas.drawLine(
+        b.translate(-side * r * 0.13, -tilt * r + lift),
+        b.translate(side * r * 0.13, tilt * r + lift),
+        line,
+      );
     }
   }
 
   void _mouth(Canvas canvas, Offset c, double r, Color ink) {
     final m = c.translate(0, r * 0.45);
     final fill = Paint()..color = const Color(0xFF7A2E3A);
-    final line = Paint()..color = ink..style = PaintingStyle.stroke..strokeWidth = r * 0.06..strokeCap = StrokeCap.round;
+    final line = Paint()
+      ..color = ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = r * 0.06
+      ..strokeCap = StrokeCap.round;
     if (talking || face == Face.surprised) {
       canvas.drawOval(Rect.fromCenter(center: m, width: r * 0.22, height: r * (talking ? 0.2 : 0.26)), fill);
       return;
@@ -323,21 +385,34 @@ class _ChibiPainter extends CustomPainter {
         break;
       case Face.angry:
       case Face.sad:
-        canvas.drawArc(Rect.fromCenter(center: m.translate(0, r * 0.1), width: r * 0.36, height: r * 0.22), math.pi * 1.15,
-            math.pi * 0.7, false, line);
+        canvas.drawArc(
+          Rect.fromCenter(center: m.translate(0, r * 0.1), width: r * 0.36, height: r * 0.22),
+          math.pi * 1.15,
+          math.pi * 0.7,
+          false,
+          line,
+        );
         break;
       case Face.annoyed:
         canvas.drawLine(m.translate(-r * 0.14, 0), m.translate(r * 0.14, r * 0.02), line);
         break;
       default:
-        canvas.drawArc(Rect.fromCenter(center: m.translate(0, -r * 0.04), width: r * 0.32, height: r * 0.2), math.pi * 0.15,
-            math.pi * 0.7, false, line);
+        canvas.drawArc(
+          Rect.fromCenter(center: m.translate(0, -r * 0.04), width: r * 0.32, height: r * 0.2),
+          math.pi * 0.15,
+          math.pi * 0.7,
+          false,
+          line,
+        );
     }
   }
 
   void _extras(Canvas canvas, Offset c, double r) {
     if (face == Face.angry) {
-      final vein = Paint()..color = const Color(0xFFE5484D)..style = PaintingStyle.stroke..strokeWidth = r * 0.07
+      final vein = Paint()
+        ..color = const Color(0xFFE5484D)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.07
         ..strokeCap = StrokeCap.round;
       final v = c.translate(r * 0.72, -r * 0.72);
       for (final a in [0.0, math.pi / 2, math.pi, math.pi * 1.5]) {

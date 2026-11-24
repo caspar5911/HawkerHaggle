@@ -4,40 +4,68 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
 import 'package:hawker_haggle/main.dart';
+import 'package:hawker_haggle/sfx.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 const look = {'skin': '#F5D0B5', 'hair': '#4A3B35', 'shirt': '#F28FA3', 'apron': '#FFF2C7', 'accessory': 'perm'};
 
 Map<String, dynamic> game(String line, {String event = 'greet', bool done = false}) => {
-      'id': 'g1', 'stall': 'mei', 'item': 'mango', 'event': event, 'line': line, 'ai_line': false, 'you_said': null,
-      'ask': 18, 'opening': 18, 'patience': 100, 'mood': 0, 'qty': 1, 'done': done, 'result': done ? 'deal' : '',
-      'deal': done ? 18 : null, 'stars': done ? 1 : 0, 'saved': 0.0,
-      'suggestions': [
-        {'move': 'offer', 'price': 11, 'text': '\$11 can or not?'},
-        {'move': 'offer', 'price': 15, 'text': '\$15 lah, OK?'},
-        {'move': 'compliment', 'price': null, 'text': 'Wah, looks so good!'},
-      ],
-      'accept_text': 'OK lah, \$18!', 'walk_text': 'Aiya, never mind lah.', 'live_left': 15,
-    };
+  'id': 'g1',
+  'stall': 'mei',
+  'item': 'mango',
+  'event': event,
+  'line': line,
+  'ai_line': false,
+  'you_said': null,
+  'ask': 18,
+  'opening': 18,
+  'patience': 100,
+  'mood': 0,
+  'qty': 1,
+  'done': done,
+  'result': done ? 'deal' : '',
+  'deal': done ? 18 : null,
+  'stars': done ? 1 : 0,
+  'saved': 0.0,
+  'suggestions': [
+    {'move': 'offer', 'price': 11, 'text': '\$11 can or not?'},
+    {'move': 'offer', 'price': 15, 'text': '\$15 lah, OK?'},
+    {'move': 'compliment', 'price': null, 'text': 'Wah, looks so good!'},
+  ],
+  'accept_text': 'OK lah, \$18!',
+  'walk_text': 'Aiya, never mind lah.',
+  'live_left': 15,
+};
 
 MockClient fakeServer() => MockClient((req) async {
-      final p = req.url.path;
-      final Object body = switch (p) {
-        '/v1/device' => {'token': 't', 'player': {'name': 'Shiok Otter 123'}},
-        '/v1/me' => {'name': 'Shiok Otter 123', 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0, 'live_left': 15},
-        '/v1/stalls' => {
-            'stalls': [
-              {'id': 'mei', 'name': 'Auntie Mei', 'stall': 'Fruit stall', 'place': 'Wet market', 'look': look,
-               'items': [{'id': 'mango', 'name': 'box of mangoes', 'emoji': '🥭', 'ask': 18, 'stars': 2}]}
-            ]
-          },
-        '/v1/haggle' => game('Morning my dear! \$18 only.'),
-        '/v1/haggle/g1/move' => game('OK lah OK lah, \$18!', event: 'accept', done: true),
-        _ => {'detail': 'nope'},
-      };
-      return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
-    });
+  final p = req.url.path;
+  final Object body = switch (p) {
+    '/v1/device' => {
+      'token': 't',
+      'player': {'name': 'Shiok Otter 123'},
+    },
+    '/v1/me' => {'name': 'Shiok Otter 123', 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0, 'live_left': 15},
+    '/v1/stalls' => {
+      'stalls': [
+        {
+          'id': 'mei',
+          'name': 'Auntie Mei',
+          'stall': 'Fruit stall',
+          'place': 'Wet market',
+          'look': look,
+          'items': [
+            {'id': 'mango', 'name': 'box of mangoes', 'emoji': '🥭', 'ask': 18, 'stars': 2},
+          ],
+        },
+      ],
+    },
+    '/v1/haggle' => game('Morning my dear! \$18 only.'),
+    '/v1/haggle/g1/move' => game('OK lah OK lah, \$18!', event: 'accept', done: true),
+    _ => {'detail': 'nope'},
+  };
+  return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
+});
 
 Future<void> settle(WidgetTester t, [int ms = 1500]) async {
   for (var i = 0; i < ms ~/ 100; i++) {
@@ -46,7 +74,10 @@ Future<void> settle(WidgetTester t, [int ms = 1500]) async {
 }
 
 void main() {
-  setUp(() => FlutterSecureStorage.setMockInitialValues({}));
+  setUp(() {
+    FlutterSecureStorage.setMockInitialValues({});
+    Sfx.available = false;
+  });
 
   testWidgets('market shows stalls and a haggle reaches a deal', (tester) async {
     final api = Api(client: fakeServer(), base: 'http://test');
@@ -64,6 +95,6 @@ void main() {
     await tester.tap(find.text('OK lah, \$18'));
     await settle(tester, 2500);
     expect(find.text('Deal! 🎉'), findsOneWidget);
-    await settle(tester, 4000);   // let confetti and timers finish
+    await settle(tester, 4000); // let confetti and timers finish
   });
 }

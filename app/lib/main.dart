@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'screens.dart';
+import 'sfx.dart';
 import 'widgets.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  Sfx.init();
   runApp(HawkerHaggleApp(api: Api()));
 }
 

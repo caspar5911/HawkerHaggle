@@ -20,9 +20,9 @@ class ApiError implements Exception {
 /// first launch, kept in the phone's secure storage (Keychain on iOS, Keystore-backed on Android).
 class Api {
   Api({http.Client? client, FlutterSecureStorage? storage, String? base})
-      : _http = client ?? http.Client(),
-        _storage = storage ?? const FlutterSecureStorage(),
-        _base = base ?? apiBase;
+    : _http = client ?? http.Client(),
+      _storage = storage ?? const FlutterSecureStorage(),
+      _base = base ?? apiBase;
 
   final http.Client _http;
   final FlutterSecureStorage _storage;
@@ -59,11 +59,7 @@ class Api {
   Future<Map<String, dynamic>> start(String stall, String item) =>
       _send('POST', '/v1/haggle', body: {'stall': stall, 'item': item});
   Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text}) =>
-      _send('POST', '/v1/haggle/$id/move', body: {
-        'pick': ?pick,
-        'move': ?move,
-        'text': ?text,
-      });
+      _send('POST', '/v1/haggle/$id/move', body: {'pick': ?pick, 'move': ?move, 'text': ?text});
 
   Future<void> deleteMe() async {
     await _send('DELETE', '/v1/me');
@@ -71,8 +67,13 @@ class Api {
     _token = null;
   }
 
-  Future<Map<String, dynamic>> _send(String method, String path,
-      {Map<String, dynamic>? body, bool auth = true, bool retried = false}) async {
+  Future<Map<String, dynamic>> _send(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+    bool auth = true,
+    bool retried = false,
+  }) async {
     if (auth) {
       await ensureDevice();
     } else if (!_baseLoaded) {
@@ -80,10 +81,7 @@ class Api {
       _base = (await _storage.read(key: 'server')) ?? _base;
     }
     final uri = Uri.parse('$_base$path');
-    final headers = {
-      'Content-Type': 'application/json',
-      if (auth && _token != null) 'Authorization': 'Bearer $_token',
-    };
+    final headers = {'Content-Type': 'application/json', if (auth && _token != null) 'Authorization': 'Bearer $_token'};
     http.Response r;
     try {
       final req = http.Request(method, uri)..headers.addAll(headers);
