@@ -2,8 +2,8 @@
 
 Anyone can sign up; an account can use the AI only after the admin approves it. Passwords are kept as scrypt hashes
 (never readable), sessions as SHA-256 hashes of random tokens. The admin account starts as admin/admin and can only
-log in over Tailscale (the API refuses it from the public gateway), so the default password is never exposed to the
-internet; the admin screen nags until it is changed. Every account can change its own password.
+log in from the owner's own Tailscale login (refused for friends on the tailnet and for the public gateway), so the
+default password is useless to anyone else; the admin screen nags until it is changed. Every account can change its own password.
 """
 from __future__ import annotations
 
@@ -115,10 +115,10 @@ class Accounts:
             return self._new_login(db, cur.lastrowid)
 
     def login(self, username: str, pw: str, *, admin_allowed: bool) -> dict:
-        """admin_allowed is False for requests from the public gateway: the admin account then simply doesn't
-        exist (same answer as a wrong password)."""
+        """admin_allowed is True only for the owner's own Tailscale login: for anyone else the admin account simply
+        doesn't exist (same answer as a wrong password)."""
         name = (username or "").strip().lower()
-        key = ("tailnet:" if admin_allowed else "public:") + name   # public spam can't lock anyone out over Tailscale
+        key = ("owner:" if admin_allowed else "others:") + name   # others' guessing can't lock the owner out
         t = self.clock()
         recent = [x for x in self.fails.get(key, []) if t - x < LOCK_SECONDS]
         self.fails[key] = recent

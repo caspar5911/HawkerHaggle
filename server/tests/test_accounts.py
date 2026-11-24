@@ -12,6 +12,7 @@ from test_api import FakeModel
 ME = {"Tailscale-User-Login": "owner@example.com"}          # a person on the owner's Tailscale (via tailscale serve)
 GATEWAY = {"Tailscale-User-Login": "friend@example.com"}    # the friend's server that forwards the public domain
 NOBODY = {}                                                  # a tagged device / anything without a login: public
+FRIEND = {"Tailscale-User-Login": "pal@example.com"}         # a friend on the owner's Tailscale (not the owner)
 CHAT = {"messages": [{"role": "user", "content": "hi"}], "model": "anything"}
 
 
@@ -20,7 +21,8 @@ def app(tmp_path):
     model = FakeModel(line="Aiyo, welcome!")
     ai = AI(base_url="http://model/v1", model="gx10-current", session=model)
     accounts = Accounts(tmp_path / "acc.db")
-    c = TestClient(create_app(Store(":memory:"), ai, accounts, gate=True, gateway_logins={"friend@example.com"}))
+    c = TestClient(create_app(Store(":memory:"), ai, accounts, gate=True, gateway_logins={"friend@example.com"},
+                                admin_logins={"owner@example.com"}))
     return c, accounts, model
 
 
@@ -166,3 +168,23 @@ def test_without_the_gate_nothing_changes(tmp_path):
     c = TestClient(create_app(Store(":memory:"), AI(base_url="http://model/v1", session=FakeModel()), Accounts(tmp_path / "a.db")))
     assert c.post("/ai/v1/chat/completions", json=CHAT).status_code == 200
     assert c.get("/download").status_code == 200
+
+
+def test_friends_on_tailscale_play_freely_but_cannot_be_admin(app):
+    c, _, _ = app
+    assert c.post("/ai/v1/chat/completions", json=CHAT, headers=FRIEND).status_code == 200
+    r = c.post("/ai/accounts/login", json={"username": "admin", "password": "admin"}, headers=FRIEND)
+    assert r.status_code == 401 and r.json()["detail"] == "Wrong username or password."
+    adm = admin_token(c)                       # the owner's own login
+    assert c.post("/ai/admin/players", headers=bearer(adm, FRIEND)).status_code == 403
+    assert c.post("/ai/accounts/me", headers=bearer(adm, FRIEND)).status_code == 401
+    assert c.post("/ai/accounts/password", json={"old": "admin", "new": "hijacked1"}, headers=bearer(adm, FRIEND)).status_code == 401
+    for _ in range(6):                         # a friend guessing can't lock the owner out
+        c.post("/ai/accounts/login", json={"username": "admin", "password": "guess"}, headers=FRIEND)
+    admin_token(c)
+
+
+def test_no_admin_logins_set_means_no_admin_at_all(tmp_path):
+    c = TestClient(create_app(Store(":memory:"), AI(base_url=""), Accounts(tmp_path / "a.db"), gate=True,
+                              admin_logins=set()))
+    assert c.post("/ai/accounts/login", json={"username": "admin", "password": "admin"}, headers=ME).status_code == 401

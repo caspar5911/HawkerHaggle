@@ -47,6 +47,9 @@ RELAY_ORIGINS = [o for o in os.environ.get("HH_RELAY_ORIGINS", "https://caspar59
 # request comes through serve, which replaces any login or address header a client sends.
 GATE = os.environ.get("HH_GATE") == "1"
 GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS", "").split(",") if x.strip()}
+# The admin account works only from these Tailscale logins (the owner's), never from friends on the tailnet or the
+# public side. Empty: nobody can use it. Kept in server/.env, not in the repo.
+ADMIN_LOGINS = {x.strip().lower() for x in os.environ.get("HH_ADMIN_LOGINS", "").split(",") if x.strip()}
 PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
                 "/ai/accounts/logout", "/ai/accounts/password"}
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
@@ -84,12 +87,14 @@ class Decide(BaseModel):
 
 
 def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accounts | None = None,
-               gate: bool | None = None, gateway_logins: set[str] | None = None) -> FastAPI:
+               gate: bool | None = None, gateway_logins: set[str] | None = None,
+               admin_logins: set[str] | None = None) -> FastAPI:
     store = store or Store(os.environ.get("HH_DB", str(ROOT / "server" / "var" / "hh.db")))
     ai = ai or AI()
     accounts = accounts or Accounts(os.environ.get("HH_ACCOUNTS_DB", str(ROOT / "server" / "var" / "accounts.db")))
     gate = GATE if gate is None else gate
     gateway_logins = GATEWAY_LOGINS if gateway_logins is None else {x.lower() for x in gateway_logins}
+    admin_logins = ADMIN_LOGINS if admin_logins is None else {x.lower() for x in admin_logins}
     relay_turns = asyncio.Semaphore(RELAY_AT_ONCE)
     app = FastAPI(title="Hawker Haggle", version="1")
 
@@ -98,6 +103,10 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
             return False
         login = request.headers.get("tailscale-user-login", "").strip().lower()
         return not login or login in gateway_logins
+
+    def admin_ok(request: Request) -> bool:
+        login = request.headers.get("tailscale-user-login", "").strip().lower()
+        return not from_public(request) and login in admin_logins
 
     @app.middleware("http")
     async def relay_cors(request: Request, call_next):
@@ -396,12 +405,12 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     @app.post("/ai/accounts/login")
     def account_login(body: Login, request: Request):
         limit("acct:" + client_ip(request), ACCOUNT_PER_MINUTE)
-        return account_call(lambda: accounts.login(body.username, body.password, admin_allowed=not from_public(request)))
+        return account_call(lambda: accounts.login(body.username, body.password, admin_allowed=admin_ok(request)))
 
     @app.post("/ai/accounts/me")
     def account_me(request: Request, authorization: str = Header(default="")):
         out = account_call(lambda: accounts.me(bearer(authorization)))
-        if out["admin"] and from_public(request):
+        if out["admin"] and not admin_ok(request):
             raise HTTPException(401, "Please log in again.")
         return out
 
@@ -414,14 +423,14 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     def account_password(body: NewPassword, request: Request, authorization: str = Header(default="")):
         limit("acct:" + client_ip(request), ACCOUNT_PER_MINUTE)
         row = accounts.who(bearer(authorization))
-        if row is not None and row["role"] == "admin" and from_public(request):
+        if row is not None and row["role"] == "admin" and not admin_ok(request):
             raise HTTPException(401, "Please log in again.")
         account_call(lambda: accounts.change_password(bearer(authorization), body.old, body.new))
         return {"ok": True}
 
     def admin_only(request: Request, authorization: str) -> None:
         row = accounts.who(bearer(authorization))
-        if from_public(request) or row is None or row["role"] != "admin":
+        if not admin_ok(request) or row is None or row["role"] != "admin":
             raise HTTPException(403, "Admin only")
 
     @app.post("/ai/admin/players")
