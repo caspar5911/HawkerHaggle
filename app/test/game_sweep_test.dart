@@ -169,7 +169,7 @@ void main() {
         }
       }
     }
-    expect(results['old_app_accept_spam/deal'], 12 * 12); // never stuck (6 stalls x 2 items x 12)
+    expect(results['old_app_accept_spam/deal'], 16 * 12); // never stuck (8 stalls x 2 items x 12)
     int count(String r) => results.entries.where((e) => e.key.endsWith('/$r')).fold(0, (a, e) => a + e.value);
     expect(count('deal'), greaterThan(100));
     expect(count('walked'), greaterThan(10));

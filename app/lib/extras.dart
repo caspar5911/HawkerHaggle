@@ -461,3 +461,241 @@ class HistoryChatScreen extends StatelessWidget {
     );
   }
 }
+
+/// One line on the market: today's challenge and your rank. Tap for the Challenges screen.
+class ChallengeStrip extends StatelessWidget {
+  const ChallengeStrip({super.key, required this.c, required this.onTap});
+  final Map<String, dynamic> c;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final d = c['daily'] as Map;
+    final r = c['rank'] as Map;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Bouncy(
+        key: const ValueKey('challenge_strip'),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: const Color(0xFFE6F4F1), borderRadius: BorderRadius.circular(16)),
+          child: Row(
+            children: [
+              Text(d['done'] == true ? '✅' : '🎯', style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Today: ${d['title']}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                ),
+              ),
+              Text(
+                'Lv ${r['level']}',
+                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: Palette.soft),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Today's challenge, this week's quests, rank, and the Market Month.
+class ChallengesScreen extends StatefulWidget {
+  const ChallengesScreen({super.key, required this.api, required this.onPlay});
+  final Api api;
+  final void Function(String stall, String surprise) onPlay;
+  @override
+  State<ChallengesScreen> createState() => _ChallengesScreenState();
+}
+
+class _ChallengesScreenState extends State<ChallengesScreen> {
+  Map<String, dynamic>? _c;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.api.challenges().then((c) {
+      if (mounted) setState(() => _c = c);
+    });
+  }
+
+  Widget _card({required Widget child}) => Container(
+    margin: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+    child: child,
+  );
+
+  Widget _bar(double v, {Color color = Palette.teal}) => ClipRRect(
+    borderRadius: BorderRadius.circular(8),
+    child: LinearProgressIndicator(
+      value: v.clamp(0, 1),
+      minHeight: 10,
+      backgroundColor: Palette.cream,
+      valueColor: AlwaysStoppedAnimation(color),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _c;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Challenges'), backgroundColor: Palette.cream),
+      backgroundColor: Palette.cream,
+      body: c == null
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // rank
+                _card(
+                  child: Builder(
+                    builder: (_) {
+                      final r = c['rank'] as Map;
+                      final from = (r['from'] as num).toDouble(), xp = (r['xp'] as num).toDouble();
+                      final next = (r['next'] as num?)?.toDouble();
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Level ${r['level']} · ${r['title']}', style: _title),
+                          const SizedBox(height: 8),
+                          _bar(next == null ? 1 : (xp - from) / (next - from)),
+                          const SizedBox(height: 4),
+                          Text(
+                            next == null ? '${xp.toInt()} XP · top rank!' : '${xp.toInt()} / ${next.toInt()} XP',
+                            style: const TextStyle(color: Palette.soft, fontSize: 12),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                // today
+                _card(
+                  child: Builder(
+                    builder: (_) {
+                      final d = c['daily'] as Map;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(d['done'] == true ? '✅' : '🎯', style: const TextStyle(fontSize: 22)),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text("Today's challenge: ${d['title']}", style: _title)),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text('${d['how']}', style: const TextStyle(color: Palette.ink, height: 1.3)),
+                          const SizedBox(height: 4),
+                          Text(
+                            d['done'] == true ? 'Done! A new one tomorrow.' : '+60 XP · the same for everyone today',
+                            style: const TextStyle(color: Palette.soft, fontSize: 12),
+                          ),
+                          if (d['done'] != true) ...[
+                            const SizedBox(height: 10),
+                            Bouncy(
+                              key: const ValueKey('daily_play'),
+                              onTap: () {
+                                Navigator.of(context).pop();
+                                widget.onPlay('${d['stall']}', '${d['surprise']}');
+                              },
+                              child: const Pill(text: 'Play', icon: '▶️', color: Palette.gold),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                // this week
+                _card(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('📋 This week', style: _title),
+                      Text(
+                        'New quests every Monday · this week ends ${c['week_ends']}',
+                        style: const TextStyle(color: Palette.soft, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                      for (final q in (c['quests'] as List).cast<Map>()) ...[
+                        Row(
+                          children: [
+                            Text(q['done'] == true ? '✅' : '▫️'),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text('${q['title']}', style: const TextStyle(color: Palette.ink)),
+                            ),
+                            Text('${q['have']}/${q['target']}', style: const TextStyle(color: Palette.soft)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        _bar((q['have'] as num) / (q['target'] as num), color: Palette.gold),
+                        const SizedBox(height: 10),
+                      ],
+                    ],
+                  ),
+                ),
+                // the month
+                _card(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('📅 Market Month · day ${c['days_played']} of 30', style: _title),
+                      const Text(
+                        'Counts days you play (missing a day never resets it).',
+                        style: TextStyle(color: Palette.soft, fontSize: 12),
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: [
+                          for (var day = 1; day <= 30; day++)
+                            Container(
+                              width: 26,
+                              height: 26,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: day <= (c['days_played'] as num) ? Palette.teal : Palette.cream,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '$day',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: day <= (c['days_played'] as num) ? Colors.white : Palette.soft,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      for (final m in (c['month'] as List).cast<Map>())
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '${m['reached'] == true ? '✅' : m['emoji']} Day ${m['day']}: ${m['what']}',
+                            style: TextStyle(color: m['reached'] == true ? Palette.soft : Palette.ink),
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                      const Text(
+                        'After day 30, daily challenges and weekly quests keep coming.',
+                        style: TextStyle(color: Palette.soft, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}

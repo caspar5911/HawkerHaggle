@@ -20,6 +20,7 @@ class MarketScreen extends StatefulWidget {
 class _MarketScreenState extends State<MarketScreen> {
   Map<String, dynamic>? _me;
   Map<String, dynamic>? _today;
+  Map<String, dynamic>? _challenges;
   List<dynamic> _stalls = [];
   String? _error;
 
@@ -31,17 +32,33 @@ class _MarketScreenState extends State<MarketScreen> {
 
   Future<void> _load() async {
     try {
-      final r = await Future.wait([widget.api.me(), widget.api.stalls(), widget.api.today()]);
+      final r = await Future.wait([widget.api.me(), widget.api.stalls(), widget.api.today(), widget.api.challenges()]);
       if (!mounted) return;
       setState(() {
         _me = r[0];
         _stalls = r[1]['stalls'] as List;
         _today = r[2];
+        _challenges = r[3];
         _error = null;
       });
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
     }
+  }
+
+  Future<void> _openChallenges() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChallengesScreen(
+          api: widget.api,
+          onPlay: (stallId, surprise) {
+            final stall = _stalls.cast<Map>().where((x) => x['id'] == (stallId.isEmpty ? 'mei' : stallId)).firstOrNull;
+            if (stall != null) _open(stall, (stall['items'] as List).first as Map, surprise: surprise);
+          },
+        ),
+      ),
+    );
+    _load();
   }
 
   void _openById(String stallId, String itemId) {
@@ -50,11 +67,16 @@ class _MarketScreenState extends State<MarketScreen> {
     if (stall != null && item != null) _open(stall, item);
   }
 
-  Future<void> _open(Map stall, Map item) async {
+  Future<void> _open(Map stall, Map item, {String surprise = ''}) async {
     if (stall['locked'] == true) {
+      final days = (stall['unlock_days'] ?? 0) as num;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🔒 ${stall['name']} opens at ${stall['unlock_at']} ⭐. Get more stars on the other stalls!'),
+          content: Text(
+            days > 0
+                ? '🔒 ${stall['name']} opens on day $days of your Market Month.'
+                : '🔒 ${stall['name']} opens at ${stall['unlock_at']} ⭐. Get more stars on the other stalls!',
+          ),
         ),
       );
       return;
@@ -62,7 +84,7 @@ class _MarketScreenState extends State<MarketScreen> {
     await Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
-        pageBuilder: (_, _, _) => HaggleScreen(api: widget.api, stall: stall, item: item),
+        pageBuilder: (_, _, _) => HaggleScreen(api: widget.api, stall: stall, item: item, surprise: surprise),
         transitionsBuilder: (_, a, _, child) => SlideTransition(
           position: Tween(
             begin: const Offset(0, 1),
@@ -90,9 +112,15 @@ class _MarketScreenState extends State<MarketScreen> {
                     const Text('🏮', style: TextStyle(fontSize: 30)),
                     const SizedBox(width: 8),
                     const Expanded(
-                      child: Text(
-                        'Hawker Haggle',
-                        style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Palette.ink),
+                      // one line on any phone: shrinks a little on narrow screens instead of wrapping
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Hawker Haggle',
+                          maxLines: 1,
+                          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Palette.ink),
+                        ),
                       ),
                     ),
                     IconButton(
@@ -123,6 +151,7 @@ class _MarketScreenState extends State<MarketScreen> {
                 ),
                 if (_me != null) _Hello(me: _me!),
                 const SizedBox(height: 12),
+                if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
                 if (_today != null) TodayCard(today: _today!, onItem: _openById),
                 if (_error != null) _Oops(message: _error!, retry: _load),
                 if (_me == null && _error == null)
@@ -306,7 +335,9 @@ class _StallCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
               child: Text(
-                '🔒 Opens at ${stall['unlock_at']} ⭐',
+                ((stall['unlock_days'] ?? 0) as num) > 0
+                    ? '🔒 Opens on day ${stall['unlock_days']}'
+                    : '🔒 Opens at ${stall['unlock_at']} ⭐',
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Palette.ink),
               ),
             ),
@@ -353,10 +384,11 @@ class _Msg {
 }
 
 class HaggleScreen extends StatefulWidget {
-  const HaggleScreen({super.key, required this.api, required this.stall, required this.item});
+  const HaggleScreen({super.key, required this.api, required this.stall, required this.item, this.surprise = ''});
   final Api api;
   final Map stall;
   final Map item;
+  final String surprise; // the daily challenge's Play button can ask for a market surprise
   @override
   State<HaggleScreen> createState() => _HaggleScreenState();
 }
@@ -391,7 +423,11 @@ class _HaggleScreenState extends State<HaggleScreen> {
       _msgs.clear();
     });
     try {
-      final g = await widget.api.start(widget.stall['id'] as String, widget.item['id'] as String);
+      final g = await widget.api.start(
+        widget.stall['id'] as String,
+        widget.item['id'] as String,
+        widget.surprise.isEmpty ? null : widget.surprise,
+      );
       _apply(g);
     } on ApiError catch (e) {
       _toast(e.message);
@@ -1227,10 +1263,18 @@ class _ResultState extends State<_Result> {
                       ),
                     ),
                   ],
+                  for (final n in (g['notes'] as List? ?? const []).cast<String>()) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      n,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                    ),
+                  ],
                   for (final u in unlocked) ...[
                     const SizedBox(height: 10),
                     Text(
-                      '🔓 A new stall opened: ${u == 'lee' ? 'Madam Lee' : (u == 'boy' ? 'Ah Boy' : u)}!',
+                      '🔓 A new stall opened: ${const {'lee': 'Madam Lee', 'boy': 'Ah Boy', 'wong': 'Uncle Wong', 'kumar': 'Madam Kumar'}[u] ?? u}!',
                       style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
                     ),
                   ],

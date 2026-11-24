@@ -102,3 +102,15 @@ reply, on the phone; Settings → Your reports → Copy gives text to send to th
 (surprise, friendship) is neutral by default, so the reference check still covers normal haggles. The features
 above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of `engine.dart`), tested by
 `progress_test.dart`, the forced-surprise sweep and the live check. Extra AI briefs live in `prompts_extra.dart`.
+
+## A month of play (from test 18)
+- **Daily challenge:** 22 kinds (deal at a stall, 30% off, quick deal, typing only, buy two, final-final, beat Auntie
+  Rose, rain/closing/festival, sweet talk, regular, next stall, budget, sad story, two stalls, three deals...), picked
+  by the date so it's the same for everyone; its Play button starts the right stall and surprise. +60 XP, once a day.
+- **Weekly quests:** 4 a week (Monday to Sunday) from 8 kinds; +60 XP each, +100 and a sticker for all four.
+- **Rank:** 15 levels to 6,000 XP. Most XP is once a day (daily challenge, Mum's list, quests, a day played); XP from
+  haggles is capped at 60 a day. Tested: someone doing everything daily reaches the top on day 29; a grinder doing
+  100 haggles a day never does.
+- **Market Month:** days played (never resets): day 3 sticker, day 7 Uncle Wong (antiques), day 14 Madam Kumar
+  (spices), day 21 golden badge, day 30 Hawker of the Month. Dailies and quests keep going after day 30.
+- All checks read the per-haggle summary recorded in `Progress.finish` (`app/lib/core/challenges.dart`).

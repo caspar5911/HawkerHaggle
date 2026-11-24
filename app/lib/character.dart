@@ -280,6 +280,20 @@ class _ChibiPainter extends CustomPainter {
           p..style = PaintingStyle.fill,
         );
       }
+      if (acc == 'flower') {
+        // a jasmine flower tucked by the ear
+        p.color = Colors.white;
+        for (var i = 0; i < 5; i++) {
+          final a = i * 2 * math.pi / 5;
+          canvas.drawCircle(
+            c.translate(r * 0.78 + math.cos(a) * r * 0.11, -r * 0.48 + math.sin(a) * r * 0.11),
+            r * 0.09,
+            p,
+          );
+        }
+        p.color = const Color(0xFFFFD54F);
+        canvas.drawCircle(c.translate(r * 0.78, -r * 0.48), r * 0.06, p);
+      }
       if (acc == 'bun') {
         // a jade hairpin through the bun
         p.color = const Color(0xFF3FA37A);
@@ -341,6 +355,17 @@ class _ChibiPainter extends CustomPainter {
     }
 
     _eyes(canvas, c, r, ink);
+    if (acc == 'glasses') {
+      // round reading glasses
+      final rim = Paint()
+        ..color = const Color(0xFF5A4636)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = r * 0.06;
+      for (final side in [-1, 1]) {
+        canvas.drawCircle(c.translate(side * r * 0.36, r * 0.04), r * 0.22, rim);
+      }
+      canvas.drawLine(c.translate(-r * 0.14, r * 0.0), c.translate(r * 0.14, r * 0.0), rim);
+    }
     _brows(canvas, c, r, ink);
     _mouth(canvas, c, r, ink);
     _extras(canvas, c, r);

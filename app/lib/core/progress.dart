@@ -4,6 +4,8 @@ library;
 
 import 'dart:math' as math;
 
+import 'challenges.dart';
+
 /// Base stalls: open from the start, and the only ones the daily list uses (so it's the same list for everyone).
 const baseStalls = ['mei', 'lim', 'raj', 'siti'];
 
@@ -30,6 +32,10 @@ const stickerDefs = <(String, String, String, String)>[
   ('lim_smile', '🐟', 'Made Uncle Lim smile', 'Reach 2 hearts with Uncle Lim'),
   ('new_stall', '🔓', 'New stall unlocked', 'Unlock a new stall with your stars'),
   ('hard_deal', '🥋', 'Hard-mode haggler', 'Close a deal in hard mode'),
+  ('days3', '🌱', 'Three market days', 'Play on 3 different days'),
+  ('dailies7', '🎯', 'Challenge seeker', 'Finish 7 daily challenges'),
+  ('week_done', '🏆', 'Quest week', "Finish all of a week's quests"),
+  ('month', '👑', 'Hawker of the Month', 'Play on 30 different days'),
 ];
 
 String dayKey(DateTime d) =>
@@ -78,6 +84,19 @@ class Progress {
     }
     _map('daily');
     _map('streak');
+    if (p['xp'] == null) {
+      // credit for haggles from before the challenges existed: days played, and capped XP per day
+      final days = _map('days');
+      final perDay = <String, int>{};
+      for (final h in _haggles) {
+        final d = '${h['at'] ?? ''}'.length >= 10 ? '${h['at']}'.substring(0, 10) : null;
+        if (d == null) continue;
+        days[d] = true;
+        final gain = h['result'] == 'deal' ? 5 + 3 * ((h['stars'] ?? 0) as num).toInt() : 2;
+        perDay[d] = math.min(xpHaggleCapPerDay, (perDay[d] ?? 0) + gain);
+      }
+      p['xp'] = days.length * xpDayPlayed + perDay.values.fold<int>(0, (a, b) => a + b);
+    }
   }
 
   // ---------------------------------------------------------------- friendship
@@ -136,7 +155,9 @@ class Progress {
   }
 
   int unlockAt(String stall) => ((_stalls[stall]?['unlock_stars'] ?? 0) as num).toInt();
-  bool unlocked(String stall) => bestStars() >= unlockAt(stall);
+  int unlockDays(String stall) => ((_stalls[stall]?['unlock_days'] ?? 0) as num).toInt();
+  int daysPlayed() => _map('days').length;
+  bool unlocked(String stall) => bestStars() >= unlockAt(stall) && daysPlayed() >= unlockDays(stall);
 
   // ---------------------------------------------------------------- Mum's daily list
   /// Today's list: two items from two different first stalls, the same for everyone today. The budget is based on
@@ -239,6 +260,8 @@ class Progress {
   // ---------------------------------------------------------------- stickers
   Map<String, Object?> get _stickers => _map('stickers');
 
+  void earn(String id, Set<String> fresh) => _earn(id, fresh);
+
   void _earn(String id, Set<String> fresh) {
     if (_stickers.containsKey(id)) return;
     _stickers[id] = dayKey(now());
@@ -279,7 +302,7 @@ class Progress {
 
   // ---------------------------------------------------------------- after each haggle
   /// Called once when a haggle ends. Returns new stickers, Mum's note (if it was on her list) and new unlocks.
-  ({List<String> stickers, String? mum, List<String> unlocked}) finish({
+  ({List<String> stickers, String? mum, List<String> unlocked, List<String> notes}) finish({
     required Map record,
     required int qty,
     required Map flags,
@@ -306,12 +329,15 @@ class Progress {
     if (deal && record['deal'] != null) {
       mum = _onListDeal(stall, '${record['item']}', (record['deal'] as num).toDouble(), qty, fresh);
     }
+    final t = today();
+    final notes = Challenges(this)
+        .onFinish(record, listDone: t['complete'] == true, listUnder: t['under'] == true, stickers: fresh);
     final newly = [
       for (final s in lockedBefore)
         if (unlocked(s)) s,
     ];
     if (newly.isNotEmpty) _earn('new_stall', fresh);
-    return (stickers: fresh.toList(), mum: mum, unlocked: newly);
+    return (stickers: fresh.toList(), mum: mum, unlocked: newly, notes: notes);
   }
 
   // ---------------------------------------------------------------- past haggles (chat history)

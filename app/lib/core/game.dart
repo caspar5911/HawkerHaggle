@@ -8,6 +8,7 @@ import 'dart:math' as math;
 
 import 'ai_client.dart';
 import 'engine.dart';
+import 'challenges.dart';
 import 'progress.dart';
 import 'reader.dart';
 import 'voice.dart';
@@ -85,6 +86,8 @@ class _Session {
   List<Map<String, Object?>> shown = []; // the suggestions on screen right now
   bool recorded = false;
   int nice = 0; // friendly moves (compliments, "I'm a regular"): a little extra friendship
+  int typed = 0, tapped = 0; // how the player played (for challenges)
+  final tactics = <String>{}; // compliment, regular, competitor, bulk, plead, pity, budget...
   bool rude = false;
   bool calledBack = false;
   Map<String, Object?> finish = const {}; // new stickers, Mum's note, unlocks (when it ends)
@@ -165,6 +168,7 @@ class Game {
 
   Map<String, Object?> today() => progress.today();
   List<Map<String, Object?>> history() => progress.history();
+  Map<String, Object?> challenges() => Challenges(progress).summary();
   Map<String, Object?> historyItem(String id) =>
       progress.historyItem(id) ?? (throw GameError(404, 'That haggle is no longer kept'));
   List<Map<String, Object?>> stickers() => progress.stickers();
@@ -188,6 +192,8 @@ class Game {
       'best_stars': progress.bestStars(),
       'streak': progress.streak(),
       'stickers': progress.stickers().where((x) => x['earned'] != null).length,
+      'rank': Challenges(progress).rank(),
+      'days_played': progress.daysPlayed(),
     };
   }
 
@@ -209,6 +215,7 @@ class Game {
             'hearts': progress.hearts(s['id'] as String),
             'locked': !progress.unlocked(s['id'] as String),
             'unlock_at': progress.unlockAt(s['id'] as String),
+            'unlock_days': progress.unlockDays(s['id'] as String),
             'items': [
               for (final i in s['items'] as List)
                 {
@@ -376,6 +383,7 @@ class Game {
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
       'mum': ss.finish['mum'],
       'unlocked': ss.finish['unlocked'] ?? const <Object>[],
+      'notes': ss.finish['notes'] ?? const <Object>[],
       'accept_text': _playerText('accept', h.s.ask, ss.id, _who(ss)),
       'walk_text': _playerText('walk', null, ss.id, _who(ss)),
     };
@@ -386,7 +394,12 @@ class Game {
     final stall = _stalls[stallId];
     if (stall == null) throw GameError(404, 'No such stall');
     if (!unlockAll && !progress.unlocked(stallId)) {
-      throw GameError(403, 'Unlock ${stall['name']} with ${progress.unlockAt(stallId)} ⭐ (best on each item).');
+      throw GameError(
+        403,
+        progress.unlockDays(stallId) > 0
+            ? '${stall['name']} opens on day ${progress.unlockDays(stallId)} of your Market Month.'
+            : 'Unlock ${stall['name']} with ${progress.unlockAt(stallId)} ⭐ (best on each item).',
+      );
     }
     // About 1 haggle in 3 has a market surprise.
     if (!surprises) surprise ??= '';
@@ -441,6 +454,11 @@ class Game {
     double? price;
     String you;
     final typed = text?.trim() ?? '';
+    if (typed.isNotEmpty) {
+      ss.typed++;
+    } else if (pick != null) {
+      ss.tapped++;
+    }
     if (typed.isNotEmpty) {
       final t = typed.length > 300 ? typed.substring(0, 300) : typed;
       heard = await _read(t, ss);
@@ -498,6 +516,10 @@ class Game {
       out = h.move(kind, price, callBack);
       event = out.event;
       if (event == 'callback') ss.calledBack = true;
+      if (const ['compliment', 'regular', 'competitor', 'bulk', 'plead', 'pity', 'budget'].contains(kind)) {
+        ss.tactics.add(kind);
+      }
+      if (heard.also.isNotEmpty) ss.tactics.add(heard.also);
       if (const ['flattered', 'regular'].contains(event) || const ['compliment', 'regular'].contains(heard.also)) {
         ss.nice++;
       }
@@ -557,12 +579,22 @@ class Game {
           'saved': out?.saved ?? 0.0,
           'event': h.s.event,
           'at': now().toIso8601String(),
+          'day': dayKey(now()),
+          'qty': h.s.qty,
+          'moves': h.s.rounds,
+          'typed': ss.typed,
+          'tapped': ss.tapped,
+          'tactics': ss.tactics.toList(),
+          'patience': h.s.patience.round(),
+          'called_back': ss.calledBack,
+          'hard': hard,
+          'rude': ss.rude,
         },
         qty: h.s.qty,
         flags: {'nice': ss.nice, 'called_back': ss.calledBack, 'hard': hard},
         chat: ss.chat,
       );
-      ss.finish = {'stickers': r.stickers, 'mum': r.mum, 'unlocked': r.unlocked};
+      ss.finish = {'stickers': r.stickers, 'mum': r.mum, 'unlocked': r.unlocked, 'notes': r.notes};
       await _save();
     } else if (ss.rude) {
       await _save();

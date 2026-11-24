@@ -98,8 +98,8 @@ class Api {
 
   Future<Map<String, dynamic>> me() => _run((g) => Map<String, dynamic>.from(g.me()));
   Future<Map<String, dynamic>> stalls() => _run((g) => Map<String, dynamic>.from(g.stalls()));
-  Future<Map<String, dynamic>> start(String stall, String item) =>
-      _run((g) async => Map<String, dynamic>.from(await g.start(stall, item)));
+  Future<Map<String, dynamic>> start(String stall, String item, [String? surprise]) =>
+      _run((g) async => Map<String, dynamic>.from(await g.start(stall, item, surprise)));
   Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text}) =>
       _run((g) async => Map<String, dynamic>.from(await g.move(id, pick: pick, move: move, text: text)));
   Future<void> flag(String id) => _run((g) => g.flag(id));
@@ -110,6 +110,7 @@ class Api {
       _run((g) => [for (final s in g.stickers()) Map<String, dynamic>.from(s)]);
   Future<Map<String, dynamic>> stallProfile(String id) => _run((g) => Map<String, dynamic>.from(g.stallProfile(id)));
   Future<bool> hard() => _run((g) => g.hard);
+  Future<Map<String, dynamic>> challenges() => _run((g) => Map<String, dynamic>.from(g.challenges()));
   Future<List<Map<String, dynamic>>> history() =>
       _run((g) => [for (final h in g.history()) Map<String, dynamic>.from(h)]);
   Future<Map<String, dynamic>> historyItem(String id) => _run((g) => Map<String, dynamic>.from(g.historyItem(id)));

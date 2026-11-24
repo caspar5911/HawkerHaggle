@@ -87,8 +87,11 @@ class Fake extends Game {
     ],
   };
   @override
-  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise]) async =>
-      first ?? game('Morning my dear! \$18 only.');
+  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise]) async {
+    lastSurprise = surprise;
+    return first ?? game('Morning my dear! \$18 only.');
+  }
+
   @override
   Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text}) async {
     sent.add({'pick': ?pick, 'move': ?move, 'text': ?text});
@@ -111,6 +114,31 @@ class Fake extends Game {
     'streak': 2,
     'tip': 'Auntie Mei loves compliments.',
   };
+
+  @override
+  Map<String, Object?> challenges() => {
+    'rank': {'level': 3, 'title': 'Bargain Spotter', 'xp': 300, 'from': 250, 'next': 450, 'max': false},
+    'daily': {
+      'id': 'rain_deal',
+      'title': 'Rainy-day bargain',
+      'how': 'Close a deal on a rainy day.',
+      'done': false,
+      'surprise': 'rain',
+      'stall': 'mei',
+    },
+    'quests': [
+      {'id': 'deals', 'title': 'Close 6 deals', 'target': 6, 'have': 2, 'done': false},
+      {'id': 'list', 'title': "Finish Mum's list on 3 days", 'target': 3, 'have': 3, 'done': true},
+    ],
+    'week_ends': '2026-11-29',
+    'days_played': 5,
+    'month': [
+      {'day': 3, 'emoji': '🌱', 'what': 'Sticker: Three market days', 'reached': true},
+      {'day': 7, 'emoji': '🏺', 'what': "Uncle Wong's antique stall opens", 'reached': false},
+    ],
+  };
+
+  String? lastSurprise;
 
   @override
   List<Map<String, Object?>> history() => [
@@ -494,6 +522,35 @@ void main() {
     expect(find.text('\$15 lah, OK?'), findsOneWidget);
     expect(find.textContaining('OK lah, \$15 for you!'), findsOneWidget);
     expect(find.text('Bought for \$15'), findsOneWidget);
+    await settle(tester, 2000);
+  });
+
+  testWidgets('challenges: the strip on the market, the screen, and Play starts the right surprise', (tester) async {
+    final fake = Fake([]);
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.text('Today: Rainy-day bargain'), findsOneWidget);
+    expect(find.text('Lv 3'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('challenge_strip')));
+    await settle(tester);
+    expect(find.text('Level 3 · Bargain Spotter'), findsOneWidget);
+    expect(find.text("Today's challenge: Rainy-day bargain"), findsOneWidget);
+    expect(find.text('Close 6 deals'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.textContaining('Market Month'),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    expect(find.textContaining('day 5 of 30'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('daily_play')),
+      find.byType(ListView).last,
+      const Offset(0, 200),
+    );
+    await tester.tap(find.byKey(const ValueKey('daily_play')));
+    await settle(tester, 2000);
+    expect(fake.lastSurprise, 'rain');
+    expect(find.text('Morning my dear! \$18 only.'), findsOneWidget);
     await settle(tester, 2000);
   });
 

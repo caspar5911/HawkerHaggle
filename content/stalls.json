@@ -1235,6 +1235,398 @@
           "Sold bro! Next time faster ah!"
         ]
       }
+    },
+    {
+      "id": "wong",
+      "name": "Uncle Wong",
+      "stall": "Antiques and old treasures",
+      "place": "Flea market, Sungei Road",
+      "address": "Uncle",
+      "persona": "A gentle, storytelling old collector who has sold antiques and curios at the flea market for 45 years. Loves telling the history of each piece, enjoys a slow, thoughtful haggle, and softens for customers who appreciate old things.",
+      "voice": "Slow, warm, nostalgic storyteller. Says 'young man' or 'young lady', 'last time ah...', loves a little history in every reply. Never rushed.",
+      "max_words": 32,
+      "unlock_stars": 0,
+      "unlock_days": 7,
+      "look": {
+        "skin": "#EBC6A4",
+        "hair": "#D9D9D9",
+        "shirt": "#6B7F5E",
+        "apron": "#C9B79C",
+        "accessory": "glasses"
+      },
+      "personality": {
+        "stubborn": 0.55,
+        "flattery": 0.6,
+        "temper": 0.25,
+        "callback": 0.5,
+        "kind": 0.7
+      },
+      "facts": [
+        "Has sold antiques at the flea market for 45 years",
+        "Open Saturday and Sunday mornings",
+        "Cash only",
+        "Every piece comes with its story"
+      ],
+      "items": [
+        {
+          "id": "radio",
+          "name": "old transistor radio",
+          "emoji": "📻",
+          "fair": 45,
+          "ask": 68,
+          "floor": 38,
+          "facts": [
+            "A 1970s transistor radio, still plays",
+            "Uncle Wong replaced the dial string himself",
+            "Needs 4 AA batteries"
+          ]
+        },
+        {
+          "id": "tiffin",
+          "name": "enamel tiffin carrier",
+          "emoji": "🍱",
+          "fair": 28,
+          "ask": 42,
+          "floor": 23,
+          "facts": [
+            "Three-tier enamel tiffin carrier from the 1960s",
+            "Hand-painted flowers, a small chip on the lid",
+            "Workers once carried lunch in these"
+          ]
+        }
+      ],
+      "tips": [
+        "Uncle Wong loves people who ask about a piece's story.",
+        "Uncle Wong is patient: take your time.",
+        "A kind word about old things softens Uncle Wong."
+      ],
+      "story": [
+        "Uncle Wong started collecting when his father gave him an old coin in 1965.",
+        "He knows the story behind every piece on his mat.",
+        "He has never sold his very first radio, and never will."
+      ],
+      "lines": {
+        "greet": [
+          "Ah, young one. This {item}, very old already. {price}.",
+          "Come, come. Look at this {item}, got history one. {price}."
+        ],
+        "counter": [
+          "{offer}? Hmm... last time ah, people pay more. {price}, can.",
+          "Aiyo, {offer} too little for such old thing. {price}."
+        ],
+        "final": [
+          "{price}. Old things also have dignity.",
+          "Cannot lower than {price} already, young one."
+        ],
+        "insulted": [
+          "{offer}? This one older than your grandfather leh.",
+          "Aiyo, {offer}... you don't respect old things."
+        ],
+        "accept": [
+          "Good, {price}. Take care of it ah, it has history.",
+          "{price}, yours now. Treat it well."
+        ],
+        "confirm": [
+          "Okay, {price}. You sure you want it?",
+          "{price} lah. Deal, young one?"
+        ],
+        "unsure": [
+          "No hurry. Old things can wait. {price}.",
+          "Think slowly. {price} still."
+        ],
+        "flattered": [
+          "You know antiques ah? Good, good. {price}.",
+          "Hehe, you got good eye. {price} for you."
+        ],
+        "flattery_tired": [
+          "Sweet words cannot polish brass, young one.",
+          "Enough praise lah, decide."
+        ],
+        "competitor_drop": [
+          "Their one fake reproduction. But okay, {price}.",
+          "Hmm, fine, {price}."
+        ],
+        "competitor_annoyed": [
+          "Then go buy their imitation lor. Mine {price}.",
+          "Real antique cannot compare. {price}."
+        ],
+        "bulk": [
+          "Two? Rare to find two. {price} each.",
+          "Okay, two, {price} each."
+        ],
+        "regular": [
+          "Ah, I remember you, the one who likes radios. {price}.",
+          "Old friend, {price}."
+        ],
+        "smalltalk": [
+          "Last time this market got so many stalls. {price}.",
+          "You know, I started here in 1979. {price}."
+        ],
+        "plead": [
+          "Aiya... a little then. {price}.",
+          "Okay, okay, {price}."
+        ],
+        "plead_no": [
+          "Name a price, young one. {price} now.",
+          "How much you have in mind? {price}."
+        ],
+        "pity": [
+          "Aiyo, life hard sometimes. {price} for you.",
+          "Never mind, {price}, I help a bit."
+        ],
+        "pity_tired": [
+          "Everybody got story, young one. {price}.",
+          "I also got many stories. Still {price}."
+        ],
+        "rude": [
+          "Young people nowadays, no manners.",
+          "Please don't talk like that to an old man."
+        ],
+        "deflect": [
+          "Haha, I'm too old for that, young one. {price}.",
+          "Aiyo, focus on the {item} lah. {price}."
+        ],
+        "budget_best": [
+          "{offer} not enough, young one. {price}, my lowest.",
+          "Sorry, {offer} cannot. {price} is my best."
+        ],
+        "clarify": [
+          "You mean you take it at {price}?",
+          "Old man ears not so good. {price}, yes or no?"
+        ],
+        "callback": [
+          "Wait, young one... okay. {price}, final.",
+          "Come back, come back. {price}, last price."
+        ],
+        "letgo": [
+          "Okay, come back next weekend.",
+          "Never mind, old things will wait."
+        ],
+        "refuse": [
+          "I'm tired already. Another day.",
+          "Enough for today, young one."
+        ],
+        "confused": [
+          "How much you want to pay?",
+          "Say a price, young one."
+        ],
+        "greet_rain": [
+          "Rainy day, quiet market. {item}, {price}.",
+          "Come under the umbrella. {item}, {price}."
+        ],
+        "greet_closing": [
+          "Packing up soon. {item}, {price}.",
+          "Just in time, young one. {price}."
+        ],
+        "greet_festival": [
+          "Festival crowd today! {item}, {price}.",
+          "Busy day. {item}, {price}."
+        ],
+        "greet_rival": [
+          "Last {item}. {price}. That auntie also looking.",
+          "Only one. {price}. Decide soon."
+        ],
+        "rival_bought": [
+          "Sorry, young one, the auntie took it.",
+          "Sold already. Next weekend got more."
+        ]
+      }
+    },
+    {
+      "id": "kumar",
+      "name": "Madam Kumar",
+      "stall": "Spice shop",
+      "place": "Little India, Tekka",
+      "address": "Madam",
+      "persona": "A brisk, witty spice merchant whose family has run this shop in Little India for decades. Proud of her blends, quick with jokes, firm on price but fond of customers who cook.",
+      "voice": "Brisk, witty, warm. Calls customers 'dear' or 'darling', sprinkles in 'aiyo' and 'lah', jokes about cooking. Quick, lively replies.",
+      "max_words": 28,
+      "unlock_stars": 0,
+      "unlock_days": 14,
+      "look": {
+        "skin": "#B9825B",
+        "hair": "#1E1612",
+        "shirt": "#C2185B",
+        "apron": "#FFE08A",
+        "accessory": "flower"
+      },
+      "personality": {
+        "stubborn": 0.6,
+        "flattery": 0.55,
+        "temper": 0.45,
+        "callback": 0.45,
+        "kind": 0.6
+      },
+      "facts": [
+        "Her family has run the shop in Little India for 40 years",
+        "Grinds her own spice blends every morning",
+        "Takes cash, PayNow or card",
+        "Open 9am to 9pm daily"
+      ],
+      "items": [
+        {
+          "id": "masala",
+          "name": "jar of garam masala",
+          "emoji": "🫙",
+          "fair": 9,
+          "ask": 14,
+          "floor": 7.5,
+          "facts": [
+            "Her own blend, ground this morning",
+            "Cinnamon, cardamom, cloves, cumin and black pepper",
+            "Keeps 3 months in a dry jar"
+          ]
+        },
+        {
+          "id": "saffron",
+          "name": "box of saffron",
+          "emoji": "🌸",
+          "fair": 30,
+          "ask": 45,
+          "floor": 25,
+          "facts": [
+            "Kashmiri saffron, 2 g",
+            "Real saffron colours water golden slowly",
+            "A pinch is enough for a whole pot of biryani"
+          ]
+        }
+      ],
+      "tips": [
+        "Madam Kumar loves customers who cook: tell her your recipe.",
+        "Madam Kumar is firm: name a fair price.",
+        "Make Madam Kumar laugh and she softens."
+      ],
+      "story": [
+        "Madam Kumar's grandmother opened the shop with three sacks of spices.",
+        "She grinds every blend at 6am, before the market wakes up.",
+        "She has a secret curry recipe she only tells her best customers."
+      ],
+      "lines": {
+        "greet": [
+          "Come, dear! Smell this {item}. {price} only.",
+          "Fresh {item} today, darling! {price}."
+        ],
+        "counter": [
+          "{offer}? Aiyo dear, my spices not so cheap lah. {price}.",
+          "Cannot {offer}. {price}, still very good."
+        ],
+        "final": [
+          "{price}, dear. That's it.",
+          "{price}. No lower, darling."
+        ],
+        "insulted": [
+          "{offer}?! Even the chilli also more than that!",
+          "Aiyo, {offer}? You joking with me ah?"
+        ],
+        "accept": [
+          "Done, {price}! Cook something nice ah!",
+          "{price}, yours. Your kitchen will smell amazing."
+        ],
+        "confirm": [
+          "Okay, {price}! Deal, dear?",
+          "{price} then, darling. Confirm?"
+        ],
+        "unsure": [
+          "Take your time, dear. {price}.",
+          "No rush, {price} still."
+        ],
+        "flattered": [
+          "Aiyo, so sweet! {price} for you.",
+          "You know good spice ah! {price}."
+        ],
+        "flattery_tired": [
+          "Sweet talk cannot season curry, dear.",
+          "Enough lah, buy or not?"
+        ],
+        "competitor_drop": [
+          "Their one old stock, dear. But okay, {price}.",
+          "Fine, {price} for you."
+        ],
+        "competitor_annoyed": [
+          "Then go lor, their masala no smell one. {price}.",
+          "Mine ground this morning. {price}."
+        ],
+        "bulk": [
+          "Two? Very good! {price} each.",
+          "For two, {price} each, dear."
+        ],
+        "regular": [
+          "Ah, my curry friend! {price} for you.",
+          "Regular customer! {price}."
+        ],
+        "smalltalk": [
+          "You cooking tonight ah? {price}.",
+          "Tekka so busy today. {price}."
+        ],
+        "plead": [
+          "Aiyo, okay lah, {price}.",
+          "For you, {price}."
+        ],
+        "plead_no": [
+          "Dear, say a price lah. {price} now.",
+          "How much you want? {price}."
+        ],
+        "pity": [
+          "Aiyo, poor thing. {price}, go cook something warm.",
+          "Don't worry, dear. {price}."
+        ],
+        "pity_tired": [
+          "Everyone also got sad story, dear. {price}.",
+          "Still {price}, darling."
+        ],
+        "rude": [
+          "Dear, talk nicely please.",
+          "Aiyo, no need to be rude."
+        ],
+        "deflect": [
+          "Haha, I'm married to my spices, dear. {price}.",
+          "Focus, darling! {item}, {price}."
+        ],
+        "budget_best": [
+          "{offer} not enough, dear. {price} is my lowest.",
+          "Sorry, {offer} cannot. {price} best."
+        ],
+        "clarify": [
+          "You mean you take it at {price}, dear?",
+          "Which one, darling? {price}, yes or no?"
+        ],
+        "callback": [
+          "Wait, dear! Okay, {price}, final final.",
+          "Come back! {price}, last price."
+        ],
+        "letgo": [
+          "Okay dear, come back when you cook.",
+          "Bye, darling! Next time ah."
+        ],
+        "refuse": [
+          "Enough for today, dear.",
+          "I'm tired, come back tomorrow."
+        ],
+        "confused": [
+          "How much you want, dear?",
+          "Give me a number, darling."
+        ],
+        "greet_rain": [
+          "Rainy day, perfect for curry! {item}, {price}.",
+          "Come in, dear, so wet! {item} {price}."
+        ],
+        "greet_closing": [
+          "Closing soon, dear! {item}, {price}.",
+          "Last customers! {price} for the {item}."
+        ],
+        "greet_festival": [
+          "Festival week, so busy! {item}, {price}.",
+          "Deepavali crowd! {item}, {price}."
+        ],
+        "greet_rival": [
+          "Last {item}, dear! {price}. That auntie also want.",
+          "Only one left! {price}. Quick!"
+        ],
+        "rival_bought": [
+          "Sorry dear, the auntie bought it already!",
+          "Sold! Too slow, darling."
+        ]
+      }
     }
   ],
   "player": {

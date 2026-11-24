@@ -255,7 +255,9 @@ void main() {
       for (final s in [...g.stickers(), ...g2.stickers()])
         if (s['earned'] != null) s['id'],
     };
-    final missing = {for (final (id, _, _, _) in stickerDefs) id}.difference(earned);
+    // the month-long ones (days played, 7 dailies, a quest week, 30 days) are earned in challenges_test's month
+    const monthLong = {'days3', 'dailies7', 'week_done', 'month'};
+    final missing = {for (final (id, _, _, _) in stickerDefs) id}.difference(earned).difference(monthLong);
     expect(missing, isEmpty, reason: 'never earned: $missing');
   });
 
@@ -303,7 +305,10 @@ void main() {
     final (g, _, _) = await newGame();
     final r = await g.start('mei', 'durian', 'none');
     await g.move(r['id'] as String, text: 'wah so expensive');
-    await g.move(r['id'] as String, move: 'walk');
+    var w = await g.move(r['id'] as String, move: 'walk');
+    while (w['done'] != true) {
+      w = await g.move(r['id'] as String, move: 'walk'); // she may call you back once
+    }
     final h = g.history();
     expect(h, hasLength(1));
     expect(h.first['item_name'], 'durian (1 kg)');

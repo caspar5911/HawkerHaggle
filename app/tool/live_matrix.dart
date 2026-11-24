@@ -180,6 +180,8 @@ Future<void> main(List<String> args) async {
   for (final (st, it, q, words) in [
     ('lee', 'oolong', 'where is this tea from?', ['anxi', 'fujian', 'tie guan yin']),
     ('boy', 'rccar', 'bro how long the battery last?', ['20', 'minute']),
+    ('wong', 'radio', 'uncle how old is this radio?', ['1970', 'seventies', '70s']),
+    ('kumar', 'saffron', 'is this real saffron?', ['kashmir', 'golden', 'real']),
   ]) {
     final g = await game.start(st, it, 'none');
     final r = await game.move(g['id'] as String, text: q);
