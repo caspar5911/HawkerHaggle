@@ -101,7 +101,10 @@ class Haggle:
         self.s.patience -= amount * (0.5 + self.p.temper)
 
     def _concede(self, toward: float, share: float) -> None:
-        """Move the asking price `share` of the way toward `toward`, never below the floor."""
+        """Move the asking price `share` of the way toward `toward`, never below the floor, and never again once
+        they've said their real best price (a sob story or a compliment afterwards doesn't change that)."""
+        if self.s.best_given:
+            return
         f = self.floor_now()
         target = max(toward, f)
         new = nice(self.s.ask - (self.s.ask - target) * clamp(share, 0.0, 1.0))
@@ -318,7 +321,7 @@ class Haggle:
     def _walk(self, _=None) -> Outcome:
         f = self.floor_now()
         room = self.s.ask - f
-        if room > f * 0.04 and self.rng.random() < self.p.callback * (0.6 + 0.15 * self.s.mood):
+        if not self.s.best_given and room > f * 0.04 and self.rng.random() < self.p.callback * (0.6 + 0.15 * self.s.mood):
             self.s.ask = max(nice((self.s.ask + f) / 2), nice(f))
             self._tire(10)
             return self._out("callback")

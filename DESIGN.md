@@ -6,9 +6,11 @@ wet markets and night markets.
 ## Pieces
 
 ```
-app/      Flutter client: stalls, the haggle chat, results. Talks only to the game server over HTTPS.
-server/   Python game server (FastAPI): anonymous device accounts, the haggling engine, AI calls, limits.
-content/  Stallholders, items and ready-made lines (JSON). Can be extended offline by the AI.
+app/lib/core/  The game, in plain Dart: engine (prices), reader (word rules, fast path), voice (safety checks),
+               ai_client (any OpenAI-compatible endpoint), game (haggles, lines, stats, reports).
+app/lib/       Screens, characters, animations, sounds; settings (AI endpoint, model, key).
+content/       Stallholders, items, facts and ready-made lines (JSON; copied into app/assets/content).
+server/        The original Python version: the reference the app is checked against.
 ```
 
 ## Who decides what
@@ -22,30 +24,33 @@ content/  Stallholders, items and ready-made lines (JSON). Can be extended offli
 
 ## Two ways to play
 
-* **Tap mode** (free, no AI): each turn offers 3 suggested moves; replies come from ready-made lines.
-* **Live mode**: type anything. Limited turns per player per day; more later via rewarded ads.
+* **Simple mode** (no AI set): works offline; typed messages are read by word rules, replies are ready-made lines.
+* **With an AI** (Settings → AI): any OpenAI-compatible endpoint. No daily limits in the app itself.
 
-## AI path and limits
+## AI path
 
 ```
-phone -> game server -> GLM on the owner's GX10 (private Tailscale link; never exposed)
+phone (the whole game) -> the AI endpoint set in Settings (optional)
 ```
 
-* At most a few AI calls at once (the GX10 also serves a trading bot, which comes first).
-* Per-player daily live-turn limit; short timeouts; on any failure the engine's ready-made line is used,
-  so the game never stalls.
-* A paid cloud model can be plugged in as a fallback later (`HH_FALLBACK_*`), keys only on the server.
+* The app sends only what's needed: the chat so far, the stallholder's brief and the prices the game decided.
+* At most 2 AI calls at once from a phone; short timeouts; on any failure a ready-made line is used.
+* Endpoints differ: if one rejects `reasoning_effort` or `response_format`, the app retries without them.
+* **Sharing your own model:** each phone talks to the endpoint directly, so friends need network access to it
+  (e.g. a Tailscale share limited to port 443). An unauthenticated endpoint can then be used by them for anything,
+  and there is no shared limit across phones. For a public release, use an endpoint with its own keys and limits.
 
-## Accounts and data
+## Data
 
-* Anonymous device accounts: the server issues a random token on first launch; only its hash is stored.
-  No free-text names (generated nicknames), no social login.
-* `DELETE /v1/me` removes a player's data (required by both stores); also reachable from a web page.
+Everything stays on the phone (secure storage): player name, finished haggles and stars, "she misunderstood me"
+reports, AI settings. **Delete my data** wipes the game data (AI settings stay). Reports can be copied from
+Settings and sent to the maker. Typed messages go to the AI endpoint the player set, and nowhere else.
 
 ## Launch checklist (later)
 
-Privacy policy URL, Play Data safety form, account deletion URL, content rating, a hosted server
-(not a home PC), `--dart-define=API_BASE=` pointing at it, a release keystore kept outside the repo.
+Privacy policy (typed messages go to the AI endpoint the player sets; nothing else leaves the phone), Play Data
+safety form, content rating, a release keystore kept outside the repo, and a decision on the default AI: none
+(simple mode), or a hosted endpoint with its own keys and limits.
 
 ## Reading typed messages
 The AI first writes what the player means in one plain sentence, then picks a move. A deal only closes on a clear
@@ -79,5 +84,5 @@ or don't ask for a yes on a deal are retried once, then a ready-made line is use
 
 ## "She misunderstood me"
 After a typed message, the player can report her reply. The report keeps the message, how it was read, and her
-reply, and is deleted with the player's data. Review them with `tools/flags.py`, then add real misreads to
-`server/tests/live_matrix.py` with the right expected move.
+reply, on the phone; Settings → Your reports → Copy gives text to send to the maker. Add real misreads to
+`server/tests/live_matrix.py` (and re-export `app/tool/live_cases.json`) with the right expected move.

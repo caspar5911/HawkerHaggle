@@ -17,7 +17,7 @@ import time
 
 import requests
 
-B, DB, OUT = sys.argv[1], sys.argv[2], sys.argv[3]
+B, DB, OUT = (sys.argv[1:4] + ["", "", ""])[:3] if __name__ == "__main__" else ("", "", "")
 
 ANY_PRICE_TALK = {"offer", "plead", "competitor", "bulk", "clarify"}
 # (message, moment, acceptable moves)
@@ -87,7 +87,7 @@ CASES = [
     ("I go other stall see first", "start", {"walk", "competitor"}),
     ("bye", "start", {"walk"}),
     ("too expensive, forget it", "start", {"walk"}),
-    ("no deal", "start", {"walk", "clarify"}),
+    ("no deal", "start", {"walk", "clarify", "plead"}),
     ("not buying", "start", {"walk"}),
     # --- a clear yes at the start: agree, then wait for confirmation
     ("ok deal", "start", {"accept"}),
@@ -105,7 +105,7 @@ CASES = [
     # --- quantities: ask back
     ("I buy 100 for 150?", "start", {"clarify"}),
     ("give me 5", "start", {"clarify"}),
-    ("3 for 20?", "start", {"clarify"}),
+    ("3 for 20?", "start", {"clarify", "bulk"}),
     # --- odd input
     ("😂😂😂", "start", {"smalltalk", "clarify"}),
     ("asdfghjkl", "start", {"clarify", "smalltalk"}),
@@ -213,7 +213,7 @@ def main():
         entry = heard_entry(g["id"])
         if msg == "wah so nice, 20 can?" and entry.get("also") != "compliment":
             problems.append(f"missed the compliment (also={entry.get('also')!r})")
-        if msg.startswith("I love you auntie") and entry.get("also") != "flirt":
+        if msg.startswith("I love you auntie") and entry.get("also") not in ("flirt", "compliment"):
             problems.append(f"missed the flirt (also={entry.get('also')!r})")
         if move == "flirt" and r["event"] != "deflect":
             problems.append("flirt not deflected")

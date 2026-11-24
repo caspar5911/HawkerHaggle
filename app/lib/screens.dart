@@ -1054,13 +1054,49 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late final _server = TextEditingController(text: widget.api.server);
+  final _endpoint = TextEditingController();
+  final _model = TextEditingController();
+  final _key = TextEditingController();
+  bool _showKey = false;
+  bool _testing = false;
+  String? _testResult;
+  int _reports = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      await widget.api.ensureDevice();
+      final n = await widget.api.reportCount();
+      if (!mounted) return;
+      setState(() {
+        _endpoint.text = widget.api.ai.endpoint;
+        _model.text = widget.api.ai.model;
+        _key.text = widget.api.ai.apiKey;
+        _reports = n;
+      });
+    }();
+  }
 
   @override
   void dispose() {
-    _server.dispose();
+    _endpoint.dispose();
+    _model.dispose();
+    _key.dispose();
     super.dispose();
   }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  InputDecoration _box(String hint, {Widget? suffix}) => InputDecoration(
+    hintText: hint,
+    filled: true,
+    fillColor: Colors.white,
+    suffixIcon: suffix,
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+  );
+
+  static const _title = TextStyle(fontSize: 20, fontWeight: FontWeight.w700);
 
   @override
   Widget build(BuildContext context) {
@@ -1071,11 +1107,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Text('About', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+          const Text('About', style: _title),
           const SizedBox(height: 6),
           const Text(
-            'Hawker Haggle is a game. Stallholders are made-up characters; their lines in "✨" bubbles are written by AI '
-            'and the game decides every price. Your device gets an anonymous account: no email, no real name.',
+            'Hawker Haggle is a game. Stallholders are made-up characters and the game decides every price. '
+            'Everything is kept on this phone: no account, no email. If you set an AI below, what you type in chats '
+            'is sent to that AI to read and to write the replies in "✨" bubbles.',
             style: TextStyle(height: 1.4),
           ),
           const SizedBox(height: 20),
@@ -1089,7 +1126,107 @@ class _SettingsScreenState extends State<SettingsScreen> {
               setState(() {});
             },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
+          const Text('AI (optional)', style: _title),
+          const SizedBox(height: 6),
+          const Text(
+            'Any OpenAI-compatible endpoint: your own model, Ollama, LM Studio, OpenAI, OpenRouter... '
+            'Leave the address empty to play in simple mode (taps and ready-made lines, works offline).',
+            style: TextStyle(height: 1.4, color: Palette.soft),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            key: const ValueKey('ai_endpoint'),
+            controller: _endpoint,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            decoration: _box('Address, e.g. https://example.com/v1'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('ai_model'),
+            controller: _model,
+            autocorrect: false,
+            decoration: _box('Model name, e.g. gpt-4o-mini'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey('ai_key'),
+            controller: _key,
+            autocorrect: false,
+            obscureText: !_showKey,
+            decoration: _box(
+              'API key (if your endpoint needs one)',
+              suffix: IconButton(
+                icon: Icon(_showKey ? Icons.visibility_off_rounded : Icons.visibility_rounded),
+                onPressed: () => setState(() => _showKey = !_showKey),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Bouncy(
+                  enabled: !_testing,
+                  onTap: () async {
+                    setState(() {
+                      _testing = true;
+                      _testResult = null;
+                    });
+                    final r = await api.testAi(endpoint: _endpoint.text, model: _model.text, apiKey: _key.text);
+                    if (mounted) {
+                      setState(() {
+                        _testing = false;
+                        _testResult = r;
+                      });
+                    }
+                  },
+                  child: Pill(text: _testing ? 'Testing…' : 'Test', icon: '🔌'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Bouncy(
+                  onTap: () async {
+                    await api.setAi(endpoint: _endpoint.text, model: _model.text, apiKey: _key.text);
+                    if (!context.mounted) return;
+                    _toast(api.ai.enabled ? 'AI saved. Happy haggling!' : 'Simple mode: no AI.');
+                    Navigator.of(context).pop();
+                  },
+                  child: const Pill(text: 'Save', icon: '💾', color: Palette.gold),
+                ),
+              ),
+            ],
+          ),
+          if (_testResult != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _testResult!,
+              style: const TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
+            ),
+          ],
+          const SizedBox(height: 28),
+          const Text('Your reports', style: _title),
+          const SizedBox(height: 6),
+          Text(
+            _reports == 0
+                ? 'When a stallholder misunderstands you, tap "🤔 She misunderstood me". Reports are kept here.'
+                : '$_reports report${_reports == 1 ? '' : 's'} saved. Copy them and send them to the game\'s maker '
+                      'to help her understand better.',
+            style: const TextStyle(height: 1.4),
+          ),
+          if (_reports > 0) ...[
+            const SizedBox(height: 8),
+            Bouncy(
+              onTap: () async {
+                await Clipboard.setData(ClipboardData(text: await api.reportsText()));
+                if (context.mounted) _toast('Copied! Paste it into a message.');
+              },
+              child: const Pill(text: 'Copy reports', icon: '📋'),
+            ),
+          ],
+          const SizedBox(height: 28),
           Bouncy(
             onTap: () async {
               final ok = await showDialog<bool>(
@@ -1097,7 +1234,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 builder: (c) => AlertDialog(
                   title: const Text('Delete my data?'),
                   content: const Text(
-                    'Your haggles, stars and player name are removed from the server. This cannot be undone.',
+                    'Your haggles, stars, player name and reports are removed from this phone. Your AI settings stay. '
+                    'This cannot be undone.',
                   ),
                   actions: [
                     TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep')),
@@ -1109,39 +1247,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               try {
                 await api.deleteMe();
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted. Fresh start!')));
+                  _toast('Deleted. Fresh start!');
                   Navigator.of(context).pop();
                 }
               } on ApiError catch (e) {
-                if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+                if (context.mounted) _toast(e.message);
               }
             },
             child: const Pill(text: 'Delete my data', icon: '🗑️', color: Palette.red, textColor: Colors.white),
-          ),
-          const SizedBox(height: 36),
-          const Text('Server (test builds)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          TextField(
-            controller: _server,
-            keyboardType: TextInputType.url,
-            autocorrect: false,
-            decoration: InputDecoration(
-              hintText: 'https://…',
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Bouncy(
-            onTap: () async {
-              await api.setServer(_server.text);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Server set to ${api.server}')));
-                Navigator.of(context).pop();
-              }
-            },
-            child: const Pill(text: 'Use this server', icon: '🔌', color: Palette.gold),
           ),
         ],
       ),

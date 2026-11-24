@@ -55,6 +55,10 @@ Moves: offer, budget (all they can pay), plead (cheaper without a number), pity 
 bulk (buy two), regular, smalltalk (chat or any clear question), rude, flirt, walk, accept (clear yes), clarify
 (unclear, so ask back), confirm (yes to a waiting deal). "also" = a second intent in the same message.
 
+How the game works (this is by design, not a problem): when she agrees to a price she asks the customer to confirm
+("deal or not?") and the sale closes on their yes. If the customer offers MORE than a price she already agreed,
+they pay her lower agreed price. Bulk prices are per piece.
+
 Transcript:
 {transcript}
 
@@ -135,6 +139,7 @@ def play(base: str, db: str, cust: dict, h: dict) -> dict:
         turns.append({"who": "you", "text": msg, "move": you.get("move"), "also": you.get("also", ""),
                       "reading": you.get("reading", "")})
         turns.append({"who": "them", "text": r["line"], "event": r["event"], "ask": r["ask"], "pending": r["pending"],
+                      "deal": r["deal"], "qty": r["qty"],
                       "ai": r["ai_line"], "secs": round(time.time() - t, 1), "done": r["done"], "result": r["result"]})
         if r["done"]:
             break
@@ -148,7 +153,12 @@ def review(h: dict, stall: dict, item: dict) -> list:
             n += 1
             lines.append(f"[{n}] Customer: {t['text']}\n    read as: {t['move']}" + (f" + also {t['also']}" if t.get("also") else ""))
         elif t["who"] == "them":
-            extra = f" (event {t['event']}, price ${t['ask']:g}" + (f", waiting for yes at ${t['pending']:g}" if t.get("pending") else "") + ")"
+            if t.get("deal"):
+                extra = f" (event {t['event']}: SOLD at ${t['deal']:g}" + (" each, two pieces" if t.get("qty", 1) > 1 else "") + ")"
+            elif t.get("pending"):
+                extra = f" (event {t['event']}: she agreed at ${t['pending']:g}, waiting for the customer's yes)"
+            else:
+                extra = f" (event {t['event']}, her asking price now ${t['ask']:g}" + (" each, buying two" if t.get("qty", 1) > 1 else "") + ")"
             lines.append(f"    {stall['name']}: {t['text']}{extra}")
     data = model(REVIEW.format(who=stall["name"], voice=stall.get("voice", ""),
                                facts="; ".join(stall.get("facts", []) + item.get("facts", [])),

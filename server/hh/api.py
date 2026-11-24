@@ -104,7 +104,7 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             heard = Heard("accept", None, False, reading="plain yes")
         elif ai.enabled:
             heard = ai.understand(text, chat, h.s.ask, item["name"], stall["name"], pending=h.s.pending,
-                                  last_offer=h.s.last_offer)
+                                  last_offer=h.s.last_offer, qty=h.s.qty)
         else:
             heard = heard_by_rules(text)
         if heard.rel_op:
@@ -119,6 +119,12 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             if price <= 0:
                 return heard._replace(move="clarify", price=None, unclear="what price they want to pay")
             heard = heard._replace(move="offer" if heard.move not in ("budget",) else heard.move, price=price)
+        if heard.qty and heard.qty > 2 and heard.move in ("bulk", "offer"):
+            # The stalls sell at most two per customer: read their price per piece and say so in the reply.
+            per_piece = heard.price / heard.qty if heard.price and heard.per == "total" else heard.price
+            return heard._replace(move="bulk", price=per_piece, per="each")
+        if heard.move == "offer" and heard.price and heard.per == "total" and h.s.qty > 1:
+            heard = heard._replace(price=heard.price / 2)     # "two cases, 14" while buying two: $7 each
         if heard.move == "bulk" and heard.price:
             if heard.per == "total":
                 heard = heard._replace(price=heard.price / 2)
@@ -243,7 +249,9 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             said = ai.say(stall, item, event, {"ask": h.s.ask, "offer": out.offer if out else None,
                                                "deal": h.s.deal or h.s.pending},
                           history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening],
-                          unclear=unclear, budget=h.s.budget, patience=h.s.patience, also=heard.also)
+                          unclear=unclear, budget=h.s.budget, patience=h.s.patience, also=heard.also,
+                          note=(f"They asked for {heard.qty}; you only have two left today, so say you can sell "
+                                f"them two (prices are per piece)." if heard.qty and heard.qty > 2 else ""))
             ai_line = said is not None
             store.add_ai_use(p["id"], today())          # usage stats only, not a limit
         said = said or line(stall, item, event, h, offer=out.offer if out else None, seed=sess["seed"], chat=chat)

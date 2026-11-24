@@ -239,3 +239,15 @@ def test_flirting_gets_deflected_and_does_not_help():
     h = Haggle(FISH, SOFT)
     out = h.move("flirt")
     assert out.event == "deflect" and h.s.ask == FISH.ask and h.s.mood < 0
+
+
+def test_once_she_says_her_best_nothing_moves_her_lower():
+    for persona in (SOFT, KIND, GRUFF):
+        h = Haggle(FISH, persona, seed=4)
+        assert h.move("budget", 11).event == "budget_best"
+        best = h.s.ask
+        for kind in ("pity", "compliment", "plead", "regular", "competitor", "bulk", "walk"):
+            if h.s.done:
+                break
+            h.move(kind)
+            assert h.s.ask >= best, (kind, h.s.ask, best)

@@ -1,15 +1,18 @@
 # Hawker Haggle app (Flutter: Android, iOS)
 
+The whole game runs in the app (`lib/core`, plain Dart). The only optional network use is the AI endpoint set in
+Settings → AI (any OpenAI-compatible address, model name, optional API key).
+
 ```bash
 flutter pub get
-flutter test
-# Android test build pointing at a server (or set it later in Settings > Server):
-flutter build apk --release --dart-define=API_BASE=https://your-server
+flutter test        # reference check vs the Python version, full sweep, scenarios with a pretend AI, screens
+flutter build apk --release --split-per-abi
+# private build with your endpoint pre-filled (don't publish it):
+flutter build apk --release --split-per-abi --dart-define=AI_ENDPOINT=https://host/v1 --dart-define=AI_MODEL=name
+AI_ENDPOINT=https://host/v1 AI_MODEL=name dart run tool/live_matrix.dart report.md   # live check
 ```
 
 * Characters are drawn in code (`lib/character.dart`): they blink, breathe, talk and react to each move.
-  Real illustrations can replace the painter later without touching the game screens.
-* The player is an anonymous device account; the token lives in secure storage (Keychain / Keystore).
+* Progress, reports and the AI key live in secure storage (Keychain / Keystore). Delete my data wipes the game data.
+* Android blocks plain `http://` addresses; use `https://` endpoints (Tailscale serve gives one).
 * iOS: the same code builds on a Mac with Xcode (`flutter build ipa`); needs an Apple developer account to ship.
-* Before a store release: a real signing key (kept out of git), an HTTPS server, and removing the test-only
-  Server field in Settings.

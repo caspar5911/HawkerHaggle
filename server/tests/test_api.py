@@ -479,3 +479,20 @@ def test_flag_records_the_reading():
     assert f["exchange"]["reading"] == "they want the left one" and f["exchange"]["reply"] == "Left one also same!"
     c.delete("/v1/me", headers=h)
     assert st.flags() == []                                                             # gone with the player
+
+
+def test_more_than_two_items_becomes_two_at_a_per_piece_price_and_she_is_told():
+    model = FakeModel(move='{"move": "bulk", "price": 54, "per": "total", "qty": 3}', line="Only got two left lah!")
+    c, h, g = haggle_with(model)
+    r = move(c, h, g, text="3 of us split, $54 for 3kg can?")
+    assert r["qty"] == 2 and r["event"] != "clarify"
+    assert "only have two left" in model.calls[-1]["messages"][0]["content"]
+
+
+def test_she_may_repeat_the_other_stalls_price():
+    model = FakeModel(move='{"move": "competitor", "price": null}', line="Geylang one $10? Theirs old one. Still $32.")
+    c, h, g = haggle_with(model)
+    r = move(c, h, g, text="geylang sell $10 only leh")
+    assert r["event"].startswith("competitor")
+    if r["event"] == "competitor_annoyed":
+        assert r["ai_line"]                                         # not thrown away for quoting their $10

@@ -1,14 +1,11 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
 import 'package:hawker_haggle/character.dart';
+import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/main.dart';
 import 'package:hawker_haggle/sfx.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 
 const look = {'skin': '#F5D0B5', 'hair': '#4A3B35', 'shirt': '#F28FA3', 'apron': '#FFF2C7', 'accessory': 'perm'};
 
@@ -56,46 +53,50 @@ Map<String, dynamic> game(
   };
 }
 
-/// A pretend game server. Each move gets the next scripted reply; `down` makes every call fail like no internet.
-class Fake {
-  Fake(this.replies);
+/// A pretend game: each move gets the next scripted reply; `down` makes loading fail once.
+class Fake extends Game {
+  Fake(this.replies) : super(content: const {'stalls': [], 'player': {}}, store: MemoryKeyValue());
   final List<Map<String, dynamic>> replies;
   final sent = <Map<String, dynamic>>[];
   int flags = 0;
   bool down = false;
 
-  MockClient get client => MockClient((req) async {
-    if (down) throw http.ClientException('no internet');
-    final p = req.url.path;
-    if (req.body.isNotEmpty && p.endsWith('/move')) sent.add(jsonDecode(req.body) as Map<String, dynamic>);
-    final Object body = switch (p) {
-      '/v1/device' => {
-        'token': 't',
-        'player': {'name': 'Shiok Otter 123'},
-      },
-      '/v1/me' => {'name': 'Shiok Otter 123', 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0, 'live_left': 999},
-      '/v1/stalls' => {
-        'stalls': [
-          {
-            'id': 'mei',
-            'name': 'Auntie Mei',
-            'stall': 'Fruit stall',
-            'place': 'Wet market',
-            'look': look,
-            'items': [
-              {'id': 'mango', 'name': 'box of mangoes', 'emoji': '🥭', 'ask': 18, 'stars': 2},
-            ],
-          },
+  @override
+  Future<void> load() async {}
+  @override
+  Map<String, Object?> me() {
+    if (down) throw GameError(0, "Can't reach the market. Check your internet.");
+    return {'name': 'Shiok Otter 123', 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0};
+  }
+
+  @override
+  Map<String, Object?> stalls() => {
+    'stalls': [
+      {
+        'id': 'mei',
+        'name': 'Auntie Mei',
+        'stall': 'Fruit stall',
+        'place': 'Wet market',
+        'look': look,
+        'items': [
+          {'id': 'mango', 'name': 'box of mangoes', 'emoji': '🥭', 'ask': 18, 'stars': 2},
         ],
       },
-      '/v1/haggle' => game('Morning my dear! \$18 only.'),
-      '/v1/haggle/g1/move' => replies.removeAt(0),
-      '/v1/haggle/g1/flag' => {'thanks': (++flags) > 0},
-      _ => {'detail': 'nope'},
-    };
-    return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
-  });
+    ],
+  };
+  @override
+  Future<Map<String, Object?>> start(String stallId, [String? itemId]) async => game('Morning my dear! \$18 only.');
+  @override
+  Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text}) async {
+    sent.add({'pick': ?pick, 'move': ?move, 'text': ?text});
+    return replies.removeAt(0);
+  }
+
+  @override
+  Future<void> flag(String id) async => flags++;
 }
+
+Api apiFor(Fake f) => Api(game: f, content: const {}, store: MemoryKeyValue());
 
 Future<void> settle(WidgetTester t, [int ms = 1500]) async {
   for (var i = 0; i < ms ~/ 100; i++) {
@@ -105,11 +106,7 @@ Future<void> settle(WidgetTester t, [int ms = 1500]) async {
 
 Future<Fake> openHaggle(WidgetTester tester, List<Map<String, dynamic>> replies) async {
   final fake = Fake(replies);
-  await tester.pumpWidget(
-    HawkerHaggleApp(
-      api: Api(client: fake.client, base: 'http://test'),
-    ),
-  );
+  await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
   await settle(tester, 2000);
   await tester.tap(find.text('box of mangoes'));
   await settle(tester);
@@ -255,11 +252,7 @@ void main() {
 
   testWidgets('no internet shows a friendly message and Try again works', (tester) async {
     final fake = Fake([])..down = true;
-    await tester.pumpWidget(
-      HawkerHaggleApp(
-        api: Api(client: fake.client, base: 'http://test'),
-      ),
-    );
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
     await settle(tester, 2000);
     expect(find.textContaining("Can't reach the market"), findsOneWidget);
     fake.down = false;
@@ -268,9 +261,8 @@ void main() {
     expect(find.text('Auntie Mei'), findsOneWidget);
   });
 
-  testWidgets('settings: sound switch and server address', (tester) async {
-    final fake = Fake([]);
-    final api = Api(client: fake.client, base: 'http://test');
+  testWidgets('settings: sound switch and the AI endpoint', (tester) async {
+    final api = apiFor(Fake([]));
     await tester.pumpWidget(HawkerHaggleApp(api: api));
     await settle(tester, 2000);
     await tester.tap(find.byIcon(Icons.settings_rounded));
@@ -281,12 +273,17 @@ void main() {
     expect(Sfx.muted, isTrue);
     await tester.tap(find.byType(Switch));
     await settle(tester, 500);
-    expect(Sfx.muted, isFalse);
 
-    await tester.enterText(find.byType(TextField), 'https://example.test/');
-    await tester.tap(find.text('Use this server'));
+    await tester.dragUntilVisible(find.text('Save'), find.byType(ListView).last, const Offset(0, -200));
+    await tester.enterText(find.byKey(const ValueKey('ai_endpoint')), 'https://example.test/v1/');
+    await tester.enterText(find.byKey(const ValueKey('ai_model')), 'test-model');
+    await tester.enterText(find.byKey(const ValueKey('ai_key')), 'secret');
+    await tester.tap(find.text('Save'));
     await settle(tester, 1500);
-    expect(api.server, 'https://example.test');
+    expect(api.ai.endpoint, 'https://example.test/v1/');
+    expect(api.ai.model, 'test-model');
+    expect(api.ai.apiKey, 'secret');
+    expect(api.ai.chatUri.toString(), 'https://example.test/v1/chat/completions');
     await settle(tester, 4000);
   });
 

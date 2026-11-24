@@ -94,8 +94,8 @@
           "They cheaper ah? Hmm... {price}, don't tell people."
         ],
         "competitor_annoyed": [
-          "Then you go buy from them lor!",
-          "Their {item} old one leh. My price still {price}."
+          "Aiyo, their one sure not as sweet as mine, my dear. Still {price}.",
+          "You go see lah, but come back ah. Mine still {price}."
         ],
         "bulk": [
           "Buy two ah? OK, {price} each, happy?",
@@ -174,7 +174,11 @@
       "max_words": 30,
       "facts": [
         "Has sold fruit at this wet market for 30 years",
-        "Her grandson helps on Saturdays"
+        "Her grandson helps on Saturdays",
+        "Open 7am to 1pm, closed on Mondays",
+        "Takes cash or PayNow",
+        "No delivery and no reservations: first come, first served",
+        "Gives plastic bags"
       ]
     },
     {
@@ -350,7 +354,11 @@
       "max_words": 14,
       "facts": [
         "Has sold fish here for 40 years, took over from his father",
-        "Goes to Jurong Fishery Port at 3am every day"
+        "Goes to Jurong Fishery Port at 3am every day",
+        "Open 6am to 12 noon, closed on Mondays",
+        "Cash only",
+        "Cleans and scales the fish for customers",
+        "No reservations"
       ]
     },
     {
@@ -522,7 +530,11 @@
       "voice": "Cheerful, fast-talking night-market salesman. Calls everyone 'boss', loves exclamation marks and jokes, very persuasive.",
       "max_words": 28,
       "facts": [
-        "Has run this night-market stall every Friday to Sunday for 8 years"
+        "Has run this night-market stall every Friday to Sunday for 8 years",
+        "Open 6pm to midnight, Friday to Sunday",
+        "Takes cash, PayNow or card",
+        "Gives a receipt if asked",
+        "No delivery"
       ]
     },
     {
@@ -697,7 +709,11 @@
       "max_words": 28,
       "facts": [
         "Makes everything herself at home",
-        "Learned batik and kueh from her mother"
+        "Learned batik and kueh from her mother",
+        "Open 5pm to 11pm while the bazaar is on",
+        "Takes cash or PayNow",
+        "Her kueh is halal, made at home",
+        "Can gift-wrap the scarf"
       ]
     }
   ],

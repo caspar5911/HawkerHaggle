@@ -1,12 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
-/// The game server's address, set at build time:
-///   flutter build apk --dart-define=API_BASE=https://your-server
-const apiBase = String.fromEnvironment('API_BASE', defaultValue: 'http://10.0.2.2:8090');
+import 'core/ai_client.dart';
+import 'core/game.dart';
+
+/// Defaults for a private build (never put a private address in the public repo):
+///   flutter build apk --dart-define=AI_ENDPOINT=https://host/v1 --dart-define=AI_MODEL=name
+const defaultEndpoint = String.fromEnvironment('AI_ENDPOINT');
+const defaultModel = String.fromEnvironment('AI_MODEL');
 
 class ApiError implements Exception {
   ApiError(this.code, this.message);
@@ -16,96 +21,91 @@ class ApiError implements Exception {
   String toString() => message;
 }
 
-/// Talks to the game server. The player is an anonymous device account: the server issues a random token on
-/// first launch, kept in the phone's secure storage (Keychain on iOS, Keystore-backed on Android).
+/// Secure storage on the phone (Keystore-backed on Android, Keychain on iOS).
+class SecureKeyValue implements KeyValue {
+  SecureKeyValue([FlutterSecureStorage? s]) : _s = s ?? const FlutterSecureStorage();
+  final FlutterSecureStorage _s;
+  @override
+  Future<String?> read(String key) => _s.read(key: key);
+  @override
+  Future<void> write(String key, String value) => _s.write(key: key, value: value);
+  @override
+  Future<void> delete(String key) => _s.delete(key: key);
+}
+
+/// What the screens talk to. The whole game runs on the phone ([Game]); the only network use is the optional AI
+/// endpoint set in Settings. With no AI set, the game plays in simple mode: taps, word rules, ready-made lines.
+// Named parameters can't be private, so these fields are set in the initializer list.
+// ignore_for_file: prefer_initializing_formals
 class Api {
-  Api({http.Client? client, FlutterSecureStorage? storage, String? base})
-    : _http = client ?? http.Client(),
-      _storage = storage ?? const FlutterSecureStorage(),
-      _base = base ?? apiBase;
+  Api({KeyValue? store, http.Client? aiHttp, Map? content, Game? game})
+    : _store = store ?? SecureKeyValue(),
+      _aiHttp = aiHttp,
+      _content = content,
+      _game = game;
 
-  final http.Client _http;
-  final FlutterSecureStorage _storage;
-  String _base;
-  bool _baseLoaded = false;
-  String? _token;
+  final KeyValue _store;
+  final http.Client? _aiHttp;
+  Map? _content;
+  Game? _game;
+  Future<void>? _ready;
+  AiConfig _ai = const AiConfig();
 
-  String get server => _base;
+  AiConfig get ai => _ai;
 
-  /// Point the app at another server (test builds: Settings > Server). A new server means a new account there.
-  Future<void> setServer(String url) async {
-    final u = url.trim().replaceAll(RegExp(r'/+$'), '');
-    _base = u.isEmpty ? apiBase : u;
-    await _storage.write(key: 'server', value: _base);
-    await _storage.delete(key: 'token');
-    _token = null;
+  Future<void> ensureDevice() => _ready ??= _init();
+
+  Future<void> _init() async {
+    _content ??= jsonDecode(await rootBundle.loadString('assets/content/stalls.json')) as Map;
+    _ai = AiConfig(
+      endpoint: await _store.read('ai_endpoint') ?? defaultEndpoint,
+      model: await _store.read('ai_model') ?? defaultModel,
+      apiKey: await _store.read('ai_key') ?? '',
+    );
+    _game ??= Game(content: _content!, store: _store);
+    _game!.ai = AiClient(_ai, client: _aiHttp);
+    await _game!.load();
   }
 
-  Future<void> ensureDevice() async {
-    if (!_baseLoaded) {
-      _baseLoaded = true;
-      _base = (await _storage.read(key: 'server')) ?? _base;
-    }
-    _token ??= await _storage.read(key: 'token');
-    if (_token == null) {
-      final r = await _send('POST', '/v1/device', auth: false);
-      _token = r['token'] as String;
-      await _storage.write(key: 'token', value: _token);
-    }
-  }
-
-  Future<Map<String, dynamic>> me() => _send('GET', '/v1/me');
-  Future<Map<String, dynamic>> stalls() => _send('GET', '/v1/stalls');
-  Future<Map<String, dynamic>> start(String stall, String item) =>
-      _send('POST', '/v1/haggle', body: {'stall': stall, 'item': item});
-  Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text}) =>
-      _send('POST', '/v1/haggle/$id/move', body: {'pick': ?pick, 'move': ?move, 'text': ?text});
-
-  /// "She misunderstood me": reports the last typed message and her reply so the game can learn from it.
-  Future<void> flag(String id) => _send('POST', '/v1/haggle/$id/flag');
-
-  Future<void> deleteMe() async {
-    await _send('DELETE', '/v1/me');
-    await _storage.delete(key: 'token');
-    _token = null;
-  }
-
-  Future<Map<String, dynamic>> _send(
-    String method,
-    String path, {
-    Map<String, dynamic>? body,
-    bool auth = true,
-    bool retried = false,
-  }) async {
-    if (auth) {
-      await ensureDevice();
-    } else if (!_baseLoaded) {
-      _baseLoaded = true;
-      _base = (await _storage.read(key: 'server')) ?? _base;
-    }
-    final uri = Uri.parse('$_base$path');
-    final headers = {'Content-Type': 'application/json', if (auth && _token != null) 'Authorization': 'Bearer $_token'};
-    http.Response r;
+  Future<T> _run<T>(FutureOr<T> Function(Game g) f) async {
     try {
-      final req = http.Request(method, uri)..headers.addAll(headers);
-      if (body != null) req.body = jsonEncode(body);
-      r = await http.Response.fromStream(await _http.send(req).timeout(const Duration(seconds: 40)));
-    } on TimeoutException {
-      throw ApiError(0, 'The market is very busy. Try again!');
-    } catch (_) {
-      throw ApiError(0, "Can't reach the market. Check your internet.");
+      await ensureDevice();
+      return await f(_game!);
+    } on GameError catch (e) {
+      throw ApiError(e.code, e.message);
+    } catch (e) {
+      if (e is ApiError) rethrow;
+      throw ApiError(0, 'Something went wrong. Try again!');
     }
-    if (r.statusCode == 401 && auth && !retried) {
-      // The server forgot this device (e.g. data deleted): register again once.
-      await _storage.delete(key: 'token');
-      _token = null;
-      return _send(method, path, body: body, auth: auth, retried: true);
-    }
-    final data = r.body.isEmpty ? <String, dynamic>{} : jsonDecode(utf8.decode(r.bodyBytes));
-    if (r.statusCode >= 400) {
-      final msg = data is Map && data['detail'] is String ? data['detail'] as String : 'Something went wrong.';
-      throw ApiError(r.statusCode, msg);
-    }
-    return Map<String, dynamic>.from(data as Map);
+  }
+
+  Future<Map<String, dynamic>> me() => _run((g) => Map<String, dynamic>.from(g.me()));
+  Future<Map<String, dynamic>> stalls() => _run((g) => Map<String, dynamic>.from(g.stalls()));
+  Future<Map<String, dynamic>> start(String stall, String item) =>
+      _run((g) async => Map<String, dynamic>.from(await g.start(stall, item)));
+  Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text}) =>
+      _run((g) async => Map<String, dynamic>.from(await g.move(id, pick: pick, move: move, text: text)));
+  Future<void> flag(String id) => _run((g) => g.flag(id));
+  Future<void> deleteMe() => _run((g) => g.deleteAll());
+  Future<int> reportCount() => _run((g) => g.reports.length);
+  Future<String> reportsText() => _run((g) => g.reportsText());
+
+  /// Settings > AI: point the game at any OpenAI-compatible endpoint (or none, for simple mode).
+  Future<void> setAi({required String endpoint, required String model, required String apiKey}) async {
+    await ensureDevice();
+    _ai = AiConfig(endpoint: endpoint.trim(), model: model.trim(), apiKey: apiKey.trim());
+    await _store.write('ai_endpoint', _ai.endpoint);
+    await _store.write('ai_model', _ai.model);
+    await _store.write('ai_key', _ai.apiKey);
+    _game!.ai = AiClient(_ai, client: _aiHttp);
+  }
+
+  Future<String> testAi({required String endpoint, required String model, required String apiKey}) async {
+    final c = AiClient(
+      AiConfig(endpoint: endpoint.trim(), model: model.trim(), apiKey: apiKey.trim()),
+      client: _aiHttp,
+    );
+    if (!c.enabled) return 'No AI set: the game plays in simple mode.';
+    return c.testConnection();
   }
 }
