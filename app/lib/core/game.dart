@@ -8,6 +8,7 @@ import 'dart:math' as math;
 
 import 'ai_client.dart';
 import 'engine.dart';
+import 'progress.dart';
 import 'reader.dart';
 import 'voice.dart';
 
@@ -83,12 +84,53 @@ class _Session {
   final chat = <Map<String, Object?>>[];
   List<Map<String, Object?>> shown = []; // the suggestions on screen right now
   bool recorded = false;
+  int nice = 0; // friendly moves (compliments, "I'm a regular"): a little extra friendship
+  bool rude = false;
+  bool calledBack = false;
+  Map<String, Object?> finish = const {}; // new stickers, Mum's note, unlocks (when it ends)
 }
 
+/// The short banner shown during a haggle with a market surprise.
+String surpriseNote(String event, String name, int rivalLeft) => switch (event) {
+  'rain' => '🌧️ Rainy day: the market is empty and $name is keen to sell!',
+  'closing' => "⏰ Closing time: $name wants to clear stock, but she's tired. Be quick!",
+  'festival' => '🎉 Festival day: prices are up, everyone is cheerful!',
+  'rival' =>
+    rivalLeft > 0
+        ? '👵 Auntie Rose wants the last one too: $rivalLeft move${rivalLeft == 1 ? '' : 's'} left!'
+        : '👵 Auntie Rose got it…',
+  _ => '',
+};
+
+/// What the AI is told about a surprise (number-free, so its reply passes the price check).
+String surpriseForAi(String event, int rivalLeft) => switch (event) {
+  'rain' => "It's raining and the market is empty: you're keen to make a sale.",
+  'closing' => "It's nearly closing time: you want to clear your stock, but you're tired.",
+  'festival' => "It's a festival day: the market is busy and cheerful, and your prices are higher today.",
+  'rival' =>
+    rivalLeft == 1
+        ? 'Another customer, Auntie Rose, is about to buy this last one: warn them it is now or never.'
+        : 'Another customer, Auntie Rose, also wants this last one: now and then hurry the customer along.',
+  _ => '',
+};
+
 class Game {
-  Game({required this.content, required this.store, AiClient? ai, math.Random? random})
-    : ai = ai ?? AiClient(const AiConfig()),
-      _rnd = random ?? math.Random.secure();
+  Game({
+    required this.content,
+    required this.store,
+    AiClient? ai,
+    math.Random? random,
+    DateTime Function()? now,
+    this.unlockAll = false,
+    this.surprises = true,
+  }) : ai = ai ?? AiClient(const AiConfig()),
+       _rnd = random ?? math.Random.secure(),
+       now = now ?? DateTime.now;
+
+  final DateTime Function() now;
+  final bool unlockAll; // tests: every stall open
+  final bool surprises; // tests: no random market surprises
+  Progress get progress => Progress(_profile, content, now);
 
   final Map content;
   final KeyValue store;
@@ -110,8 +152,22 @@ class Game {
         'haggles': <Object>[],
         'reports': <Object>[],
       };
-      await _save();
     }
+    progress.migrate(); // older profiles get the new parts, with credit for past haggles
+    await _save();
+  }
+
+  bool get hard => _profile['hard'] == true;
+  Future<void> setHard(bool on) async {
+    _profile['hard'] = on;
+    await _save();
+  }
+
+  Map<String, Object?> today() => progress.today();
+  List<Map<String, Object?>> stickers() => progress.stickers();
+  Map<String, Object?> stallProfile(String id) {
+    if (_stalls[id] == null) throw GameError(404, 'No such stall');
+    return progress.profile(id);
   }
 
   Future<void> _save() => store.write('profile', jsonEncode(_profile));
@@ -126,6 +182,9 @@ class Game {
       'deals': done.where((h) => h['result'] == 'deal').length,
       'stars': done.fold<int>(0, (a, h) => a + ((h['stars'] ?? 0) as num).toInt()),
       'best_saved': done.fold<double>(0, (a, h) => math.max(a, ((h['saved'] ?? 0) as num).toDouble())),
+      'best_stars': progress.bestStars(),
+      'streak': progress.streak(),
+      'stickers': progress.stickers().where((x) => x['earned'] != null).length,
     };
   }
 
@@ -144,6 +203,9 @@ class Game {
             'stall': s['stall'],
             'place': s['place'],
             'look': s['look'],
+            'hearts': progress.hearts(s['id'] as String),
+            'locked': !progress.unlocked(s['id'] as String),
+            'unlock_at': progress.unlockAt(s['id'] as String),
             'items': [
               for (final i in s['items'] as List)
                 {
@@ -200,6 +262,13 @@ class Game {
   }
 
   String _who(_Session ss) => '${ss.stall['address'] ?? 'boss'}';
+
+  /// What the AI should know beyond the chat: the market surprise and how well she knows this customer.
+  String _notes(_Session ss, [String extra = '']) => [
+    surpriseForAi(ss.h.s.event, ss.h.s.rivalLeft),
+    progress.memoryNote('${ss.stall['id']}', '${_profile['name']}'),
+    extra,
+  ].where((x) => x.isNotEmpty).join(' ');
 
   List<Map<String, Object?>> _suggestions(_Session ss) => [
     for (final (i, s) in ss.h.suggestions().indexed)
@@ -296,16 +365,36 @@ class Game {
       'pending': h.s.pending,
       'stars': out?.stars ?? 0,
       'saved': out?.saved ?? 0.0,
-      'suggestions': ss.shown,
+      'suggestions': hard ? const <Object>[] : ss.shown, // hard mode: no suggestions, just you
+      'surprise': h.s.event,
+      'surprise_note': surpriseNote(h.s.event, '${ss.stall['name']}', h.s.rivalLeft),
+      'rival_left': h.s.rivalLeft,
+      'hearts': progress.hearts('${ss.stall['id']}'),
+      'new_stickers': ss.finish['stickers'] ?? const <Object>[],
+      'mum': ss.finish['mum'],
+      'unlocked': ss.finish['unlocked'] ?? const <Object>[],
       'accept_text': _playerText('accept', h.s.ask, ss.id, _who(ss)),
       'walk_text': _playerText('walk', null, ss.id, _who(ss)),
     };
   }
 
   // ---------------------------------------------------------------- the game
-  Future<Map<String, Object?>> start(String stallId, [String? itemId]) async {
+  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise]) async {
     final stall = _stalls[stallId];
     if (stall == null) throw GameError(404, 'No such stall');
+    if (!unlockAll && !progress.unlocked(stallId)) {
+      throw GameError(403, 'Unlock ${stall['name']} with ${progress.unlockAt(stallId)} ⭐ (best on each item).');
+    }
+    // About 1 haggle in 3 has a market surprise.
+    if (!surprises) surprise ??= '';
+    surprise ??= switch (_rnd.nextInt(100)) {
+      < 9 => 'rain',
+      < 18 => 'closing',
+      < 26 => 'festival',
+      < 34 => 'rival',
+      _ => '',
+    };
+    if (surprise == 'none') surprise = ''; // tests: no surprise on purpose
     final items = stall['items'] as List;
     final item = (items.firstWhere((i) => (i as Map)['id'] == itemId, orElse: () => items.first)) as Map;
     final seed = _rnd.nextInt(1 << 31);
@@ -314,13 +403,25 @@ class Game {
       id,
       stall,
       item,
-      Haggle(Item.fromJson(item), Personality.fromJson(stall['personality'] as Map), seed: seed),
+      Haggle(
+        Item.fromJson(item),
+        Personality.fromJson(stall['personality'] as Map),
+        seed: seed,
+        event: surprise,
+        friend: progress.hearts(stallId),
+      ),
       seed,
     );
     _sessions[id] = ss;
-    final said = _line(stall, item, 'greet', ss.h, seed: seed);
+    String? said;
+    if (ai.enabled && (surprise.isNotEmpty || progress.hearts(stallId) > 0)) {
+      // A friend, or a surprise: worth a fresh greeting from the AI.
+      said = await ai.say(stall: stall, item: item, event: 'greet', numbers: {'ask': ss.h.s.ask}, note: _notes(ss));
+    }
+    final aiLine = said != null;
+    said ??= _line(stall, item, surprise.isEmpty ? 'greet' : 'greet_$surprise', ss.h, seed: seed);
     ss.chat.add({'who': 'them', 'text': said, 'ask': ss.h.s.ask});
-    return _view(ss, said, 'greet', null, null, false);
+    return _view(ss, said, 'greet', null, null, aiLine);
   }
 
   Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text}) async {
@@ -355,7 +456,7 @@ class Game {
       kind = move!;
       you = _playerText(kind, kind == 'accept' ? h.s.ask : null, '$id-${h.s.rounds}-x', _who(ss));
     } else if (pick != null) {
-      if (pick < 0 || pick >= ss.shown.length) throw GameError(400, 'No such suggestion');
+      if (hard || pick < 0 || pick >= ss.shown.length) throw GameError(400, 'No such suggestion');
       final s = ss.shown[pick];
       kind = s['move'] as String;
       price = s['price'] as double?;
@@ -393,6 +494,14 @@ class Game {
       }
       out = h.move(kind, price, callBack);
       event = out.event;
+      if (event == 'callback') ss.calledBack = true;
+      if (const ['flattered', 'regular'].contains(event) || const ['compliment', 'regular'].contains(heard.also)) {
+        ss.nice++;
+      }
+      if ((kind == 'rude' || heard.also == 'rude') && !ss.rude) {
+        ss.rude = true;
+        progress.rude('${stall['id']}'); // she remembers
+      }
     }
     String? said;
     var aiLine = false;
@@ -413,9 +522,12 @@ class Game {
         budget: h.s.budget,
         patience: h.s.patience,
         also: heard.also,
-        note: heard.qty != null && heard.qty! > 2
-            ? 'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).'
-            : '',
+        note: _notes(
+          ss,
+          heard.qty != null && heard.qty! > 2
+              ? 'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).'
+              : '',
+        ),
       );
       aiLine = said != null;
     }
@@ -429,17 +541,23 @@ class Game {
     ss.chat.add({'who': 'them', 'text': said, 'ask': h.s.ask});
     if (h.s.done && !ss.recorded) {
       ss.recorded = true;
-      (_profile['haggles'] as List).add({
-        'stall': stall['id'],
-        'item': item['id'],
-        'result': h.s.result,
-        'deal': h.s.deal,
-        'stars': out?.stars ?? 0,
-        'saved': out?.saved ?? 0.0,
-        'at': DateTime.now().toIso8601String(),
-      });
-      final list = _profile['haggles'] as List;
-      if (list.length > 500) list.removeRange(0, list.length - 500);
+      final r = progress.finish(
+        record: {
+          'stall': stall['id'],
+          'item': item['id'],
+          'result': h.s.result,
+          'deal': h.s.deal,
+          'stars': out?.stars ?? 0,
+          'saved': out?.saved ?? 0.0,
+          'event': h.s.event,
+          'at': now().toIso8601String(),
+        },
+        qty: h.s.qty,
+        flags: {'nice': ss.nice, 'called_back': ss.calledBack, 'hard': hard},
+      );
+      ss.finish = {'stickers': r.stickers, 'mum': r.mum, 'unlocked': r.unlocked};
+      await _save();
+    } else if (ss.rude) {
       await _save();
     }
     return _view(ss, said, event, out, you, aiLine);
@@ -464,7 +582,7 @@ class Game {
       if (you['who'] == 'you' && them['who'] == 'them') {
         final list = (_profile['reports'] ??= <Object>[]) as List;
         list.add({
-          'at': DateTime.now().toIso8601String(),
+          'at': now().toIso8601String(),
           'stall': ss.stall['id'],
           'item': ss.item['id'],
           'you': you['text'],

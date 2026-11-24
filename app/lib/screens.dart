@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'character.dart';
+import 'extras.dart';
 import 'sfx.dart';
 import 'widgets.dart';
 
@@ -18,6 +19,7 @@ class MarketScreen extends StatefulWidget {
 
 class _MarketScreenState extends State<MarketScreen> {
   Map<String, dynamic>? _me;
+  Map<String, dynamic>? _today;
   List<dynamic> _stalls = [];
   String? _error;
 
@@ -29,11 +31,12 @@ class _MarketScreenState extends State<MarketScreen> {
 
   Future<void> _load() async {
     try {
-      final r = await Future.wait([widget.api.me(), widget.api.stalls()]);
+      final r = await Future.wait([widget.api.me(), widget.api.stalls(), widget.api.today()]);
       if (!mounted) return;
       setState(() {
         _me = r[0];
         _stalls = r[1]['stalls'] as List;
+        _today = r[2];
         _error = null;
       });
     } on ApiError catch (e) {
@@ -41,7 +44,21 @@ class _MarketScreenState extends State<MarketScreen> {
     }
   }
 
+  void _openById(String stallId, String itemId) {
+    final stall = _stalls.cast<Map>().where((x) => x['id'] == stallId).firstOrNull;
+    final item = (stall?['items'] as List?)?.cast<Map>().where((x) => x['id'] == itemId).firstOrNull;
+    if (stall != null && item != null) _open(stall, item);
+  }
+
   Future<void> _open(Map stall, Map item) async {
+    if (stall['locked'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🔒 ${stall['name']} opens at ${stall['unlock_at']} ⭐. Get more stars on the other stalls!'),
+        ),
+      );
+      return;
+    }
     await Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
@@ -79,6 +96,15 @@ class _MarketScreenState extends State<MarketScreen> {
                       ),
                     ),
                     IconButton(
+                      key: const ValueKey('sticker_book'),
+                      icon: const Text('📒', style: TextStyle(fontSize: 24)),
+                      onPressed: () async {
+                        await Navigator.of(context)
+                            .push(MaterialPageRoute(builder: (_) => StickerBookScreen(api: widget.api)));
+                        _load();
+                      },
+                    ),
+                    IconButton(
                       icon: const Icon(Icons.settings_rounded, color: Palette.soft),
                       onPressed: () async {
                         await Navigator.of(context)
@@ -90,6 +116,7 @@ class _MarketScreenState extends State<MarketScreen> {
                 ),
                 if (_me != null) _Hello(me: _me!),
                 const SizedBox(height: 12),
+                if (_today != null) TodayCard(today: _today!, onItem: _openById),
                 if (_error != null) _Oops(message: _error!, retry: _load),
                 if (_me == null && _error == null)
                   const Padding(
@@ -103,6 +130,7 @@ class _MarketScreenState extends State<MarketScreen> {
                       stall: _stalls[i] as Map,
                       awning: Palette.awnings[i % Palette.awnings.length],
                       onItem: _open,
+                      onProfile: (st) => showStallProfile(context, widget.api, st),
                     ),
                   ),
               ],
@@ -124,7 +152,13 @@ class _Hello extends StatelessWidget {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: [_Chip('👋 ${me['name']}'), _Chip('⭐ ${me['stars']}'), _Chip('🤝 ${me['deals']} deals')],
+        children: [
+          _Chip('👋 ${me['name']}'),
+          _Chip('⭐ ${me['best_stars'] ?? me['stars']}'),
+          _Chip('🤝 ${me['deals']} deals'),
+          if (((me['streak'] ?? 0) as num) > 0) _Chip('🔥 ${me['streak']} days'),
+          _Chip('📒 ${me['stickers'] ?? 0}'),
+        ],
       ),
     );
   }
@@ -162,15 +196,17 @@ class _Rise extends StatelessWidget {
 }
 
 class _StallCard extends StatelessWidget {
-  const _StallCard({required this.stall, required this.awning, required this.onItem});
+  const _StallCard({required this.stall, required this.awning, required this.onItem, required this.onProfile});
   final Map stall;
   final List<Color> awning;
   final void Function(Map stall, Map item) onItem;
+  final void Function(Map stall) onProfile;
 
   @override
   Widget build(BuildContext context) {
     final items = stall['items'] as List;
-    return Container(
+    final locked = stall['locked'] == true;
+    final card = Container(
       margin: const EdgeInsets.only(bottom: 18),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -186,16 +222,27 @@ class _StallCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Stallholder(look: Map<String, dynamic>.from(stall['look'] as Map), size: 96),
+                GestureDetector(
+                  onTap: locked ? null : () => onProfile(stall),
+                  child: Stallholder(look: Map<String, dynamic>.from(stall['look'] as Map), size: 96),
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 8),
-                      Text(
-                        '${stall['name']}',
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Palette.ink),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '${stall['name']}',
+                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: Palette.ink),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          if (!locked) Hearts(((stall['hearts'] ?? 0) as num).toInt()),
+                        ],
                       ),
                       Text('${stall['stall']} · ${stall['place']}', style: const TextStyle(color: Palette.soft)),
                       const SizedBox(height: 10),
@@ -240,6 +287,25 @@ class _StallCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+    if (!locked) return card;
+    // a locked stall: greyed out, with how many stars it needs
+    return Stack(
+      children: [
+        Opacity(opacity: 0.45, child: card),
+        Positioned.fill(
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+              child: Text(
+                '🔒 Opens at ${stall['unlock_at']} ⭐',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Palette.ink),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -376,6 +442,8 @@ class _HaggleScreenState extends State<HaggleScreen> {
     }
   }
 
+  String _banner(Map<String, dynamic>? g) => g == null || g['done'] == true ? '' : '${g['surprise_note'] ?? ''}';
+
   /// Her last reply answered something the player typed: they can say she got it wrong.
   bool get _canFlag =>
       !_busy && _msgs.length >= 2 && !_msgs.last.mine && _msgs[_msgs.length - 2].mine && _msgs[_msgs.length - 2].typed;
@@ -420,13 +488,26 @@ class _HaggleScreenState extends State<HaggleScreen> {
               children: [
                 _Scene(stall: widget.stall, item: widget.item, look: look, g: g, face: _face, react: _react),
                 Expanded(
-                  child: ListView(
-                    controller: _scroll,
-                    padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                  child: Stack(
                     children: [
-                      for (final m in _msgs) Bubble(key: ObjectKey(m), text: m.text, mine: m.mine, sparkle: m.sparkle),
-                      if (_canFlag) _FlagChip(flagged: _msgs.last.flagged, onTap: _flag),
-                      if (_busy) const Typing(),
+                      ListView(
+                        controller: _scroll,
+                        // room at the top for the surprise banner, which floats over the chat
+                        padding: EdgeInsets.fromLTRB(14, _banner(g).isEmpty ? 10 : 52, 14, 10),
+                        children: [
+                          for (final m in _msgs)
+                            Bubble(key: ObjectKey(m), text: m.text, mine: m.mine, sparkle: m.sparkle),
+                          if (_canFlag) _FlagChip(flagged: _msgs.last.flagged, onTap: _flag),
+                          if (_busy) const Typing(),
+                        ],
+                      ),
+                      if (_banner(g).isNotEmpty)
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: SurpriseBanner(_banner(g), urgent: g?['surprise'] == 'rival'),
+                        ),
                     ],
                   ),
                 ),
@@ -443,7 +524,14 @@ class _HaggleScreenState extends State<HaggleScreen> {
             ),
             if (_showResult && g != null) ...[
               if (g['result'] == 'deal') const Positioned.fill(child: Confetti()),
-              _Result(g: g, item: widget.item, again: _start, back: () => Navigator.of(context).pop()),
+              _Result(
+                api: widget.api,
+                g: g,
+                stall: widget.stall,
+                item: widget.item,
+                again: _start,
+                back: () => Navigator.of(context).pop(),
+              ),
             ],
           ],
         ),
@@ -976,18 +1064,64 @@ class _ConfirmDeal extends StatelessWidget {
   }
 }
 
-class _Result extends StatelessWidget {
-  const _Result({required this.g, required this.item, required this.again, required this.back});
+class _Result extends StatefulWidget {
+  const _Result({
+    required this.api,
+    required this.g,
+    required this.stall,
+    required this.item,
+    required this.again,
+    required this.back,
+  });
+  final Api api;
   final Map<String, dynamic> g;
+  final Map stall;
   final Map item;
   final VoidCallback again;
   final VoidCallback back;
+  @override
+  State<_Result> createState() => _ResultState();
+}
+
+class _ResultState extends State<_Result> {
+  final _card = GlobalKey();
+  List<Map<String, dynamic>> _new = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    stickerDetails(widget.api, widget.g['new_stickers'] as List? ?? const []).then((v) {
+      if (mounted) setState(() => _new = v);
+    });
+  }
+
+  Future<void> _share() async {
+    final g = widget.g;
+    final saved = ((g['saved'] as num) * 100).round();
+    final text =
+        'I got the ${widget.item['name']} for ${money(g['deal'] as num)} at ${widget.stall['name']}\'s stall'
+        '${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} Can you beat me? #HawkerHaggle';
+    try {
+      await shareBrag(text, await capturePng(_card));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't share this time.")));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final g = widget.g, item = widget.item;
     final deal = g['result'] == 'deal';
-    final title = deal ? 'Deal! 🎉' : (g['result'] == 'walked' ? 'You walked away 🚶' : 'No sale today 😅');
+    final title = switch (g['result']) {
+      'deal' => 'Deal! 🎉',
+      'walked' => 'You walked away 🚶',
+      'lost' => 'Auntie Rose got it! 😱',
+      _ => 'No sale today 😅',
+    };
     final saved = ((g['saved'] as num) * 100).round();
+    final unlocked = (g['unlocked'] as List? ?? const []).cast<String>();
     return Positioned.fill(
       child: Container(
         color: Colors.black.withValues(alpha: 0.25),
@@ -998,51 +1132,99 @@ class _Result extends StatelessWidget {
           curve: Curves.elasticOut,
           builder: (_, t, child) => Transform.scale(scale: t, child: child),
           child: Container(
-            margin: const EdgeInsets.all(28),
-            padding: const EdgeInsets.all(24),
+            margin: const EdgeInsets.all(22),
+            padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(28)),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Palette.ink),
-                ),
-                const SizedBox(height: 10),
-                Stars(count: (g['stars'] as num).toInt()),
-                const SizedBox(height: 10),
-                if (deal)
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                   Text(
-                    'You got the ${item['name']} for ${money(g['deal'] as num)}'
-                    '${(g['qty'] as num) > 1 ? ' each (2 pcs)' : ''}${saved > 0 ? '\nThat\'s $saved% off! 🥳' : '\nFull price... next time haggle more!'}',
+                    title,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 16, color: Palette.ink, height: 1.4),
-                  )
-                else
-                  const Text(
-                    'Every stallholder has a secret lowest price. Try again!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Palette.ink),
+                    style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700, color: Palette.ink),
                   ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Bouncy(
-                        onTap: back,
-                        child: const Pill(text: 'Market', icon: '🏮'),
-                      ),
+                  const SizedBox(height: 10),
+                  Stars(count: (g['stars'] as num).toInt()),
+                  const SizedBox(height: 10),
+                  if (deal)
+                    Text(
+                      'You got the ${item['name']} for ${money(g['deal'] as num)}'
+                      '${(g['qty'] as num) > 1 ? ' each (2 pcs)' : ''}${saved > 0 ? '\nThat\'s $saved% off! 🥳' : '\nFull price... next time haggle more!'}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16, color: Palette.ink, height: 1.4),
+                    )
+                  else
+                    Text(
+                      g['result'] == 'lost'
+                          ? 'Too slow! Next time decide faster when someone else wants it.'
+                          : 'Every stallholder has a secret lowest price. Try again!',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 16, color: Palette.ink),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Bouncy(
-                        onTap: again,
-                        child: const Pill(text: 'Again!', icon: '🔁', color: Palette.gold),
+                  if (g['mum'] != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(14)),
+                      child: Text('📱 ${g['mum']}', style: const TextStyle(color: Palette.ink, height: 1.3)),
+                    ),
+                  ],
+                  for (final st in _new) ...[
+                    const SizedBox(height: 10),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0.5, end: 1),
+                      duration: const Duration(milliseconds: 700),
+                      curve: Curves.elasticOut,
+                      builder: (_, t, child) => Transform.scale(scale: t, child: child),
+                      child: Text(
+                        'New sticker! ${st['emoji']} ${st['title']}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
                       ),
                     ),
                   ],
-                ),
-              ],
+                  for (final u in unlocked) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      '🔓 A new stall opened: ${u == 'lee' ? 'Madam Lee' : (u == 'boy' ? 'Ah Boy' : u)}!',
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                    ),
+                  ],
+                  if (deal) ...[
+                    const SizedBox(height: 14),
+                    // the picture that gets shared
+                    RepaintBoundary(
+                      key: _card,
+                      child: Transform.scale(
+                        scale: 0.8,
+                        child: BragCard(stall: widget.stall, item: item, g: g),
+                      ),
+                    ),
+                    Bouncy(
+                      onTap: _share,
+                      child: const Pill(text: 'Share', icon: '📤'),
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Bouncy(
+                          onTap: widget.back,
+                          child: const Pill(text: 'Market', icon: '🏮'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Bouncy(
+                          onTap: widget.again,
+                          child: const Pill(text: 'Again!', icon: '🔁', color: Palette.gold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1067,6 +1249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _testing = false;
   String? _testResult;
   int _reports = 0;
+  bool _hard = false;
 
   @override
   void initState() {
@@ -1074,8 +1257,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     () async {
       await widget.api.ensureDevice();
       final n = await widget.api.reportCount();
+      final hard = await widget.api.hard();
       if (!mounted) return;
       setState(() {
+        _hard = hard;
         _endpoint.text = widget.api.ai.endpoint;
         _model.text = widget.api.ai.model;
         _key.text = widget.api.ai.apiKey;
@@ -1130,6 +1315,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
               await Sfx.setMuted(!on);
               if (on) Sfx.play('coin');
               setState(() {});
+            },
+          ),
+          SwitchListTile(
+            key: const ValueKey('hard_mode'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Hard mode', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('No suggestions: type everything yourself.'),
+            value: _hard,
+            onChanged: (on) async {
+              await api.setHard(on);
+              setState(() => _hard = on);
             },
           ),
           const SizedBox(height: 24),

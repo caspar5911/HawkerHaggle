@@ -168,6 +168,26 @@
         "deflect": [
           "Aiyo, auntie got grandson already lah! Durian talk only, {price}.",
           "Hehe, save your sweet words for your girlfriend. Still {price}, my dear."
+        ],
+        "greet_rain": [
+          "Aiyo, rain until nobody come! You my first customer, my dear. {item} {price} only.",
+          "Wet wet day, come in come in! {item}, {price}."
+        ],
+        "greet_closing": [
+          "Auntie closing soon already, my dear. {item} {price}, last few!",
+          "Wah, just in time! Almost pack up. {price} for the {item}."
+        ],
+        "greet_festival": [
+          "Happy happy day! Everybody buying, {item} {price} today.",
+          "Festival crowd, my dear! {item} {price}, very popular."
+        ],
+        "greet_rival": [
+          "Last one {item} left, my dear! {price}. That auntie also looking ah.",
+          "Only one left! {price}. Decide fast, Auntie Rose eyeing it."
+        ],
+        "rival_bought": [
+          "Aiyo, sorry my dear, Auntie Rose took it already! Next time faster ah.",
+          "Sold to the other auntie liao! You too slow lah, my dear."
         ]
       },
       "voice": "Warm, chatty grandmother. Says 'my dear', 'come come', sometimes 'aiyo'. Gentle teasing, never harsh.",
@@ -180,7 +200,18 @@
         "No delivery and no reservations: first come, first served",
         "Gives plastic bags"
       ],
-      "address": "Auntie"
+      "address": "Auntie",
+      "unlock_stars": 0,
+      "tips": [
+        "Auntie Mei is soft-hearted: be nice and she softens.",
+        "Compliment her fruit, she loves it.",
+        "Ask about her grandson."
+      ],
+      "story": [
+        "Auntie Mei started this stall when her husband retired, 30 years ago.",
+        "Her grandson helps every Saturday and keeps telling her to accept PayNow.",
+        "She secretly keeps the sweetest durian for her favourite customers."
+      ]
     },
     {
       "id": "lim",
@@ -349,6 +380,26 @@
         "deflect": [
           "Don't play play. {price}.",
           "Buy fish or not? {price}."
+        ],
+        "greet_rain": [
+          "Rain. No people. {item} {price}.",
+          "Wet day. {price}. Fish still fresh."
+        ],
+        "greet_closing": [
+          "Closing. {item} {price}. Last.",
+          "Packing up. {price}, take or not?"
+        ],
+        "greet_festival": [
+          "Busy today. {item} {price}.",
+          "Festival. {price}."
+        ],
+        "greet_rival": [
+          "Last {item}. {price}. That auntie want also.",
+          "One left. {price}. Fast."
+        ],
+        "rival_bought": [
+          "Gone. Other auntie take.",
+          "Too slow. Sold."
         ]
       },
       "voice": "Gruff fishmonger of very few words. Short, blunt sentences of 2 to 6 words. Rarely says 'aiyo'. Proud, dry humour.",
@@ -361,7 +412,18 @@
         "Cleans and scales the fish for customers",
         "No reservations"
       ],
-      "address": "Uncle"
+      "address": "Uncle",
+      "unlock_stars": 0,
+      "tips": [
+        "Uncle Lim respects people who know their fish.",
+        "Don't sweet-talk Uncle Lim: name a fair price.",
+        "Uncle Lim hates hearing the other stall is cheaper."
+      ],
+      "story": [
+        "Uncle Lim took over this stall from his father 40 years ago.",
+        "He goes to Jurong Fishery Port at 3am, every single day.",
+        "He once won a fishing competition, and still has the photo behind the ice box."
+      ]
     },
     {
       "id": "raj",
@@ -527,6 +589,26 @@
         "deflect": [
           "Haha boss, I only date my gadgets! {price}.",
           "Boss, focus focus! This one {price}."
+        ],
+        "greet_rain": [
+          "Boss! Rain also you come, I like! {item} {price}!",
+          "Wah boss, raining but you here! {item}, {price} only!"
+        ],
+        "greet_closing": [
+          "Boss, closing soon! {item} {price}, clear stock price!",
+          "Last call boss! {item} {price}!"
+        ],
+        "greet_festival": [
+          "Boss, festival night! {item} {price}, hot item!",
+          "Crowd so big tonight boss! {item} {price}!"
+        ],
+        "greet_rival": [
+          "Boss, last one {item}! {price}! Auntie there also want!",
+          "Only one left boss, {price}! Fast fast!"
+        ],
+        "rival_bought": [
+          "Aiyo boss, the auntie grab it already! Next time ah!",
+          "Sold boss! Too slow lah, auntie very fast one!"
         ]
       },
       "voice": "Cheerful, fast-talking night-market salesman. Calls everyone 'boss', loves exclamation marks and jokes, very persuasive.",
@@ -538,7 +620,18 @@
         "Gives a receipt if asked",
         "No delivery"
       ],
-      "address": "Boss"
+      "address": "Boss",
+      "unlock_stars": 0,
+      "tips": [
+        "Boss Raj loves bundles: try buying two.",
+        "Boss Raj almost always calls you back: walking away works.",
+        "Boss Raj enjoys a fun haggle: joke with him."
+      ],
+      "story": [
+        "Raj started selling phone cases from a single table at the night market 8 years ago.",
+        "He films funny videos of his customers' best haggles (with permission!).",
+        "He's saving up to open a real shop in Bugis."
+      ]
     },
     {
       "id": "siti",
@@ -706,6 +799,26 @@
         "deflect": [
           "Eh adik, behave ya! {item} {price} only.",
           "Adik, kak married already lah. {price}, buy or not?"
+        ],
+        "greet_rain": [
+          "Alamak, hujan! Come in adik, {item} {price}.",
+          "Rainy day ya adik. {item} {price} only."
+        ],
+        "greet_closing": [
+          "Adik, kak closing soon. {item} {price}, last ones.",
+          "Just in time, adik! {item} {price}."
+        ],
+        "greet_festival": [
+          "Selamat, adik! Festival day, {item} {price}.",
+          "So happening tonight, adik! {item} {price}."
+        ],
+        "greet_rival": [
+          "Adik, last one {item}, {price}. Makcik there also want.",
+          "Only one left ya adik, {price}. Cepat!"
+        ],
+        "rival_bought": [
+          "Sorry adik, the makcik took it already. Next time ya!",
+          "Alamak adik, sold to the other auntie!"
         ]
       },
       "voice": "Cheerful, kind bazaar stallholder. Calls customers 'adik', sprinkles in Malay words (boleh, terima kasih, kesian, alamak). Proud of handmade work.",
@@ -718,7 +831,410 @@
         "Her kueh is halal, made at home",
         "Can gift-wrap the scarf"
       ],
-      "address": "Kak"
+      "address": "Kak",
+      "unlock_stars": 0,
+      "tips": [
+        "Kak Siti warms to polite customers.",
+        "Ask Kak Siti how she makes it: she loves to tell you.",
+        "Kak Siti's handmade work takes days: lowballing hurts her feelings."
+      ],
+      "story": [
+        "Kak Siti learned batik and kueh from her mother in Geylang Serai.",
+        "She stays up past midnight before every bazaar, making fresh kueh.",
+        "Her dream is to teach batik classes to kids."
+      ]
+    },
+    {
+      "id": "lee",
+      "name": "Madam Lee",
+      "stall": "Tea and dried goods shop",
+      "place": "Chinatown, Smith Street",
+      "address": "Madam",
+      "persona": "A proud, elegant shop owner whose family has sold tea and dried goods in Chinatown for three generations. Polite but firm, unimpressed by cheap tricks, warms to customers who show respect and knowledge.",
+      "voice": "Proud, elegant, precise. Short, polite sentences with a little Cantonese flavour (aiya, hai). Never shouts, rarely jokes.",
+      "max_words": 24,
+      "unlock_stars": 8,
+      "look": {
+        "skin": "#F3D3B8",
+        "hair": "#2B2421",
+        "shirt": "#7A1F2B",
+        "apron": "#E9D8B5",
+        "accessory": "bun"
+      },
+      "personality": {
+        "stubborn": 0.7,
+        "flattery": 0.45,
+        "temper": 0.4,
+        "callback": 0.3,
+        "kind": 0.4
+      },
+      "facts": [
+        "Her family has run this shop for three generations",
+        "Open 10am to 7pm, every day except Chinese New Year",
+        "Takes cash, PayNow or card",
+        "Gives a red bag for gifts"
+      ],
+      "items": [
+        {
+          "id": "oolong",
+          "name": "tin of oolong tea",
+          "emoji": "🍵",
+          "fair": 18,
+          "ask": 28,
+          "floor": 15,
+          "facts": [
+            "Tie Guan Yin oolong from Anxi, Fujian",
+            "Roasted in small batches",
+            "Steep 3 times; each pot tastes different",
+            "Keeps a year in a dry place"
+          ]
+        },
+        {
+          "id": "scallops",
+          "name": "bag of dried scallops",
+          "emoji": "🐚",
+          "fair": 40,
+          "ask": 58,
+          "floor": 34,
+          "facts": [
+            "Hokkaido dried scallops, 300 g",
+            "Golden colour, sweet smell means good quality",
+            "Soak overnight for porridge or soup",
+            "Popular gift for Chinese New Year"
+          ]
+        }
+      ],
+      "tips": [
+        "Madam Lee respects knowledge: ask about the tea.",
+        "Don't lowball Madam Lee: she gets offended easily.",
+        "Madam Lee rarely calls you back, so don't bluff."
+      ],
+      "story": [
+        "Madam Lee's grandfather opened the shop with one tea chest in 1958.",
+        "She tastes every new batch of tea herself before it goes on the shelf.",
+        "Her daughter wants to sell online; Madam Lee insists customers must smell the tea first."
+      ],
+      "lines": {
+        "greet": [
+          "Good evening. The {item}, {price}.",
+          "Welcome. {item}, {price}. Best quality."
+        ],
+        "counter": [
+          "{offer}? No. {price}, and that is generous.",
+          "Aiya, {offer} is too little. {price}."
+        ],
+        "final": [
+          "{price}. I will not go lower.",
+          "{price}, that is my price."
+        ],
+        "insulted": [
+          "{offer}? Please. This is not a pasar malam.",
+          "{offer}... you insult my family's shop."
+        ],
+        "accept": [
+          "Very well. {price}. Thank you for your custom.",
+          "{price}, sold. Enjoy it properly."
+        ],
+        "confirm": [
+          "{price} then. You agree?",
+          "Fine, {price}. Shall I wrap it?"
+        ],
+        "unsure": [
+          "Take your time. {price} still.",
+          "No hurry. {price}."
+        ],
+        "flattered": [
+          "You have good taste. {price} for you.",
+          "Hai, you know quality. {price}."
+        ],
+        "flattery_tired": [
+          "Kind words are nice. Price is price.",
+          "Enough compliments, please decide."
+        ],
+        "competitor_drop": [
+          "Their quality is not the same. But fine, {price}.",
+          "Hmm. For you, {price}."
+        ],
+        "competitor_annoyed": [
+          "Then please buy there. Mine is {price}.",
+          "Cheaper is not better. {price}."
+        ],
+        "bulk": [
+          "Two? Then {price} each.",
+          "For two, {price} each."
+        ],
+        "regular": [
+          "Ah, I remember you. {price}.",
+          "For a regular customer, {price}."
+        ],
+        "smalltalk": [
+          "Chinatown is busy today. {price} still.",
+          "Tea is about patience. {price}."
+        ],
+        "plead": [
+          "Aiya. A little, then: {price}.",
+          "Fine, {price}. Do not ask again."
+        ],
+        "plead_no": [
+          "Name a price, please. {price} now.",
+          "Cheaper how much? {price}."
+        ],
+        "pity": [
+          "I am sorry to hear. {price} for you.",
+          "Aiya. {price}, take care of yourself."
+        ],
+        "pity_tired": [
+          "Everyone has troubles. {price}.",
+          "I understand. Still {price}."
+        ],
+        "rude": [
+          "I will not be spoken to like that.",
+          "Please leave my shop."
+        ],
+        "deflect": [
+          "Please. I am a married woman. {price}.",
+          "That is not appropriate. {price}."
+        ],
+        "budget_best": [
+          "{offer} is not enough. {price} is truly my lowest.",
+          "I am sorry, {offer} cannot. {price} is my best."
+        ],
+        "clarify": [
+          "Do you mean you will take it at {price}?",
+          "I am not sure what you mean. {price}, yes or no?"
+        ],
+        "callback": [
+          "Wait. {price}, my final price.",
+          "One moment. {price}, final."
+        ],
+        "letgo": [
+          "Goodbye. Come back when you are ready.",
+          "Very well. Good day."
+        ],
+        "refuse": [
+          "I think we are done today.",
+          "Please come back another day."
+        ],
+        "confused": [
+          "How much do you offer?",
+          "Please say a price."
+        ],
+        "greet_rain": [
+          "Rainy day, quiet street. {item}, {price}.",
+          "Come in from the rain. {item}, {price}."
+        ],
+        "greet_closing": [
+          "We close soon. {item}, {price}.",
+          "Just in time. {price} for the {item}."
+        ],
+        "greet_festival": [
+          "Festival week, everyone buying gifts. {item}, {price}.",
+          "Busy season. {item}, {price}."
+        ],
+        "greet_rival": [
+          "The last {item}. {price}. That lady is interested too.",
+          "Only one left. {price}. Decide soon."
+        ],
+        "rival_bought": [
+          "I am sorry, the other lady has bought it.",
+          "It is sold. Perhaps next time."
+        ]
+      }
+    },
+    {
+      "id": "boy",
+      "name": "Ah Boy",
+      "stall": "Toy and game stall",
+      "place": "Pasar Malam, Woodlands",
+      "address": "Bro",
+      "persona": "A cheeky young night-market seller who loves games, memes and banter. Calls everyone bro or sis, loves a dramatic haggle, almost always calls you back.",
+      "voice": "Young, cheeky, full of slang (bro, sia, steady, can lah). Playful drama, short punchy lines.",
+      "max_words": 26,
+      "unlock_stars": 14,
+      "look": {
+        "skin": "#E3B48F",
+        "hair": "#1F1A17",
+        "shirt": "#3B82C4",
+        "apron": "#FFD166",
+        "accessory": "headphones"
+      },
+      "personality": {
+        "stubborn": 0.35,
+        "flattery": 0.7,
+        "temper": 0.5,
+        "callback": 0.85,
+        "kind": 0.6
+      },
+      "facts": [
+        "Runs the stall with his cousin at the Pasar Malam",
+        "Open 6pm to 11pm while the night market is on",
+        "Takes PayNow and cash",
+        "Tests every toy himself before selling"
+      ],
+      "items": [
+        {
+          "id": "rccar",
+          "name": "remote-control car",
+          "emoji": "🏎️",
+          "fair": 25,
+          "ask": 38,
+          "floor": 20,
+          "facts": [
+            "Drifts on smooth floors",
+            "Rechargeable battery, about 20 minutes per charge",
+            "Comes with spare tyres"
+          ]
+        },
+        {
+          "id": "yoyo",
+          "name": "glow-in-the-dark yo-yo",
+          "emoji": "🪀",
+          "fair": 5,
+          "ask": 9,
+          "floor": 4,
+          "facts": [
+            "Glows green after 10 minutes in light",
+            "Ball bearing inside, spins a long time",
+            "Comes with a spare string"
+          ]
+        }
+      ],
+      "tips": [
+        "Ah Boy loves banter: make him laugh.",
+        "Ah Boy almost always calls you back if you walk away.",
+        "Ah Boy gives a better price for two."
+      ],
+      "story": [
+        "Ah Boy started selling yo-yos at school, until the principal found out.",
+        "He and his cousin drive a van full of toys to a different Pasar Malam every month.",
+        "He's secretly the best yo-yo player in the whole night market."
+      ],
+      "lines": {
+        "greet": [
+          "Bro! {item}, {price} only, steady!",
+          "Yo sis, check this {item}! {price}!"
+        ],
+        "counter": [
+          "{offer}?! Bro you funny sia. {price} lah!",
+          "Cannot lah {offer}, {price} can!"
+        ],
+        "final": [
+          "Bro {price} already, cannot liao.",
+          "{price}, really cannot go down."
+        ],
+        "insulted": [
+          "{offer}?! Bro I also need to eat sia!",
+          "{offer}? You trolling me ah?"
+        ],
+        "accept": [
+          "Steady bro! {price}, enjoy!",
+          "Deal sia! {price}, come again!"
+        ],
+        "confirm": [
+          "Okay okay {price}! Deal or not bro?",
+          "{price} lah, confirm?"
+        ],
+        "unsure": [
+          "Take your time bro, {price} still here.",
+          "No rush sis, {price}."
+        ],
+        "flattered": [
+          "Wah bro you know stuff! {price} for you.",
+          "Steady sis, good eye! {price}."
+        ],
+        "flattery_tired": [
+          "Bro, compliments cannot pay rent!",
+          "Okay okay, now buy lah!"
+        ],
+        "competitor_drop": [
+          "Their one sure spoil one! But ok, {price}.",
+          "Fine bro, I match: {price}."
+        ],
+        "competitor_annoyed": [
+          "Go there lor bro, mine {price}.",
+          "Their one no warranty sia. {price}."
+        ],
+        "bulk": [
+          "Two?! Bro generous! {price} each!",
+          "Bundle deal sis, {price} each!"
+        ],
+        "regular": [
+          "Eh bro, you again! {price} for you.",
+          "Regular customer! {price}."
+        ],
+        "smalltalk": [
+          "Bro the satay smell damn good tonight. {price}.",
+          "Crowd damn big sia. {price}."
+        ],
+        "plead": [
+          "Aiyo bro, ok lah, {price}.",
+          "Sian, fine, {price}."
+        ],
+        "plead_no": [
+          "Bro say a number lah, {price} now.",
+          "How much you want bro? {price}."
+        ],
+        "pity": [
+          "Aiyo bro, jialat. {price} for you.",
+          "Sis, sad sia. {price} lah."
+        ],
+        "pity_tired": [
+          "Bro, everyone also got story. {price}.",
+          "Okay okay, still {price}."
+        ],
+        "rude": [
+          "Bro chill lah, no need so fierce.",
+          "Wah, rude sia. Next customer."
+        ],
+        "deflect": [
+          "Bro, I only date my yo-yos. {price}.",
+          "Haha sis, focus! {price}."
+        ],
+        "budget_best": [
+          "{offer}? Bro cannot. {price} is my lowest lowest.",
+          "Aiyo {offer} not enough, {price} rock bottom."
+        ],
+        "clarify": [
+          "Bro you mean take at {price} or not?",
+          "Huh bro, {price}, yes or no?"
+        ],
+        "callback": [
+          "Bro bro bro! Wait! {price}, final final!",
+          "Eh come back sis! {price}, last price!"
+        ],
+        "letgo": [
+          "Ok bro, next time come back!",
+          "Bye sis, see you next Pasar Malam!"
+        ],
+        "refuse": [
+          "Bro I tired already, tomorrow come.",
+          "Enough for tonight sia."
+        ],
+        "confused": [
+          "Bro how much you want?",
+          "Sis, give me a number!"
+        ],
+        "greet_rain": [
+          "Bro raining also you come! {item} {price}!",
+          "Wet night sia! {item}, {price}!"
+        ],
+        "greet_closing": [
+          "Bro closing soon! {item} {price}, clear stock!",
+          "Last call sis! {item} {price}!"
+        ],
+        "greet_festival": [
+          "Festival night bro! {item} {price}, hot item!",
+          "Crowd so big sia! {item} {price}!"
+        ],
+        "greet_rival": [
+          "Bro last one {item}! {price}! That auntie also want!",
+          "Only one left sis, {price}! Fast!"
+        ],
+        "rival_bought": [
+          "Aiyo bro, auntie grab already! Too slow sia!",
+          "Sold bro! Next time faster ah!"
+        ]
+      }
     }
   ],
   "player": {

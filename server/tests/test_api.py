@@ -56,7 +56,7 @@ def test_tap_mode_haggle_to_the_end():
     c, _ = client()
     h, _ = register(c)
     stalls = c.get("/v1/stalls", headers=h).json()["stalls"]
-    assert {s["id"] for s in stalls} == {"mei", "lim", "raj", "siti"}
+    assert {s["id"] for s in stalls} == {"mei", "lim", "raj", "siti", "lee", "boy"}
     assert "floor" not in json.dumps(stalls) and "fair" not in json.dumps(stalls)   # secrets stay on the server
     g = c.post("/v1/haggle", json={"stall": "raj", "item": "case"}, headers=h).json()
     assert g["ask"] == 15 and "$15" in g["line"] and len(g["suggestions"]) == 3

@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'prompts.dart';
+import 'prompts_extra.dart';
 import 'py.dart';
 import 'reader.dart';
 import 'voice.dart';
@@ -232,6 +233,7 @@ class AiClient {
       'clarify',
       'unsure',
       'deflect',
+      'rival_bought',
     ];
     if (prices.isEmpty && !noPriceOk.contains(event)) return null;
     final facts = [
@@ -244,7 +246,7 @@ class AiClient {
         if (lines[k] is List && (lines[k] as List).isNotEmpty) '${(lines[k] as List).first}',
     ].join(' / ');
     final maxWords = ((stall['max_words'] ?? 30) as num).toInt();
-    var brief = events[event] ?? '';
+    var brief = events[event] ?? extraEvents[event] ?? '';
     brief = brief.replaceAll('{unclear}', unclear.isEmpty ? 'what they mean' : unclear);
     for (final e in numbers.entries) {
       brief = brief.replaceAll('{${e.key}}', money(e.value));

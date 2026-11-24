@@ -258,6 +258,7 @@ class _ChibiPainter extends CustomPainter {
         }
       } else {
         canvas.drawCircle(c.translate(0, -r * 0.08), r * 1.02, p);
+        if (acc == 'bun') canvas.drawCircle(c.translate(0, -r * 1.12), r * 0.38, p); // neat hair bun on top
       }
       p.color = skin;
       canvas.drawCircle(c, r, p);
@@ -278,6 +279,42 @@ class _ChibiPainter extends CustomPainter {
           false,
           p..style = PaintingStyle.fill,
         );
+      }
+      if (acc == 'bun') {
+        // a jade hairpin through the bun
+        p.color = const Color(0xFF3FA37A);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: c.translate(r * 0.1, -r * 1.12), width: r * 0.95, height: r * 0.08),
+            Radius.circular(r * 0.04),
+          ),
+          p,
+        );
+        p.color = const Color(0xFFE8C46A);
+        canvas.drawCircle(c.translate(r * 0.58, -r * 1.12), r * 0.08, p);
+      }
+      if (acc == 'headphones') {
+        // headphones on the head: band over the top, cups at the ears
+        final band = Paint()
+          ..color = const Color(0xFF2F3A4A)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = r * 0.13
+          ..strokeCap = StrokeCap.round;
+        canvas.drawArc(Rect.fromCircle(center: c, radius: r * 1.08), math.pi * 1.05, math.pi * 0.9, false, band);
+        p.color = const Color(0xFF2F3A4A);
+        for (final side in [-1, 1]) {
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(
+              Rect.fromCenter(center: c.translate(side * r * 1.02, r * 0.1), width: r * 0.32, height: r * 0.5),
+              Radius.circular(r * 0.14),
+            ),
+            p,
+          );
+        }
+        p.color = apron;
+        for (final side in [-1, 1]) {
+          canvas.drawCircle(c.translate(side * r * 1.02, r * 0.1), r * 0.08, p);
+        }
       }
       if (acc == 'cap') {
         p.color = apron;

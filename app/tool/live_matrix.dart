@@ -26,6 +26,8 @@ Future<void> main(List<String> args) async {
     content: content,
     store: MemoryKeyValue(),
     ai: AiClient(cfg, log: rejected.add),
+    surprises: false, // the base cases need plain haggles
+    unlockAll: true,
   );
   await game.load();
   const stalls = ['mei', 'lim', 'raj', 'siti'];
@@ -35,7 +37,8 @@ Future<void> main(List<String> args) async {
   final times = <double>[];
   final fastTimes = <double>[];
   var aiLines = 0;
-  final cases = spec['cases'] as List;
+  final onlyNew = (env['ONLY_NEW'] ?? '').isNotEmpty; // re-check just the newer features
+  final cases = onlyNew ? const [] : spec['cases'] as List;
   for (var i = 0; i < cases.length; i++) {
     var msg = cases[i][0] as String;
     final moment = cases[i][1] as String;
@@ -98,7 +101,7 @@ Future<void> main(List<String> args) async {
     );
   }
   // facts: the same question in two haggles gets the same true answer
-  final facts = spec['facts'] as Map;
+  final facts = onlyNew ? const {} : spec['facts'] as Map;
   for (final e in facts.entries) {
     final item = e.value[0] as String, q = e.value[1] as String;
     final words = (e.value[2] as List).cast<String>();
@@ -144,6 +147,45 @@ Future<void> main(List<String> args) async {
   stdout.writeln('TAP   ${rt['you_said']} -> ${rt['event']} ${rt['ai_line'] == true ? '✨' : '  '} ${rt['line']}');
   if (rt['ai_line'] != true) fails.add('a tapped suggestion did not get an AI reply');
 
+  // market surprises: the greeting reflects them; Auntie Rose can win
+  for (final ev in ['rain', 'closing', 'festival', 'rival']) {
+    final g = await game.start('mei', 'mango', ev);
+    stdout.writeln('SURPR $ev ${g['ai_line'] == true ? '✨' : '  '} ${g['line']}');
+    if (g['ai_line'] != true) fails.add('no AI greeting for the $ev surprise');
+    if (ev == 'rival') {
+      Map r = g;
+      for (var i = 0; i < 4 && r['done'] != true; i++) {
+        r = await game.move(g['id'] as String, text: "auntie how's business today?");
+      }
+      stdout.writeln('RIVAL ${r['result']} ${r['event']}: ${r['line']}');
+      if (r['result'] != 'lost') fails.add('Auntie Rose never bought it');
+    }
+  }
+  // a friend is greeted like a friend (a fresh player: the checks above were rude to some stallholders)
+  final friendGame = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), surprises: false);
+  await friendGame.load();
+  for (var i = 0; i < 2; i++) {
+    final g = await friendGame.start('lim', 'pomfret', 'none');
+    await friendGame.move(g['id'] as String, move: 'buy');
+  }
+  final fg = await friendGame.start('lim', 'pomfret', 'none');
+  stdout.writeln('FRIEND hearts ${fg['hearts']} ${fg['ai_line'] == true ? '✨' : '  '} ${fg['line']}');
+  if (fg['ai_line'] != true) fails.add('a friend did not get an AI greeting');
+  // the new stalls, in their own voices, with true facts
+  for (final (st, it, q, words) in [
+    ('lee', 'oolong', 'where is this tea from?', ['anxi', 'fujian', 'tie guan yin']),
+    ('boy', 'rccar', 'bro how long the battery last?', ['20', 'minute']),
+  ]) {
+    final g = await game.start(st, it, 'none');
+    final r = await game.move(g['id'] as String, text: q);
+    final hit = words.any((w) => '${r['line']}'.toLowerCase().contains(w));
+    stdout.writeln('NEW   $st ${hit ? 'ok  ' : 'MISS'} ${r['line']}');
+    if (!hit) fails.add('$st facts: ${r['line']}');
+    final o = await game.move(g['id'] as String, text: '15 can?');
+    stdout.writeln('NEW   $st offer -> ${o['event']}: ${o['line']}');
+  }
+
+  if (times.isEmpty) times.add(0);
   times.sort();
   fastTimes.sort();
   final summary =

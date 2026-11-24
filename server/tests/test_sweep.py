@@ -123,7 +123,7 @@ def test_sweep_every_stall_item_and_play_style(api):
                     g, _n = play(c, h, s["id"], it["id"], style, rnd, seen)
                     results[(style, g["result"] or "unfinished")] = results.get((style, g["result"] or "unfinished"), 0) + 1
     # every play style ends the way it should
-    assert results.get(("old_app_accept_spam", "deal")) == 8 * 12        # never stuck: always a deal
+    assert results.get(("old_app_accept_spam", "deal")) == 12 * 12       # never stuck (6 stalls x 2 items x 12)
     assert all(k[1] in ("deal", "walked", "refused", "unfinished") for k in results)
     assert sum(v for k, v in results.items() if k[1] == "deal") > 100
     assert sum(v for k, v in results.items() if k[1] == "walked") > 10

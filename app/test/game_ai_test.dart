@@ -59,7 +59,7 @@ Future<(Game, FakeModel?)> newGame([FakeModel? model]) async {
           const AiConfig(endpoint: 'http://model/v1', model: 'test'),
           client: model.client,
         );
-  final game = Game(content: content, store: MemoryKeyValue(), ai: ai);
+  final game = Game(content: content, store: MemoryKeyValue(), ai: ai, surprises: false);
   await game.load();
   return (game, model);
 }
@@ -233,6 +233,38 @@ void main() {
       isEmpty,
       reason: 'no need to ask the AI after rudeness',
     );
+  });
+
+  test('surprises and friendship reach the AI; Auntie Rose can win', () async {
+    final (game, m) = await newGame(FakeModel(line: 'Aiyo, raining! Come come, my dear.'));
+    var g = await game.start('mei', 'durian', 'rain');
+    expect(g['surprise_note'], contains('Rainy day'));
+    expect(g['ai_line'], isTrue); // a surprise gets a fresh AI greeting
+    expect('${(m!.says.last['messages'] as List)[0]['content']}', contains("It's raining"));
+    g = await game.start('lim', 'prawns', 'rival');
+    final id = g['id'] as String;
+    Map r = g;
+    for (var i = 0; i < 4 && r['done'] != true; i++) {
+      r = await game.move(id, text: "how's your day?");
+    }
+    expect(r['result'], 'lost');
+    expect(r['event'], 'rival_bought');
+    expect('${(m.says.last['messages'] as List)[0]['content']}', contains('Auntie Rose'));
+    expect(r['new_stickers'], contains('lost_rival'));
+  });
+
+  test('a friend is greeted like a friend (number-free memory note)', () async {
+    final (game, m) = await newGame(FakeModel(line: 'Eh my dear, you again!'));
+    for (var i = 0; i < 2; i++) {
+      final g = await game.start('mei', 'mango', 'none');
+      await game.move(g['id'] as String, move: 'buy');
+    }
+    expect(game.progress.hearts('mei'), 1);
+    final g = await game.start('mei', 'mango', 'none');
+    expect(g['ai_line'], isTrue);
+    final system = '${(m!.says.last['messages'] as List)[0]['content']}';
+    expect(system, contains('You know this customer'));
+    expect(system, contains('box of mangoes'));
   });
 
   test('test connection explains the result', () async {

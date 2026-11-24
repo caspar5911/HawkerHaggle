@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
 import 'package:hawker_haggle/character.dart';
 import 'package:hawker_haggle/core/game.dart';
+import 'package:hawker_haggle/extras.dart';
 import 'package:hawker_haggle/main.dart';
 import 'package:hawker_haggle/sfx.dart';
 
@@ -57,6 +58,7 @@ Map<String, dynamic> game(
 class Fake extends Game {
   Fake(this.replies) : super(content: const {'stalls': [], 'player': {}}, store: MemoryKeyValue());
   final List<Map<String, dynamic>> replies;
+  Map<String, dynamic>? first; // the greeting (default: Auntie Mei's)
   final sent = <Map<String, dynamic>>[];
   int flags = 0;
   bool down = false;
@@ -85,7 +87,8 @@ class Fake extends Game {
     ],
   };
   @override
-  Future<Map<String, Object?>> start(String stallId, [String? itemId]) async => game('Morning my dear! \$18 only.');
+  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise]) async =>
+      first ?? game('Morning my dear! \$18 only.');
   @override
   Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text}) async {
     sent.add({'pick': ?pick, 'move': ?move, 'text': ?text});
@@ -94,6 +97,26 @@ class Fake extends Game {
 
   @override
   Future<void> flag(String id) async => flags++;
+
+  @override
+  Map<String, Object?> today() => {
+    'items': [
+      {'stall': 'mei', 'item': 'mango', 'name': 'mangoes for Mum', 'emoji': '🥭', 'done': false, 'paid': null},
+      {'stall': 'lim', 'item': 'pomfret', 'name': 'pomfret', 'emoji': '🐟', 'done': true, 'paid': 15},
+    ],
+    'budget': 30,
+    'spent': 15,
+    'complete': false,
+    'under': false,
+    'streak': 2,
+    'tip': 'Auntie Mei loves compliments.',
+  };
+
+  @override
+  List<Map<String, Object?>> stickers() => [
+    {'id': 'first_deal', 'emoji': '🤝', 'title': 'First deal', 'how': 'Close your first deal', 'earned': '2026-11-24'},
+    {'id': 'half_off', 'emoji': '✂️', 'title': 'Half price!', 'how': 'Get half off', 'earned': null},
+  ];
 }
 
 Api apiFor(Fake f) => Api(game: f, content: const {}, store: MemoryKeyValue());
@@ -104,8 +127,8 @@ Future<void> settle(WidgetTester t, [int ms = 1500]) async {
   }
 }
 
-Future<Fake> openHaggle(WidgetTester tester, List<Map<String, dynamic>> replies) async {
-  final fake = Fake(replies);
+Future<Fake> openHaggle(WidgetTester tester, List<Map<String, dynamic>> replies, {Fake? fake}) async {
+  fake ??= Fake(replies);
   await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
   await settle(tester, 2000);
   await tester.tap(find.text('box of mangoes'));
@@ -217,7 +240,7 @@ void main() {
     await tester.tap(find.text('Deal, \$14!'));
     await settle(tester, 2500);
     expect(find.textContaining('each (2 pcs)'), findsOneWidget);
-    expect(find.textContaining('22% off'), findsOneWidget);
+    expect(find.textContaining("That's 22% off"), findsOneWidget);
     await settle(tester, 4000);
   });
 
@@ -283,10 +306,10 @@ void main() {
     await tester.tap(find.byIcon(Icons.settings_rounded));
     await settle(tester);
     expect(Sfx.muted, isFalse);
-    await tester.tap(find.byType(Switch));
+    await tester.tap(find.byType(Switch).first);
     await settle(tester, 500);
     expect(Sfx.muted, isTrue);
-    await tester.tap(find.byType(Switch));
+    await tester.tap(find.byType(Switch).first);
     await settle(tester, 500);
 
     await tester.dragUntilVisible(find.text('Save'), find.byType(ListView).last, const Offset(0, -200));
@@ -368,6 +391,67 @@ void main() {
     await settle(tester);
     expect(find.text('Use default AI', skipOffstage: false), findsNothing);
     await settle(tester, 2000);
+  });
+
+  testWidgets("market shows Mum's list, streak and stickers; the list opens a haggle; the sticker book opens", (
+    tester,
+  ) async {
+    final fake = Fake([]);
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.text("Mum's list today"), findsOneWidget);
+    expect(find.text('🔥 2'), findsOneWidget);
+    expect(find.textContaining("Mum's tip"), findsOneWidget);
+    await tester.tap(find.text('mangoes for Mum'));
+    await settle(tester);
+    expect(find.text('Morning my dear! \$18 only.'), findsOneWidget); // the haggle opened
+    await tester.tap(find.byIcon(Icons.arrow_back_rounded));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('sticker_book')));
+    await settle(tester);
+    expect(find.text('1 of 2 collected'), findsOneWidget);
+    expect(find.text('Half price!'), findsOneWidget);
+    await settle(tester, 2000);
+  });
+
+  testWidgets('the rival auntie: banner during the haggle, and the lost card', (tester) async {
+    final rival = game('Last one ah! \$18.')
+      ..addAll({'surprise': 'rival', 'surprise_note': '👵 Auntie Rose wants the last one too: 4 moves left!'});
+    final fake = Fake([
+      game('Sorry, sold to Auntie Rose!', event: 'rival_bought', result: 'lost')..addAll({
+        'surprise': 'rival',
+        'new_stickers': ['half_off'],
+      }),
+    ]);
+    fake.first = rival;
+    await openHaggle(tester, fake.replies, fake: fake);
+    expect(find.textContaining('Auntie Rose wants the last one'), findsOneWidget);
+    await tester.tap(find.text('Wah, looks so good!'));
+    await settle(tester, 2500);
+    expect(find.text('Auntie Rose got it! 😱'), findsOneWidget);
+    expect(find.textContaining('New sticker!'), findsOneWidget);
+    await settle(tester, 3000);
+  });
+
+  testWidgets('a great deal can be shared as a picture', (tester) async {
+    final shared = <String>[];
+    shareBrag = (text, png) async => shared.add(text);
+    capturePng = (_) async => null;
+    final fake = await openHaggle(tester, [
+      game('OK lah OK lah, \$12!', event: 'accept', result: 'deal', deal: 12, stars: 3, saved: 0.33)
+        ..addAll({'mum': 'Mum: Wah, so clever! \$12, under budget.'}),
+    ]);
+    await tester.tap(find.text('OK lah, \$18'));
+    await settle(tester, 600);
+    await tester.tap(find.text('Confirm \$18'));
+    await settle(tester, 2500);
+    expect(fake.sent.last['move'], 'buy');
+    expect(find.textContaining('Mum: Wah, so clever!'), findsOneWidget);
+    await tester.ensureVisible(find.text('Share'));
+    await tester.tap(find.text('Share'));
+    await settle(tester, 1000);
+    expect(shared.single, contains('33% off'));
+    await settle(tester, 3000);
   });
 
   test('faces match the moment', () {

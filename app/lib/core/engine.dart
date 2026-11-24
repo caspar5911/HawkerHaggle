@@ -61,12 +61,18 @@ class HaggleState {
   String result = ''; // deal / walked / refused
   double? deal;
   double? pending; // agreed, waiting for the player's yes
+  // Extras (all neutral by default, so the base rules match the Python reference exactly):
+  String event = ''; // market surprise: rain / closing / festival / rival
+  int friend = 0; // friendship level with this stallholder, 0..3
+  int rivalLeft = 0; // rival auntie: moves left before she buys it
 
   Map<String, Object?> toJson() => {
     'ask': ask, 'opening': opening, 'patience': patience, 'mood': mood, 'rounds': rounds, 'qty': qty, 'used': used,
     'compliments': compliments, 'pleads': pleads, 'pities': pities, 'budget': budget, 'best_given': bestGiven,
     'last_offer': lastOffer, 'done': done, 'result': result, 'deal': deal, 'pending': pending, //
   };
+
+  Map<String, Object?> extrasJson() => {'event': event, 'friend': friend, 'rival_left': rivalLeft};
 }
 
 class Outcome {
@@ -101,9 +107,33 @@ double niceUp(double price) {
 double clamp(double x, double lo, double hi) => math.max(lo, math.min(hi, x));
 
 class Haggle {
-  Haggle(this.item, this.p, {int seed = 0, HaggleState? state})
+  Haggle(this.item, this.p, {int seed = 0, HaggleState? state, String event = '', int friend = 0})
     : rng = math.Random(seed),
-      s = state ?? HaggleState(ask: item.ask, opening: item.ask);
+      s = state ?? HaggleState(ask: item.ask, opening: item.ask) {
+    if (state != null) return;
+    s.event = event;
+    s.friend = friend.clamp(0, 3);
+    s.mood = clamp(0.4 * s.friend, -3, 3); // friends start in a better mood (never a lower opening price)
+    switch (event) {
+      case 'festival': // festival prices: everyone's cheerful, prices start higher
+        s.ask = s.opening = nice(item.ask * 1.15);
+        s.mood = clamp(s.mood + 0.5, -3, 3);
+      case 'rain': // empty market: keen to sell
+        s.mood = clamp(s.mood + 1, -3, 3);
+      case 'closing': // closing time: wants to clear stock, but tired
+        s.patience = 60;
+      case 'rival': // another auntie wants the same last one
+        s.rivalLeft = 4;
+    }
+  }
+
+  /// How much more they'll give because of a surprise (rain, closing time, the rival auntie).
+  double get _eventGive => switch (s.event) {
+    'rain' => 0.08,
+    'closing' => 0.12,
+    'rival' => 0.05,
+    _ => 0.0,
+  };
   final Item item;
   final Personality p;
   final math.Random rng;
@@ -214,6 +244,13 @@ class Haggle {
       _ => _smalltalk(),
     };
     if (out.event == 'confirm') return out; // a deal on the table always gets its confirmation step
+    if (s.event == 'rival' && !s.done && s.rivalLeft > 0) {
+      s.rivalLeft -= 1;
+      if (s.rivalLeft == 0) {
+        _finish('lost'); // the rival auntie bought the last one
+        return _out('rival_bought');
+      }
+    }
     if (!s.done && s.patience <= 0) {
       _finish('refused');
       return _out('refuse');
@@ -240,7 +277,7 @@ class Haggle {
     s.lastOffer = x;
     final f = floorNow();
     if (x >= s.ask) return _agree(s.ask, x);
-    final give = (item.ask - item.floor) * clamp(0.25 + 0.06 * s.mood - 0.15 * p.stubborn, 0.05, 0.5);
+    final give = (item.ask - item.floor) * clamp(0.25 + 0.06 * s.mood - 0.15 * p.stubborn + _eventGive, 0.05, 0.6);
     if (s.bestGiven && x < s.ask) {
       _tire(9);
       return _out('final', x);
@@ -264,7 +301,7 @@ class Haggle {
       return _out('final', x);
     }
     final before = s.ask;
-    _concede(x, 0.25 + 0.08 * s.mood - 0.15 * p.stubborn);
+    _concede(x, 0.25 + 0.08 * s.mood - 0.15 * p.stubborn + _eventGive);
     _tire(7);
     return _out(s.ask >= before ? 'final' : 'counter', x);
   }

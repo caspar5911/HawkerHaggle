@@ -12,8 +12,11 @@ final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()
 const eventsAll = {
   'greet', 'counter', 'final', 'insulted', 'accept', 'flattered', 'flattery_tired', 'competitor_drop',
   'competitor_annoyed', 'bulk', 'regular', 'smalltalk', 'rude', 'callback', 'letgo', 'refuse', 'confused', 'plead',
-  'plead_no', 'clarify', 'confirm', 'unsure', 'budget_best', 'pity', 'pity_tired', 'deflect', //
+  'plead_no', 'clarify', 'confirm', 'unsure', 'budget_best', 'pity', 'pity_tired', 'deflect', 'rival_bought', //
 };
+
+/// Lines that only some moments use (greetings for each market surprise).
+const extraLines = {'greet_rain', 'greet_closing', 'greet_festival', 'greet_rival'};
 
 const typed = [
   '15 can?', r'$12 lah', 'ok lah', 'can cheaper?', 'wah so nice', 'next stall cheaper leh', 'I buy two',
@@ -29,6 +32,7 @@ const styles = [
 ];
 
 final dollarNoNumber = RegExp(r'\$(?!\d)');
+var hardMode = false;
 
 void check(Map g, Set<String> seen) {
   seen.add(g['event'] as String);
@@ -38,7 +42,7 @@ void check(Map g, Set<String> seen) {
   final line = g['line'] as String;
   expect(line.isNotEmpty && !line.contains('{') && !line.contains('}'), isTrue, reason: line);
   expect(dollarNoNumber.hasMatch(line), isFalse, reason: line);
-  final shouldBeEmpty = g['done'] == true || g['pending'] != null;
+  final shouldBeEmpty = g['done'] == true || g['pending'] != null || hardMode;
   expect((g['suggestions'] as List).isEmpty, shouldBeEmpty, reason: '${g['event']} ${g['pending']}');
   if (g['pending'] != null) {
     expect(['confirm', 'clarify'], contains(g['event']));
@@ -46,9 +50,17 @@ void check(Map g, Set<String> seen) {
   }
 }
 
-Future<(Map, int)> play(Game game, Map stall, Map item, String style, math.Random rnd, Set<String> seen) async {
+Future<(Map, int)> play(
+  Game game,
+  Map stall,
+  Map item,
+  String style,
+  math.Random rnd,
+  Set<String> seen, {
+  String surprise = '',
+}) async {
   final floor = (item['floor'] as num).toDouble();
-  var g = await game.start(stall['id'] as String, item['id'] as String);
+  var g = await game.start(stall['id'] as String, item['id'] as String, surprise);
   check(g, seen);
   var lastAsk = (g['ask'] as num).toDouble();
   var wasPending = false;
@@ -124,6 +136,10 @@ Future<(Map, int)> play(Game game, Map stall, Map item, String style, math.Rando
       expect((g['deal'] as num) >= floor * 0.9 - 0.01, isTrue, reason: '$style: below floor ${g['deal']}');
       expect([1, 2, 3], contains(g['stars']));
     }
+    if (g['done'] == true) {
+      expect(['deal', 'walked', 'refused', 'lost'], contains(g['result']));
+      if (g['result'] == 'lost') expect(g['surprise'], 'rival');
+    }
     wasPending = g['pending'] != null;
   }
   if (!['typed', 'cancel_reoffer'].contains(style)) {
@@ -134,7 +150,7 @@ Future<(Map, int)> play(Game game, Map stall, Map item, String style, math.Rando
 
 void main() {
   test('sweep every stall, item and play style (no AI)', () async {
-    final game = Game(content: content, store: MemoryKeyValue(), random: math.Random(1));
+    final game = Game(content: content, store: MemoryKeyValue(), random: math.Random(1), unlockAll: true);
     await game.load();
     final rnd = math.Random(2026);
     final seen = <String>{};
@@ -143,27 +159,76 @@ void main() {
       for (final it in (s as Map)['items'] as List) {
         for (final style in styles) {
           for (var i = 0; i < 12; i++) {
-            final (g, _) = await play(game, s, it as Map, style, rnd, seen);
+            final (g, _) = await play(game, s, it as Map, style, rnd, seen, surprise: 'none');
             final key = '$style/${g['result'] == '' ? 'unfinished' : g['result']}';
             results[key] = (results[key] ?? 0) + 1;
           }
         }
       }
     }
-    expect(results['old_app_accept_spam/deal'], 8 * 12); // never stuck
+    expect(results['old_app_accept_spam/deal'], 12 * 12); // never stuck (6 stalls x 2 items x 12)
     int count(String r) => results.entries.where((e) => e.key.endsWith('/$r')).fold(0, (a, e) => a + e.value);
     expect(count('deal'), greaterThan(100));
     expect(count('walked'), greaterThan(10));
     expect(count('refused'), greaterThan(10));
-    expect(eventsAll.difference(seen), anyOf(isEmpty, equals({'confused'}))); // confused needs the AI
+    // confused needs the AI; rival_bought needs the rival surprise (swept below)
+    expect(eventsAll.difference(seen).difference({'confused', 'rival_bought'}), isEmpty);
     final me = game.me();
     expect(me['haggles'], 500); // finished haggles are kept on the phone (the last 500)
+  });
+
+  test('sweep with every market surprise forced on', () async {
+    for (final surprise in ['rain', 'closing', 'festival', 'rival']) {
+      final game = Game(content: content, store: MemoryKeyValue(), random: math.Random(3), unlockAll: true);
+      await game.load();
+      final rnd = math.Random(7);
+      final seen = <String>{};
+      final results = <String, int>{};
+      for (final s in content['stalls'] as List) {
+        for (final it in (s as Map)['items'] as List) {
+          for (final style in styles) {
+            for (var i = 0; i < 3; i++) {
+              final (g, _) = await play(game, s, it as Map, style, rnd, seen, surprise: surprise);
+              expect(g['surprise'], surprise);
+              results[g['result'] as String] = (results[g['result']] ?? 0) + 1;
+            }
+          }
+        }
+      }
+      if (surprise == 'rival') {
+        expect(seen, contains('rival_bought'));
+        expect(results['lost'], greaterThan(0));
+      } else {
+        expect(results['lost'] ?? 0, 0);
+      }
+      expect(results['deal'], greaterThan(20), reason: surprise);
+    }
+  });
+
+  test('hard mode: no suggestions, typing still works', () async {
+    hardMode = true;
+    try {
+      final game = Game(content: content, store: MemoryKeyValue(), random: math.Random(5), unlockAll: true);
+      await game.load();
+      await game.setHard(true);
+      final rnd = math.Random(9);
+      final seen = <String>{};
+      for (final s in content['stalls'] as List) {
+        for (final style in ['typed', 'old_app_accept_spam', 'walk', 'flatter_and_offer']) {
+          await play(game, s as Map, (s['items'] as List).first as Map, style, rnd, seen, surprise: 'none');
+        }
+      }
+      final g = await game.start('mei', 'mango', 'none');
+      await expectLater(game.move(g['id'] as String, pick: 0), throwsA(isA<GameError>()));
+    } finally {
+      hardMode = false;
+    }
   });
 
   test('every event has lines for every stall and they fill in', () {
     for (final s in content['stalls'] as List) {
       final lines = (s as Map)['lines'] as Map;
-      for (final ev in eventsAll) {
+      for (final ev in {...eventsAll, ...extraLines}) {
         expect(lines[ev], isA<List>(), reason: '${s['id']} has no lines for $ev');
         for (final l in lines[ev] as List) {
           final out = '$l'.replaceAll('{item}', 'durian').replaceAll('{price}', r'$12').replaceAll('{offer}', r'$9');
@@ -176,7 +241,7 @@ void main() {
   test('asking back never changes the haggle', () async {
     final game = Game(content: content, store: MemoryKeyValue());
     await game.load();
-    final g = await game.start('lim', 'prawns');
+    final g = await game.start('lim', 'prawns', 'none');
     for (var i = 0; i < 25; i++) {
       final r = await game.move(g['id'] as String, text: 'ok lah');
       expect(r['event'], 'clarify');

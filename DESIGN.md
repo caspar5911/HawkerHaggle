@@ -86,3 +86,19 @@ or don't ask for a yes on a deal are retried once, then a ready-made line is use
 After a typed message, the player can report her reply. The report keeps the message, how it was read, and her
 reply, on the phone; Settings → Your reports → Copy gives text to send to the maker. Add real misreads to
 `server/tests/live_matrix.py` (and re-export `app/tool/live_cases.json`) with the right expected move.
+
+## The game around the haggles (app only, from test 13)
+- **Mum's daily list:** two items from two of the first four stalls, the same for everyone that day (hashed from the
+  date). The budget is 5% over the fair prices, never based on the secret lowest ones. Finishing it builds a streak.
+- **Friendship (0–3 hearts):** visits and deals add points (at most 15 a day per stall, so it can't be farmed);
+  rudeness takes 10. Friends start in a better mood (never a lower opening price) and the AI is told, without numbers,
+  that it knows this customer. Hearts unlock the stallholder's story.
+- **Market surprises** (about 1 haggle in 3): rain (keen to sell), closing time (wants to clear stock, low patience),
+  festival (prices start 15% higher, cheerful), rival auntie (4 moves before Auntie Rose buys it: result `lost`).
+- **Stickers** (18), **unlocks** (Madam Lee at 8 stars, Ah Boy at 14, counting the best result on each item),
+  **hard mode** (no suggestions), a **brag card** to share.
+
+**Source of truth:** the Python version remains the reference for the base rules, and every new engine input
+(surprise, friendship) is neutral by default, so the reference check still covers normal haggles. The features
+above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of `engine.dart`), tested by
+`progress_test.dart`, the forced-surprise sweep and the live check. Extra AI briefs live in `prompts_extra.dart`.

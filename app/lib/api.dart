@@ -105,6 +105,12 @@ class Api {
   Future<void> flag(String id) => _run((g) => g.flag(id));
   Future<void> deleteMe() => _run((g) => g.deleteAll());
   Future<int> reportCount() => _run((g) => g.reports.length);
+  Future<Map<String, dynamic>> today() => _run((g) => Map<String, dynamic>.from(g.today()));
+  Future<List<Map<String, dynamic>>> stickers() =>
+      _run((g) => [for (final s in g.stickers()) Map<String, dynamic>.from(s)]);
+  Future<Map<String, dynamic>> stallProfile(String id) => _run((g) => Map<String, dynamic>.from(g.stallProfile(id)));
+  Future<bool> hard() => _run((g) => g.hard);
+  Future<void> setHard(bool on) => _run((g) => g.setHard(on));
   Future<String> reportsText() => _run((g) => g.reportsText());
 
   /// Settings > AI: point the game at any OpenAI-compatible endpoint (or none, for simple mode).
