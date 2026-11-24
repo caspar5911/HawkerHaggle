@@ -17,7 +17,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from .ai import AI, money, rules
+from .ai import AI, money, plain_yes, rules
 from .engine import Haggle, Item, Personality, State
 from .store import Store
 
@@ -25,13 +25,16 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTENT = json.loads((ROOT / "content" / "stalls.json").read_text(encoding="utf-8"))
 STALLS = {s["id"]: s for s in CONTENT["stalls"]}
 PLAYER_LINES = CONTENT["player"]
-LIVE_PER_DAY = int(os.environ.get("HH_LIVE_PER_DAY", "15"))
+# No daily AI limit. The GX10 is protected by the AI class (2 calls at once, never queued) and MOVES_PER_MINUTE.
+# "live_left" stays in responses only so older test builds of the app keep working.
+OLD_APP_LIVE_LEFT = 999
 MOVES_PER_MINUTE = 40
+TRUSTED_PROXIES = {"127.0.0.1", "::1"}       # tailscale serve / a relay on this machine
 
 
 class Move(BaseModel):
     pick: int | None = Field(default=None, ge=0, le=2, description="index of a suggested move (tap mode)")
-    move: str | None = Field(default=None, description="'walk' or 'accept' (always available); 'confirm' or 'cancel' when a deal is pending")
+    move: str | None = Field(default=None, description="'walk', 'accept' (asks to confirm) or 'buy' (already confirmed in the app); 'confirm' or 'cancel' when a deal is pending")
     text: str | None = Field(default=None, max_length=300, description="free text (live mode)")
 
 
@@ -62,6 +65,15 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         return p
 
     # ------------------------------------------------------------------ helpers
+    def client_ip(request: Request) -> str:
+        """The player's address. Behind a proxy on this machine (tailscale serve, or a relay later) every request
+        comes from loopback, so use the address the proxy adds, and only then (anyone could send that header)."""
+        peer = request.client.host if request.client else "?"
+        fwd = request.headers.get("x-forwarded-for", "")
+        if peer in TRUSTED_PROXIES and fwd:
+            return fwd.split(",")[-1].strip() or peer
+        return peer
+
     def line(stall: dict, item: dict, event: str, h: Haggle, offer=None, seed: int = 0, chat=()) -> str:
         """A ready-made line, avoiding ones already said in this haggle while there are fresh ones left."""
         options = stall["lines"].get(event) or stall["lines"]["smalltalk"]
@@ -111,14 +123,14 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
 
     @app.post("/v1/device")
     def device(request: Request):
-        limit("device:" + (request.client.host if request.client else "?"), 10)
+        limit("device:" + client_ip(request), 10)
         token, p = store.new_player()
         return {"token": token, "player": {"name": p["name"]}}
 
     @app.get("/v1/me")
     def me(p: dict = Depends(player)):
         return {"name": p["name"], **store.stats(p["id"]),
-                "live_left": max(0, LIVE_PER_DAY - store.ai_used(p["id"], today()))}
+                "live_left": OLD_APP_LIVE_LEFT}
 
     @app.delete("/v1/me")
     def delete_me(p: dict = Depends(player)):
@@ -148,7 +160,7 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         store.save_session(sid, p["id"], stall["id"], item["id"], seed, asdict(h.s), h.rng.getstate(),
                            chat=[{"who": "them", "text": said, "ask": h.s.ask}])
         return view(sid, stall, item, h, said, "greet", None, None,
-                    max(0, LIVE_PER_DAY - store.ai_used(p["id"], today())), False)
+                    OLD_APP_LIVE_LEFT, False)
 
     @app.post("/v1/haggle/{sid}/move")
     def move(sid: str, body: Move, p: dict = Depends(player)):
@@ -156,11 +168,10 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         sess, stall, item, h = load(sid, p)
         if h.s.done:
             raise HTTPException(409, "This haggle is over")
-        live_left = max(0, LIVE_PER_DAY - store.ai_used(p["id"], today()))
         chat = sess["chat"]
         use_ai, unclear = False, ""
         if body.text:
-            if live_left > 0 and ai.enabled:
+            if ai.enabled:
                 heard = ai.understand(body.text, chat, h.s.ask, item["name"], stall["name"], pending=h.s.pending)
                 kind, price, use_ai, unclear = heard.move, heard.price, heard.ai, heard.unclear
             else:
@@ -169,6 +180,9 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         elif body.move in ("confirm", "cancel"):
             kind, price = body.move, None
             you = ("Deal! " + money(h.s.pending)) if kind == "confirm" and h.s.pending else "Wait, let me think first."
+        elif body.move == "buy":
+            kind, price = "buy", None
+            you = player_text("accept", h.s.pending or h.s.ask, f"{sid}-{h.s.rounds}-x")
         elif body.move in ("walk", "accept"):
             kind, price = body.move, None
             you = player_text(kind, h.s.ask if kind == "accept" else None, f"{sid}-{h.s.rounds}-x")
@@ -179,8 +193,9 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             kind, price, you = sug[body.pick]["move"], sug[body.pick]["price"], sug[body.pick]["text"]
         else:
             raise HTTPException(400, "Send pick, move or text")
-        if h.s.pending is not None and body.text and kind == "accept" and not (price and price < h.s.pending):
-            kind = "confirm"        # a typed yes to "deal at $X, confirm?"
+        if h.s.pending is not None and body.text and (
+                (kind == "accept" and not (price and price < h.s.pending)) or (not use_ai and plain_yes(body.text))):
+            kind = "confirm"        # a typed yes to "deal at $X, confirm?" (the word rules know a bare "ok lah" too)
         if kind == "accept" and price and price < h.s.ask:
             kind = "offer"          # "ok 24 lah" while they ask 26 is an offer of 24, not a yes to 26
         if kind == "clarify":
@@ -196,14 +211,13 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
                           history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening],
                           unclear=unclear)
             ai_line = said is not None
-            store.add_ai_use(p["id"], today())
-            live_left = max(0, live_left - 1)
+            store.add_ai_use(p["id"], today())          # usage stats only, not a limit
         said = said or line(stall, item, event, h, offer=out.offer if out else None, seed=sess["seed"], chat=chat)
         chat = chat + [{"who": "you", "text": you[:300], "move": kind},
                        {"who": "them", "text": said, "ask": h.s.ask}]
         store.save_session(sid, p["id"], stall["id"], item["id"], sess["seed"], asdict(h.s), h.rng.getstate(), out,
                            chat=chat)
-        return view(sid, stall, item, h, said, event, out, you, live_left, ai_line)
+        return view(sid, stall, item, h, said, event, out, you, OLD_APP_LIVE_LEFT, ai_line)
 
     @app.get("/delete", response_class=HTMLResponse)
     def delete_page():

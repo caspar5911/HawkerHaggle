@@ -124,12 +124,7 @@ class _Hello extends StatelessWidget {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: [
-          _Chip('👋 ${me['name']}'),
-          _Chip('⭐ ${me['stars']}'),
-          _Chip('🤝 ${me['deals']} deals'),
-          _Chip('✨ ${me['live_left']} chats today'),
-        ],
+        children: [_Chip('👋 ${me['name']}'), _Chip('⭐ ${me['stars']}'), _Chip('🤝 ${me['deals']} deals')],
       ),
     );
   }
@@ -525,7 +520,12 @@ class _Scene extends StatelessWidget {
             Positioned(
               top: top + 58,
               right: 16,
-              child: PriceTag(ask: g!['ask'] as num, opening: g!['opening'] as num, deal: g!['deal'] as num?),
+              // while a deal waits for a yes, the tag shows the agreed price
+              child: PriceTag(
+                ask: (g!['pending'] ?? g!['ask']) as num,
+                opening: g!['opening'] as num,
+                deal: g!['deal'] as num?,
+              ),
             ),
           ],
           Positioned(
@@ -562,7 +562,6 @@ class _Controls extends StatelessWidget {
   Widget build(BuildContext context) {
     final sugs = g['suggestions'] as List;
     final pending = g['pending'] as num?;
-    final liveLeft = (g['live_left'] as num).toInt();
     final icons = {
       'offer': '💰',
       'compliment': '😍',
@@ -605,15 +604,11 @@ class _Controls extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Bouncy(
-                    enabled: !busy,
-                    onTap: () => send(move: 'accept', mine: g['accept_text'] as String),
-                    child: Pill(
-                      text: 'OK lah, ${money(g['ask'] as num)}',
-                      icon: '🤝',
-                      color: Palette.green,
-                      textColor: Colors.white,
-                    ),
+                  child: _OkLahButton(
+                    key: ValueKey(g['ask']),
+                    ask: g['ask'] as num,
+                    busy: busy,
+                    onConfirmed: () => send(move: 'buy', mine: g['accept_text'] as String),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -631,7 +626,7 @@ class _Controls extends StatelessWidget {
           // Typing opens a box in the middle of the screen, above the keyboard, so nothing gets hidden.
           Bouncy(
             enabled: !busy,
-            onTap: () => _openTypeBox(context, liveLeft),
+            onTap: () => _openTypeBox(context),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
               decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(20)),
@@ -641,7 +636,7 @@ class _Controls extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      liveLeft > 0 ? 'Say anything… (✨ $liveLeft AI chats left today)' : r'Type an offer, e.g. $8 can?',
+                      'Say anything…',
                       style: const TextStyle(color: Palette.soft, fontWeight: FontWeight.w500),
                     ),
                   ),
@@ -654,7 +649,7 @@ class _Controls extends StatelessWidget {
     );
   }
 
-  Future<void> _openTypeBox(BuildContext context, int liveLeft) async {
+  Future<void> _openTypeBox(BuildContext context) async {
     final said = await showGeneralDialog<String>(
       context: context,
       barrierDismissible: true,
@@ -662,7 +657,7 @@ class _Controls extends StatelessWidget {
       barrierColor: Colors.black.withValues(alpha: 0.35),
       transitionDuration: const Duration(milliseconds: 260),
       pageBuilder: (_, _, _) =>
-          _TypeBox(text: text, lastLine: lastLine, who: who, ask: g['ask'] as num, liveLeft: liveLeft),
+          _TypeBox(text: text, lastLine: lastLine, who: who, ask: g['ask'] as num, pending: g['pending'] as num?),
       transitionBuilder: (_, a, _, child) => FadeTransition(
         opacity: a,
         child: ScaleTransition(
@@ -686,18 +681,20 @@ class _TypeBox extends StatelessWidget {
     required this.lastLine,
     required this.who,
     required this.ask,
-    required this.liveLeft,
+    required this.pending,
   });
   final TextEditingController text;
   final String lastLine;
   final String who;
   final num ask;
-  final int liveLeft;
+  final num? pending;
 
   @override
   Widget build(BuildContext context) {
     final keyboard = MediaQuery.of(context).viewInsets.bottom;
-    final ideas = ['Can cheaper?', '${money(ask * 0.75)} can?', 'I buy every week one!', 'So nice! 😍'];
+    final ideas = pending != null
+        ? ['OK lah, deal!', 'Wait ah, let me think', '${money((pending! * 0.95 * 2).round() / 2)} can?']
+        : ['Can cheaper?', '${money(ask * 0.75)} can?', 'I buy every week one!', 'So nice! 😍'];
     void done() => Navigator.of(context).pop(text.text);
     return SafeArea(
       child: AnimatedPadding(
@@ -744,7 +741,7 @@ class _TypeBox extends StatelessWidget {
                       style: const TextStyle(fontSize: 17, color: Palette.ink),
                       decoration: InputDecoration(
                         hintText: 'Type your reply…',
-                        counterText: liveLeft > 0 ? '✨ $liveLeft AI chats left today' : 'Simple mode: say a price',
+                        counterText: '',
                         filled: true,
                         fillColor: Palette.cream,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -801,6 +798,79 @@ class _TypeBox extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// "OK lah, $X": the first tap turns the button into "Confirm $X" (with a way back); the second tap buys.
+class _OkLahButton extends StatefulWidget {
+  const _OkLahButton({super.key, required this.ask, required this.busy, required this.onConfirmed});
+  final num ask;
+  final bool busy;
+  final VoidCallback onConfirmed;
+  @override
+  State<_OkLahButton> createState() => _OkLahButtonState();
+}
+
+class _OkLahButtonState extends State<_OkLahButton> {
+  bool _asking = false;
+  Timer? _undo;
+
+  @override
+  void dispose() {
+    _undo?.cancel();
+    super.dispose();
+  }
+
+  void _tap() {
+    if (!_asking) {
+      setState(() => _asking = true);
+      _undo = Timer(const Duration(seconds: 5), () {
+        if (mounted) setState(() => _asking = false); // changed their mind by doing nothing
+      });
+      return;
+    }
+    _undo?.cancel();
+    setState(() => _asking = false);
+    widget.onConfirmed();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final price = money(widget.ask);
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      transitionBuilder: (child, a) => ScaleTransition(
+        scale: CurvedAnimation(parent: a, curve: Curves.easeOutBack),
+        child: child,
+      ),
+      child: _asking
+          ? Row(
+              key: const ValueKey('confirm'),
+              children: [
+                Expanded(
+                  child: Bouncy(
+                    enabled: !widget.busy,
+                    onTap: _tap,
+                    child: Pill(text: 'Confirm $price', icon: '✅', color: Palette.teal, textColor: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Bouncy(
+                  onTap: () {
+                    _undo?.cancel();
+                    setState(() => _asking = false);
+                  },
+                  child: const Pill(text: '✕'),
+                ),
+              ],
+            )
+          : Bouncy(
+              key: const ValueKey('ok'),
+              enabled: !widget.busy,
+              onTap: _tap,
+              child: Pill(text: 'OK lah, $price', icon: '🤝', color: Palette.green, textColor: Colors.white),
+            ),
     );
   }
 }

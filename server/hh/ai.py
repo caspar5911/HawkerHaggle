@@ -8,12 +8,15 @@ once (the GX10 also serves a trading bot), short timeouts, and every reply is ch
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import threading
 from typing import NamedTuple
 
 import requests
+
+log = logging.getLogger("hh.ai")
 
 MOVES = ("offer", "plead", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
 
@@ -23,7 +26,7 @@ EVENTS = {
     "final": "The customer offered {offer}. You won't go lower than {ask}.",
     "insulted": "The customer offered only {offer}, which insults you. Your price stays {ask}.",
     "accept": "The customer confirmed: sold at {deal}. Close the deal happily.",
-    "confirm": "You agree to sell at {deal}. Say yes happily, then ask the customer to confirm the deal at {deal}.",
+    "confirm": "You agree to sell at {deal}, but the customer has NOT confirmed yet. Say yes happily, then END with a question asking them to confirm at {deal} (e.g. '..., deal or not?'). Don't say it's sold or wrap it yet.",
     "unsure": "The customer isn't ready to confirm yet. Tell them to take their time; the price is still {ask}.",
     "flattered": "The customer complimented you or your goods. You're pleased and say {ask}.",
     "flattery_tired": "The customer keeps sweet-talking. You're tired of it and want them to buy.",
@@ -181,12 +184,24 @@ class AI:
         user = (f"Conversation so far:\n{transcript(history, stall['name'])}\n\n"
                 + (f"The customer just said: <<<{heard[:300]}>>>\n" if heard else "")
                 + f"Your reply as {stall['name']}:")
-        text = self._chat(system, user, json_mode=False, temperature=0.9)
-        if text:
-            text = re.sub(rf"^\W*{re.escape(stall['name'])}\W*:\s*", "", text.strip())
         # When asking back, she may repeat the customer's own counts ("100 pieces ah?"), never as a $ price.
         counts = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", heard or "")] if event == "clarify" else []
-        return checked(text, list(prices.values()) + [a for a in also_ok if a], counts=counts)
+        allowed = list(prices.values()) + [a for a in also_ok if a]
+        for attempt in range(2):
+            text = self._chat(system, user, json_mode=False, temperature=0.9)
+            if text is None:
+                return None                     # model busy or down: use a ready-made line
+            text = re.sub(rf"^\W*{re.escape(stall['name'])}\W*:\s*", "", text.strip())
+            good = checked(text, allowed, counts=counts, dollar_counts=event == "clarify")
+            if good and event == "confirm" and "?" not in good:
+                good = None                     # must ask "deal or not?", never sound like it's already done
+            if good:
+                return good
+            log.warning("AI line rejected (%s, try %d): %s", event, attempt + 1, text[:200])
+            user += ("\n\nYour last reply mentioned a price or number you may not use. Try again: the only $ amounts "
+                     f"you may write are {', '.join(money(v) for v in prices.values()) or 'none'}; no other prices, "
+                     "no 'free', no percentages.")
+        return None
 
 
 def money(v) -> str:
@@ -195,20 +210,28 @@ def money(v) -> str:
     return f"${v:.2f}".replace(".00", "") if v != int(v) else f"${int(v)}"
 
 
-def checked(text: str | None, allowed, counts=()) -> str | None:
+def checked(text: str | None, allowed, counts=(), dollar_counts: bool = False) -> str | None:
     """Keep a model reply only if it can't mislead about the price: every $ amount must be one of the engine's
     prices, other numbers must be engine prices or small counts ("2 for you"), and nothing is 'free'."""
     if not text:
         return None
     text = text.strip().strip('"').splitlines()[0][:220]
     ok = {round(float(a), 2) for a in allowed}
-    if re.search(r"\bfree\b|percent|%|\bdiscount of\b", text, re.I):
+    dollars = ok | ({round(float(c), 2) for c in counts} if dollar_counts else set())
+    if re.search(r"percent|%|\bdiscount of\b", text, re.I):
         return None
-    for n in re.findall(r"\$\s*(\d+(?:\.\d+)?)", text):
-        if round(float(n), 2) not in ok:
-            return None
+    amounts = [round(float(n), 2) for n in re.findall(r"\$\s*(\d+(?:\.\d+)?)", text)]
+    if any(a not in dollars for a in amounts):
+        return None
+    # "free" only as banter next to her real price ("plastic bag free, still $45"), never as the deal itself
+    if re.search(r"\bfree\b", text, re.I) and not any(a in ok and a > 0 for a in amounts):
+        return None
     plain = ok | {round(float(c), 2) for c in counts}
-    for n in re.findall(r"(?<![\d$.])(\d+(?:\.\d+)?)", text):
+    # Numbers with a unit are not prices ("30 years", "1 kg", "7am"): fine to say.
+    text_no_units = re.sub(r"(?<![$\d.])\d+(?:\.\d+)?\s*(years?|yrs?|kg|kilos?|g|grams?|pieces?|pcs|days?|hours?|hrs?|"
+                           r"minutes?|mins?|am|pm|o'?clock|times?|generations?|months?|weeks?|cm|m|km)\b",
+                           " ", text, flags=re.I)
+    for n in re.findall(r"(?<![\d$.])(\d+(?:\.\d+)?)", text_no_units):
         v = round(float(n), 2)
         if v not in plain and v > 3:
             return None
@@ -227,6 +250,15 @@ WORDS = [
     ("accept", r"\b(deal|i('ll| will)? (take|buy)( it| this| one| lah)?|pack (it|for me)|wrap (it|for me))\b"),
     ("clarify", r"^\s*(ok+|okay|can|fine|hmm+|ya|yes|sure)\b"),
 ]
+
+
+YES = re.compile(r"^\W*(ok+|okay|yes+|ya+|yah|yup|can|sure|deal|done|fine|confirm|boleh|shiok|steady)"
+                 r"(\W+(lah|la|leh|lor|ah|deal|can|ok|okay|boss|auntie|uncle|kak|adik|confirm|then|plus chop))*\W*$", re.I)
+
+
+def plain_yes(text: str) -> bool:
+    """A bare yes ("ok lah", "can can", "yes deal") with nothing else: answers "deal or not?"."""
+    return bool(YES.match(text.strip()))
 
 
 def rules(text: str) -> tuple[str, float | None]:

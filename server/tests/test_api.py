@@ -46,7 +46,7 @@ def test_device_and_me():
     h, name = register(c)
     assert len(name.split()) == 3
     me = c.get("/v1/me", headers=h).json()
-    assert me["name"] == name and me["haggles"] == 0 and me["live_left"] == 15
+    assert me["name"] == name and me["haggles"] == 0
     assert c.get("/v1/me").status_code == 401
     assert c.get("/v1/me", headers={"Authorization": "Bearer nope"}).status_code == 401
 
@@ -93,11 +93,10 @@ def test_live_mode_uses_the_model_and_counts_a_turn():
     h, _ = register(c)
     g = c.post("/v1/haggle", json={"stall": "lim", "item": "pomfret"}, headers=h).json()
     g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "uncle 11 dollars can?"}, headers=h).json()
-    assert g["you_said"] == "uncle 11 dollars can?" and g["live_left"] == 14
+    assert g["you_said"] == "uncle 11 dollars can?"
     assert g["event"] in ("counter", "final", "accept")
     # the model's line mentions $13, which is only kept if it's the engine's price
     assert g["ai_line"] == (f"${g['ask']:g}" in "$13") or not g["ai_line"]
-    assert c.get("/v1/me", headers=h).json()["live_left"] == 14
 
 
 def test_model_lines_with_made_up_prices_are_thrown_away():
@@ -120,19 +119,19 @@ def test_prompt_injection_cannot_change_the_price():
     assert g["ai_line"] is False and "FREE" not in g["line"]       # the bad line was replaced
 
 
-def test_daily_live_limit_falls_back_to_word_rules():
-    model = FakeModel()
+def test_there_is_no_daily_ai_limit():
+    model = FakeModel(move='{"move": "compliment", "price": null}', line="Aiyo boss, you so sweet")
     c, _ = client(model)
     h, _ = register(c)
     g = c.post("/v1/haggle", json={"stall": "raj", "item": "powerbank"}, headers=h).json()
-    for i in range(16):
-        g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "boss you very nice"}, headers=h).json()
-        if g["done"]:
+    used = 0
+    for i in range(30):                                        # twice the old limit of 15
+        if g["done"] or g.get("pending"):
             g = c.post("/v1/haggle", json={"stall": "raj", "item": "powerbank"}, headers=h).json()
-    assert g["live_left"] == 0
-    n = len(model.calls)
-    g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "boss 30 can?"}, headers=h).json()
-    assert len(model.calls) == n and g["event"] in ("counter", "final", "accept", "insulted")
+        n = len(model.calls)
+        g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "boss you very nice"}, headers=h).json()
+        used += len(model.calls) > n
+    assert used == 30                                          # every typed message went to the AI
 
 
 def test_model_down_still_plays():
@@ -144,7 +143,7 @@ def test_model_down_still_plays():
     h, _ = register(c)
     g = c.post("/v1/haggle", json={"stall": "siti", "item": "kueh"}, headers=h).json()
     g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "next stall cheaper leh"}, headers=h).json()
-    assert g["event"].startswith("competitor") and g["line"] and g["live_left"] == 15   # no AI turn counted
+    assert g["event"].startswith("competitor") and g["line"]
 
 
 def test_word_rules():
@@ -253,3 +252,98 @@ def test_the_buy_100_for_150_case_never_closes_a_deal():
     g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
     g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "I buy 100 for 150?"}, headers=h).json()
     assert g["event"] == "clarify" and not g["done"] and g["pending"] is None
+
+
+def test_device_limit_is_per_player_address_behind_the_proxy(monkeypatch):
+    import hh.api
+    monkeypatch.setattr(hh.api, "TRUSTED_PROXIES", {"testclient"})
+    c, _ = client()
+    for i in range(10):                                         # one phone hits the sign-up limit...
+        assert c.post("/v1/device", headers={"X-Forwarded-For": "100.1.1.1"}).status_code == 200
+    assert c.post("/v1/device", headers={"X-Forwarded-For": "100.1.1.1"}).status_code == 429
+    assert c.post("/v1/device", headers={"X-Forwarded-For": "100.2.2.2"}).status_code == 200   # ...not everyone
+
+
+def test_forwarded_header_is_ignored_from_untrusted_peers():
+    c, _ = client()                                             # test client is not a trusted proxy
+    for i in range(10):
+        c.post("/v1/device", headers={"X-Forwarded-For": f"100.9.9.{i}"})
+    assert c.post("/v1/device", headers={"X-Forwarded-For": "100.9.9.99"}).status_code == 429   # can't dodge it
+
+
+def test_an_offer_with_no_number_asks_for_one():
+    model = FakeModel(move='{"move": "offer", "price": null}', line="Say a number lah")
+    c, _ = client(model)
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "raj", "item": "case"}, headers=h).json()
+    r = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "I offer you something"}, headers=h).json()
+    assert r["event"] == "confused" and r["ask"] == g["ask"] and not r["done"]
+
+
+def test_when_the_ai_is_busy_a_typed_yes_still_confirms_and_vague_text_still_asks_back():
+    model = FakeModel()
+    c, ai = client(model)
+    h, _ = register(c)
+    assert ai._slots.acquire() and ai._slots.acquire()         # the trading bot has both slots
+    try:
+        g = c.post("/v1/haggle", json={"stall": "siti", "item": "kueh"}, headers=h).json()
+        g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "ok lah"}, headers=h).json()
+        assert g["event"] == "clarify" and g["pending"] is None       # vague ok at the start: ask back
+        g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "accept"}, headers=h).json()
+        assert g["event"] == "confirm"
+        g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "hmm"}, headers=h).json()
+        assert g["event"] == "clarify" and g["pending"] and not g["done"]
+        g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "ok lah"}, headers=h).json()
+        assert g["done"] and g["result"] == "deal"                     # yes to "deal or not?"
+        assert model.calls == []                                       # all of it without the AI
+    finally:
+        ai._slots.release(); ai._slots.release()
+
+
+def test_old_app_tapping_ok_lah_on_a_waiting_deal_closes_it_instead_of_looping():
+    c, _ = client()
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "lim", "item": "prawns"}, headers=h).json()
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "accept"}, headers=h).json()
+    assert g["event"] == "confirm"
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "accept"}, headers=h).json()
+    assert g["done"] and g["result"] == "deal"
+
+
+def test_typing_the_agreed_price_again_is_a_yes():
+    c, _ = client()
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "raj", "item": "case"}, headers=h).json()
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "accept"}, headers=h).json()
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": f"{g['pending']:g}"}, headers=h).json()
+    assert g["done"] and g["result"] == "deal"
+
+
+class TwoTries(FakeModel):
+    """First reply has a made-up price, second is fine."""
+    def post(self, url, json=None, headers=None, timeout=None):
+        self.calls.append(json)
+        if json.get("response_format"):
+            return FakeResp('{"move": "smalltalk", "price": null}')
+        says = [c for c in self.calls if not c.get("response_format")]
+        return FakeResp("Special for you, $5 only!" if len(says) == 1 else "Sweet like honey, 30 years I sell here!")
+
+
+def test_a_rejected_ai_line_is_retried_once():
+    model = TwoTries()
+    c, _ = client(model)
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
+    r = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "is it sweet?"}, headers=h).json()
+    assert r["ai_line"] and r["line"] == "Sweet like honey, 30 years I sell here!"
+    assert "Try again" in model.calls[-1]["messages"][1]["content"]
+
+
+def test_the_ok_lah_button_after_its_confirm_tap_closes_the_deal_in_one_step():
+    c, _ = client()
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "mango"}, headers=h).json()
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"pick": 2}, headers=h).json()       # some bargaining first
+    ask = g["ask"] if not g.get("pending") else g["pending"]
+    r = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "buy"}, headers=h).json()
+    assert r["done"] and r["result"] == "deal" and r["deal"] == ask and r["event"] == "accept"

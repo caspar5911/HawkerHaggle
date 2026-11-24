@@ -121,6 +121,14 @@ class Haggle:
     def move(self, kind: str, price: float | None = None) -> Outcome:
         if self.s.done:
             return self._out("over")
+        if kind == "buy":
+            # The app's "OK lah, $X" button after its own "Confirm $X" tap: the player has already confirmed.
+            deal, self.s.pending = self.s.pending if self.s.pending is not None else self.s.ask, None
+            self._finish("deal", deal)
+            return self._out("accept", deal)
+        if self.s.pending is not None and (kind == "accept" or (
+                kind == "offer" and price is not None and math.isfinite(price) and nice(price) >= self.s.pending)):
+            kind = "confirm"        # "OK lah" or the agreed price again, while a deal waits: that's a yes
         if kind == "confirm":
             if self.s.pending is None:
                 kind = "smalltalk"
@@ -135,6 +143,9 @@ class Haggle:
                 # "Wait, not yet": the price they agreed stays on the table, but it costs a little patience.
                 self.s.ask, self.s.pending = min(self.s.ask, self.s.pending), None
                 self._tire(6)
+                if self.s.patience <= 0:
+                    self._finish("refused")
+                    return self._out("refuse")
                 return self._out("unsure")
         if self.s.pending is not None:
             # Any other move while a deal waits for confirmation: the player is still bargaining.
