@@ -60,7 +60,7 @@ class Sfx {
         play('coin');
       case 'insulted' || 'rude':
         play('huff');
-      case 'competitor_annoyed' || 'flattery_tired' || 'refuse' || 'final':
+      case 'competitor_annoyed' || 'flattery_tired' || 'refuse' || 'final' || 'plead_no':
         play('hmm');
       case 'letgo':
         play('whoosh');

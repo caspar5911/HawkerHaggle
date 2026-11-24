@@ -126,3 +126,12 @@ def test_every_haggle_ends_within_the_round_limit(seed):
     assert h.s.done and h.s.rounds <= 12
     if h.s.result == "deal":
         assert h.s.deal >= nice(FISH.floor * 0.9) - 0.01
+
+
+def test_can_cheaper_gives_a_little_then_asks_for_a_number():
+    h = Haggle(FISH, SOFT, seed=1)
+    first = h.move("plead")
+    assert first.event == "plead" and h.s.ask < FISH.ask
+    h.move("plead")
+    assert h.move("plead").event == "plead_no"
+    assert h.s.ask >= nice(h.floor_now())

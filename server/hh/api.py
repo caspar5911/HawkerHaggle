@@ -62,10 +62,13 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         return p
 
     # ------------------------------------------------------------------ helpers
-    def line(stall: dict, item: dict, event: str, h: Haggle, offer=None, seed: int = 0) -> str:
+    def line(stall: dict, item: dict, event: str, h: Haggle, offer=None, seed: int = 0, chat=()) -> str:
+        """A ready-made line, avoiding ones already said in this haggle while there are fresh ones left."""
         options = stall["lines"].get(event) or stall["lines"]["smalltalk"]
-        pick = options[random.Random(f"{seed}-{h.s.rounds}-{event}").randrange(len(options))]
-        return pick.format(item=item["name"], price=money(h.s.deal or h.s.ask), offer=money(offer))
+        fmt = [o.format(item=item["name"], price=money(h.s.deal or h.s.ask), offer=money(offer)) for o in options]
+        said = {m.get("text") for m in chat if m.get("who") == "them"}
+        fresh = [t for t in fmt if t not in said] or fmt
+        return fresh[random.Random(f"{seed}-{h.s.rounds}-{event}").randrange(len(fresh))]
 
     def player_text(move: str, price=None, seed: str = "") -> str:
         options = PLAYER_LINES.get(move) or PLAYER_LINES["smalltalk"]
@@ -140,8 +143,9 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         sid, seed = secrets.token_urlsafe(12), secrets.randbelow(2**31)
         h = Haggle(Item(**{k: item[k] for k in ("id", "name", "fair", "ask", "floor")}),
                    Personality(**stall["personality"]), seed=seed)
-        store.save_session(sid, p["id"], stall["id"], item["id"], seed, asdict(h.s), h.rng.getstate())
         said = line(stall, item, "greet", h, seed=seed)
+        store.save_session(sid, p["id"], stall["id"], item["id"], seed, asdict(h.s), h.rng.getstate(),
+                           chat=[{"who": "them", "text": said, "ask": h.s.ask}])
         return view(sid, stall, item, h, said, "greet", None, None,
                     max(0, LIVE_PER_DAY - store.ai_used(p["id"], today())), False)
 
@@ -152,10 +156,11 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         if h.s.done:
             raise HTTPException(409, "This haggle is over")
         live_left = max(0, LIVE_PER_DAY - store.ai_used(p["id"], today()))
+        chat = sess["chat"]
         use_ai = False
         if body.text:
             if live_left > 0 and ai.enabled:
-                kind, price, use_ai = ai.understand(body.text)
+                kind, price, use_ai = ai.understand(body.text, chat, h.s.ask, item["name"], stall["name"])
             else:
                 from .ai import rules
                 kind, price = rules(body.text)
@@ -175,13 +180,16 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         out = h.move(kind, price)
         said, ai_line = None, False
         if use_ai:
-            said = ai.say(stall, item, out.event, {"ask": h.s.ask, "offer": out.offer, "deal": h.s.deal})
+            said = ai.say(stall, item, out.event, {"ask": h.s.ask, "offer": out.offer, "deal": h.s.deal},
+                          history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening])
             ai_line = said is not None
         if use_ai:
             store.add_ai_use(p["id"], today())
             live_left = max(0, live_left - 1)
-        said = said or line(stall, item, out.event, h, offer=out.offer, seed=sess["seed"])
-        store.save_session(sid, p["id"], stall["id"], item["id"], sess["seed"], asdict(h.s), h.rng.getstate(), out)
+        said = said or line(stall, item, out.event, h, offer=out.offer, seed=sess["seed"], chat=chat)
+        chat = chat + [{"who": "you", "text": you[:300]}, {"who": "them", "text": said, "ask": h.s.ask}]
+        store.save_session(sid, p["id"], stall["id"], item["id"], sess["seed"], asdict(h.s), h.rng.getstate(), out,
+                           chat=chat)
         return view(sid, stall, item, h, said, out.event, out, you, live_left, ai_line)
 
     @app.get("/delete", response_class=HTMLResponse)

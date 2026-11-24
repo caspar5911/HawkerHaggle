@@ -173,3 +173,36 @@ def test_ok_with_a_lower_price_is_an_offer_not_a_yes():
     g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
     g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "ok 24 lah final"}, headers=h).json()
     assert g["event"] in ("counter", "final", "accept") and not (g["done"] and g["deal"] == 32)
+
+
+def test_the_ai_sees_the_whole_chat_and_what_the_player_typed():
+    model = FakeModel(move='{"move": "plead", "price": null}', line="Aiyo you so funny, OK lah")
+    c, _ = client(model)
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
+    greeting = g["line"]
+    c.post(f"/v1/haggle/{g['id']}/move", json={"text": "my wife will kill me if I pay so much"}, headers=h)
+    c.post(f"/v1/haggle/{g['id']}/move", json={"text": "please auntie, student only"}, headers=h)
+    understand, say = model.calls[-2]["messages"][1]["content"], model.calls[-1]["messages"][1]["content"]
+    for prompt in (understand, say):
+        assert greeting in prompt                                   # from the start of the haggle
+        assert "my wife will kill me" in prompt                     # earlier turn
+        assert "Aiyo you so funny" in prompt                        # the stallholder's own earlier reply
+    assert "student only" in say                                    # what they just typed
+
+
+def test_ready_made_lines_do_not_repeat_while_fresh_ones_are_left():
+    c, _ = client()                                                 # no model: ready-made lines only
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "lim", "item": "pomfret"}, headers=h).json()
+    lines = []
+    for _ in range(3):
+        r = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "the weather today hor"}, headers=h).json()
+        assert r["event"] == "smalltalk"
+        lines.append(r["line"])
+    assert len(set(lines)) == 3
+
+
+def test_can_cheaper_without_a_number_is_understood_by_word_rules():
+    assert rules("wah so ex, can cheaper?") == ("plead", None)
+    assert rules("give discount la")[0] == "plead"

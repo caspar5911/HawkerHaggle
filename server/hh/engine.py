@@ -9,7 +9,7 @@ import math
 import random
 from dataclasses import asdict, dataclass, field
 
-MOVES = ("offer", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
+MOVES = ("offer", "plead", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
 ONCE = ("competitor", "bulk", "regular")    # tactics that only work once per haggle
 MAX_ROUNDS = 12
 
@@ -41,6 +41,7 @@ class State:
     qty: int = 1
     used: list = field(default_factory=list)
     compliments: int = 0
+    pleads: int = 0
     last_offer: float | None = None
     done: bool = False
     result: str = ""            # "deal", "walked", "refused"
@@ -161,6 +162,17 @@ class Haggle:
         self._concede(self.floor_now(), 0.12 * self.p.flattery)
         self._tire(3)
         return self._out("flattered")
+
+    def _plead(self, _=None) -> Outcome:
+        """'Can cheaper?' with no number: a small give the first couple of times, then they want a real offer."""
+        self.s.pleads += 1
+        if self.s.pleads > 2:
+            self._tire(10)
+            return self._out("plead_no")
+        before = self.s.ask
+        self._concede(self.floor_now(), (0.18 if self.s.pleads == 1 else 0.1) * (1.1 - self.p.stubborn))
+        self._tire(6)
+        return self._out("plead" if self.s.ask < before else "plead_no")
 
     def _competitor(self, _=None) -> Outcome:
         self.s.used.append("competitor")

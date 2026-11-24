@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
@@ -38,8 +39,11 @@ Map<String, dynamic> game(String line, {String event = 'greet', bool done = fals
   'live_left': 15,
 };
 
+final sent = <String>[];
+
 MockClient fakeServer() => MockClient((req) async {
   final p = req.url.path;
+  if (req.body.isNotEmpty) sent.add(req.body);
   final Object body = switch (p) {
     '/v1/device' => {
       'token': 't',
@@ -96,5 +100,25 @@ void main() {
     await settle(tester, 2500);
     expect(find.text('Deal! 🎉'), findsOneWidget);
     await settle(tester, 4000); // let confetti and timers finish
+  });
+
+  testWidgets('typing opens a box with the last line, and sends what you type', (tester) async {
+    sent.clear();
+    final api = Api(client: fakeServer(), base: 'http://test');
+    await tester.pumpWidget(HawkerHaggleApp(api: api));
+    await settle(tester, 2000);
+    await tester.tap(find.text('box of mangoes'));
+    await settle(tester);
+
+    await tester.tap(find.textContaining('Say anything'));
+    await settle(tester, 600);
+    expect(find.text('Type your reply…'), findsOneWidget);
+    expect(find.text('Morning my dear! \$18 only.'), findsNWidgets(2)); // in the chat and in the box
+    await tester.enterText(find.byType(TextField), 'my wife will scold me lah');
+    await tester.tap(find.text('Send'));
+    await settle(tester, 2500);
+    expect(sent.last, contains('my wife will scold me lah'));
+    expect(find.text('my wife will scold me lah'), findsOneWidget); // shown in the chat
+    await settle(tester, 4000);
   });
 }

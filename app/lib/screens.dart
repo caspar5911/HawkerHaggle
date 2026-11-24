@@ -398,6 +398,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
     final g = _g;
     final look = Map<String, dynamic>.from(widget.stall['look'] as Map);
     return Scaffold(
+      resizeToAvoidBottomInset: false, // the typing box floats above the keyboard instead
       body: TileBackground(
         child: Stack(
           children: [
@@ -414,7 +415,15 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     ],
                   ),
                 ),
-                if (g != null && g['done'] != true) _Controls(g: g, busy: _busy, text: _text, send: _send),
+                if (g != null && g['done'] != true)
+                  _Controls(
+                    g: g,
+                    busy: _busy,
+                    text: _text,
+                    send: _send,
+                    lastLine: g['line'] as String,
+                    who: '${widget.stall['name']}',
+                  ),
               ],
             ),
             if (_showResult && g != null) ...[
@@ -534,8 +543,17 @@ class _Scene extends StatelessWidget {
 }
 
 class _Controls extends StatelessWidget {
-  const _Controls({required this.g, required this.busy, required this.text, required this.send});
+  const _Controls({
+    required this.g,
+    required this.busy,
+    required this.text,
+    required this.send,
+    required this.lastLine,
+    required this.who,
+  });
   final Map<String, dynamic> g;
+  final String lastLine;
+  final String who;
   final bool busy;
   final TextEditingController text;
   final Future<void> Function({int? pick, String? move, String? text, required String mine}) send;
@@ -605,49 +623,180 @@ class _Controls extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: text,
-                  enabled: !busy,
-                  maxLength: 300,
-                  textInputAction: TextInputAction.send,
-                  decoration: InputDecoration(
-                    counterText: '',
-                    hintText: liveLeft > 0
-                        ? 'Or type anything… (✨ $liveLeft AI chats left today)'
-                        : 'Type an offer, e.g. \$8 can?',
-                    filled: true,
-                    fillColor: Palette.cream,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(20), borderSide: BorderSide.none),
+          // Typing opens a box in the middle of the screen, above the keyboard, so nothing gets hidden.
+          Bouncy(
+            enabled: !busy,
+            onTap: () => _openTypeBox(context, liveLeft),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(20)),
+              child: Row(
+                children: [
+                  const Text('✍️', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      liveLeft > 0 ? 'Say anything… (✨ $liveLeft AI chats left today)' : r'Type an offer, e.g. $8 can?',
+                      style: const TextStyle(color: Palette.soft, fontWeight: FontWeight.w500),
+                    ),
                   ),
-                  onSubmitted: (v) => _submit(v),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Bouncy(
-                enabled: !busy,
-                onTap: () => _submit(text.text),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: const BoxDecoration(color: Palette.teal, shape: BoxShape.circle),
-                  child: const Icon(Icons.send_rounded, color: Colors.white),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _submit(String v) {
-    final t = v.trim();
+  Future<void> _openTypeBox(BuildContext context, int liveLeft) async {
+    final said = await showGeneralDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Close',
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      transitionDuration: const Duration(milliseconds: 260),
+      pageBuilder: (_, _, _) =>
+          _TypeBox(text: text, lastLine: lastLine, who: who, ask: g['ask'] as num, liveLeft: liveLeft),
+      transitionBuilder: (_, a, _, child) => FadeTransition(
+        opacity: a,
+        child: ScaleTransition(
+          scale: CurvedAnimation(parent: a, curve: Curves.easeOutBack),
+          child: child,
+        ),
+      ),
+    );
+    final t = said?.trim() ?? '';
     if (t.isEmpty) return;
     text.clear();
     send(text: t, mine: t);
+  }
+}
+
+/// The typing box: floats in the middle of the screen, above the keyboard, with the stallholder's last line
+/// so you can see what you're answering.
+class _TypeBox extends StatelessWidget {
+  const _TypeBox({
+    required this.text,
+    required this.lastLine,
+    required this.who,
+    required this.ask,
+    required this.liveLeft,
+  });
+  final TextEditingController text;
+  final String lastLine;
+  final String who;
+  final num ask;
+  final int liveLeft;
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboard = MediaQuery.of(context).viewInsets.bottom;
+    final ideas = ['Can cheaper?', '${money(ask * 0.75)} can?', 'I buy every week one!', 'So nice! 😍'];
+    void done() => Navigator.of(context).pop(text.text);
+    return SafeArea(
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 150),
+        padding: EdgeInsets.only(bottom: keyboard),
+        child: Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 18),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(26),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 18, offset: const Offset(0, 6)),
+                ],
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      who,
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.soft, fontSize: 13),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(16)),
+                      child: Text(lastLine, style: const TextStyle(color: Palette.ink, height: 1.3)),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: text,
+                      autofocus: true,
+                      maxLength: 300,
+                      minLines: 1,
+                      maxLines: 4,
+                      textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.send,
+                      onSubmitted: (_) => done(),
+                      style: const TextStyle(fontSize: 17, color: Palette.ink),
+                      decoration: InputDecoration(
+                        hintText: 'Type your reply…',
+                        counterText: liveLeft > 0 ? '✨ $liveLeft AI chats left today' : 'Simple mode: say a price',
+                        filled: true,
+                        fillColor: Palette.cream,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(18),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        for (final idea in ideas)
+                          Bouncy(
+                            onTap: () {
+                              text.text = idea;
+                              text.selection = TextSelection.collapsed(offset: idea.length);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Palette.soft.withValues(alpha: 0.3)),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Text(idea, style: const TextStyle(fontSize: 13, color: Palette.ink)),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Bouncy(
+                            onTap: () => Navigator.of(context).pop(),
+                            child: const Pill(text: 'Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Bouncy(
+                            onTap: done,
+                            child: const Pill(text: 'Send', icon: '📨', color: Palette.teal, textColor: Colors.white),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS players (id INTEGER PRIMARY KEY AUTOINCREMENT, token_
 CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, player_id INTEGER NOT NULL, stall TEXT NOT NULL,
     item TEXT NOT NULL, seed INTEGER NOT NULL, state TEXT NOT NULL, rng TEXT NOT NULL, created_at TEXT NOT NULL,
     done INTEGER NOT NULL DEFAULT 0, result TEXT NOT NULL DEFAULT '', deal REAL, stars INTEGER NOT NULL DEFAULT 0,
-    saved REAL NOT NULL DEFAULT 0);
+    saved REAL NOT NULL DEFAULT 0, chat TEXT NOT NULL DEFAULT '[]');
 CREATE TABLE IF NOT EXISTS ai_use (player_id INTEGER NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL,
     PRIMARY KEY (player_id, day));
 """
@@ -41,6 +41,9 @@ class Store:
         self._mem = sqlite3.connect(":memory:", check_same_thread=False) if self.path == ":memory:" else None
         with self.conn() as c:
             c.executescript(SCHEMA)
+            cols = {r[1] for r in c.execute("PRAGMA table_info(sessions)")}
+            if "chat" not in cols:          # databases from before the chat history
+                c.execute("ALTER TABLE sessions ADD COLUMN chat TEXT NOT NULL DEFAULT '[]'")
 
     @contextlib.contextmanager
     def conn(self):
@@ -81,12 +84,15 @@ class Store:
             c.execute("DELETE FROM players WHERE id=?", (pid,))
 
     # ------------------------------------------------------------------ sessions
-    def save_session(self, sid: str, pid: int, stall: str, item: str, seed: int, state: dict, rng, outcome=None):
+    def save_session(self, sid: str, pid: int, stall: str, item: str, seed: int, state: dict, rng, outcome=None,
+                     chat: list | None = None):
         rng_json = json.dumps([rng[0], list(rng[1]), rng[2]])
+        chat_json = json.dumps((chat or [])[-40:], ensure_ascii=False)
         with self.conn() as c:
-            c.execute("INSERT INTO sessions (id, player_id, stall, item, seed, state, rng, created_at) "
-                      "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state, rng=excluded.rng",
-                      (sid, pid, stall, item, seed, json.dumps(state), rng_json, now()))
+            c.execute("INSERT INTO sessions (id, player_id, stall, item, seed, state, rng, created_at, chat) "
+                      "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state, "
+                      "rng=excluded.rng, chat=excluded.chat",
+                      (sid, pid, stall, item, seed, json.dumps(state), rng_json, now(), chat_json))
             if outcome and outcome.done:
                 c.execute("UPDATE sessions SET done=1, result=?, deal=?, stars=?, saved=? WHERE id=?",
                           (outcome.result, outcome.deal, outcome.stars, outcome.saved, sid))
@@ -98,6 +104,7 @@ class Store:
             return None
         d = dict(r)
         d["state"] = json.loads(d["state"])
+        d["chat"] = json.loads(d.get("chat") or "[]")
         v, internal, gauss = json.loads(d["rng"])
         d["rng"] = (v, tuple(internal), gauss)
         return d

@@ -14,6 +14,7 @@ Face faceFor(String event, double mood) {
     case 'regular':
     case 'bulk':
     case 'competitor_drop':
+    case 'plead':
       return Face.happy;
     case 'callback':
     case 'confused':
@@ -21,6 +22,7 @@ Face faceFor(String event, double mood) {
     case 'final':
     case 'competitor_annoyed':
     case 'flattery_tired':
+    case 'plead_no':
       return Face.annoyed;
     case 'insulted':
     case 'rude':
