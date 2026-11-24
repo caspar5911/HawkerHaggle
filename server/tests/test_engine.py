@@ -251,3 +251,23 @@ def test_once_she_says_her_best_nothing_moves_her_lower():
                 break
             h.move(kind)
             assert h.s.ask >= best, (kind, h.s.ask, best)
+
+
+def test_walking_away_at_the_right_moment_gets_one_final_final_price():
+    h = Haggle(FISH, SOFT)
+    h.move("offer", 15)                              # some bargaining, a friendly chat
+    out = h.move("walk", call_back=True)
+    assert out.event == "callback" and not out.done and h.s.best_given
+    final = h.s.ask
+    assert final >= nice(h.floor_now()) and final < FISH.ask
+    assert h.move("offer", final - 1).event == "final"   # final-final really is final
+    assert h.move("walk", call_back=True).event == "letgo"   # and walking again ends it
+
+
+def test_no_callback_when_the_moment_is_wrong_or_they_were_rude():
+    h = Haggle(FISH, SOFT)
+    assert h.move("walk", call_back=False).event == "letgo"
+    h = Haggle(FISH, SOFT)
+    h.move("rude")
+    assert not h.can_call_back()
+    assert h.move("walk", call_back=True).event == "letgo"

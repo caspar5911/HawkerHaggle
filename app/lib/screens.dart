@@ -612,6 +612,8 @@ class _Controls extends StatelessWidget {
                   Bouncy(
                     enabled: !busy,
                     onTap: () => send(pick: i, mine: sugs[i]['text'] as String),
+                    // hold to make it your own: it goes into the typing box to edit before sending
+                    onLongPress: () => _openTypeBox(context, prefill: sugs[i]['text'] as String),
                     child: Pill(
                       text: sugs[i]['text'] as String,
                       icon: icons[sugs[i]['move']] ?? '💬',
@@ -656,7 +658,7 @@ class _Controls extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Say anything…',
+                      'Say anything… (or hold an idea to edit it)',
                       style: const TextStyle(color: Palette.soft, fontWeight: FontWeight.w500),
                     ),
                   ),
@@ -669,7 +671,11 @@ class _Controls extends StatelessWidget {
     );
   }
 
-  Future<void> _openTypeBox(BuildContext context) async {
+  Future<void> _openTypeBox(BuildContext context, {String? prefill}) async {
+    if (prefill != null) {
+      text.text = prefill;
+      text.selection = TextSelection.collapsed(offset: prefill.length);
+    }
     final said = await showGeneralDialog<String>(
       context: context,
       barrierDismissible: true,

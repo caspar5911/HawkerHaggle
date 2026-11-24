@@ -23,6 +23,8 @@ const events = <String, String>{{
 const understandPrompt = {dq(ai.UNDERSTAND)};
 
 const sayPrompt = {dq(ai.SAY)};
+
+const callbackPrompt = {dq(ai.CALLBACK.replace("{{", "{").replace("}}", "}"))};
 """
 open("app/lib/core/prompts.dart", "w").write(src)
 print("wrote app/lib/core/prompts.dart")

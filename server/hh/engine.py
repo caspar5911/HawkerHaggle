@@ -131,7 +131,13 @@ class Haggle:
         return self._out("confirm", offer)
 
     # ------------------------------------------------------------------ moves
-    def move(self, kind: str, price: float | None = None) -> Outcome:
+    def can_call_back(self) -> bool:
+        """Could they call a leaving customer back with one final-final price? Only with real room left, not after
+        they've already given their best price, and not for someone who was rude."""
+        f = self.floor_now()
+        return not self.s.done and not self.s.best_given and self.s.ask - f > f * 0.04 and self.s.mood > -1.5
+
+    def move(self, kind: str, price: float | None = None, call_back: bool | None = None) -> Outcome:
         if self.s.done:
             return self._out("over")
         if kind == "buy":
@@ -169,7 +175,10 @@ class Haggle:
         if kind in ONCE and kind in self.s.used:
             kind = "offer" if price is not None else "smalltalk"   # "2 for $40" again: still an offer
         self.s.rounds += 1
-        out = getattr(self, f"_{kind}")(price) if kind in ("offer", "budget", "bulk") else getattr(self, f"_{kind}")()
+        if kind == "walk":
+            out = self._walk(call_back)
+        else:
+            out = getattr(self, f"_{kind}")(price) if kind in ("offer", "budget", "bulk") else getattr(self, f"_{kind}")()
         if out.event == "confirm":
             return out              # a deal on the table always gets its confirmation step
         if not self.s.done and self.s.patience <= 0:
@@ -318,13 +327,19 @@ class Haggle:
         self._tire(30)
         return self._out("rude")
 
-    def _walk(self, _=None) -> Outcome:
+    def _walk(self, call_back: bool | None = None) -> Outcome:
+        """Walking away. If it's the right moment (the AI judges the conversation; without it, personality and mood
+        decide), they call you back once with a final-final price, which really is final: walk again and they let
+        you go."""
         f = self.floor_now()
-        room = self.s.ask - f
-        if not self.s.best_given and room > f * 0.04 and self.rng.random() < self.p.callback * (0.6 + 0.15 * self.s.mood):
-            self.s.ask = max(nice((self.s.ask + f) / 2), nice(f))
-            self._tire(10)
-            return self._out("callback")
+        if self.can_call_back():
+            yes = call_back if call_back is not None else \
+                self.rng.random() < self.p.callback * (0.6 + 0.15 * self.s.mood)
+            if yes:
+                self.s.ask = max(nice((self.s.ask + f) / 2), nice(f))
+                self.s.best_given = True
+                self._tire(10)
+                return self._out("callback")
         self._finish("walked")
         return self._out("letgo")
 
@@ -338,7 +353,9 @@ class Haggle:
         if self.s.done or self.s.pending is not None:
             return []           # a deal is waiting for confirmation: the app shows Deal / Not yet instead
         a = self.s.ask
-        bold, safer = nice(a * 0.6), nice(a * 0.82)
+        # Amounts vary a little from turn to turn so they don't feel mechanical (never from the secret floor).
+        r = self.s.rounds % 5
+        bold, safer = nice(a * (0.6, 0.57, 0.63, 0.55, 0.62)[r]), nice(a * (0.82, 0.8, 0.85, 0.78, 0.84)[r])
         if safer >= a:
             safer = nice(a - (0.5 if a < 20 else 1))
         out = [{"move": "offer", "price": bold}, {"move": "offer", "price": safer}]

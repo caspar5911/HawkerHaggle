@@ -236,6 +236,21 @@ void main() {
     await settle(tester, 3000);
   });
 
+  testWidgets('holding a suggestion puts it in the typing box to edit before sending', (tester) async {
+    final fake = await openHaggle(tester, [game('Every week ah? OK lah, \$15!', event: 'counter', ask: 15)]);
+    await tester.longPress(find.text('\$15 lah, OK?'));
+    await settle(tester, 600);
+    expect(find.text('Type your reply…'), findsOneWidget);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.controller!.text, '\$15 lah, OK?');
+    expect(fake.sent, isEmpty); // nothing sent by holding
+    await tester.enterText(find.byType(TextField), '\$15 lah, OK? I come every week one!');
+    await tester.tap(find.text('Send'));
+    await settle(tester, 2000);
+    expect(fake.sent.last['text'], '\$15 lah, OK? I come every week one!');
+    await settle(tester, 3000);
+  });
+
   testWidgets('cancelling the typing box sends nothing and keeps the draft', (tester) async {
     final fake = await openHaggle(tester, []);
     await tester.tap(find.textContaining('Say anything'));

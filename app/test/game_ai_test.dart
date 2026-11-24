@@ -12,6 +12,7 @@ final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()
 
 /// A pretend model: reading calls get [move] (JSON), reply calls get [line] (or [lines] in turn).
 class FakeModel {
+  bool? callBack = true; // what the pretend AI decides when someone walks away
   FakeModel({this.move = '{"move": "smalltalk", "price": null}', this.line = 'Aiyo OK lah', this.rejectExtras = false});
   String move;
   String line;
@@ -34,6 +35,8 @@ class FakeModel {
     final system = '${(body['messages'] as List)[0]['content']}';
     final content = system.startsWith("You read the customer's")
         ? move
+        : system.contains('walking away from your')
+        ? jsonEncode({'call_back': callBack, 'why': 'test'})
         : (lines != null ? lines![_said++ % lines!.length] : line);
     return http.Response(
       jsonEncode({
@@ -180,6 +183,56 @@ void main() {
     expect(r['event'], 'flattered');
     expect(r['ai_line'], isTrue);
     expect(m!.calls.every((c) => !c.containsKey('reasoning_effort')), isTrue);
+  });
+
+  test('tapping a suggestion is a message: no AI reading, but an AI-written reply', () async {
+    final (game, m) = await newGame(FakeModel(line: r'Aiyo, $11 too little lah, my dear!'));
+    final g = await game.start('mei', 'mango');
+    final sug = (g['suggestions'] as List).first as Map;
+    expect('${sug['text']}', anyOf(contains('Auntie'), isNot(contains('{who}'))));
+    final r = await game.move(g['id'] as String, pick: 0);
+    expect(m!.reads, isEmpty);
+    expect(m.says, hasLength(1));
+    expect(r['ai_line'], isTrue);
+    expect(r['you_said'], sug['text']);
+    expect('${(m.says.last['messages'] as List)[1]['content']}', contains('${sug['text']}'));
+  });
+
+  test('walking away at the right moment: one final-final price, then she lets you go', () async {
+    final (game, m) = await newGame(FakeModel(line: r'Eh wait! $16, truly my last price!'));
+    final g = await game.start('lim', 'pomfret');
+    final id = g['id'] as String;
+    await game.move(id, text: '15');
+    final r = await game.move(id, move: 'walk');
+    expect(r['event'], 'callback');
+    expect(r['done'], isFalse);
+    expect(
+      m!.calls.where((c) => '${(c['messages'] as List)[0]['content']}'.contains('walking away from your')),
+      hasLength(1),
+    );
+    final again = await game.move(id, text: '${((r['ask'] as num) - 1).toInt()}');
+    expect(again['event'], 'final'); // final-final really is final
+    final bye = await game.move(id, move: 'walk');
+    expect(bye['event'], 'letgo');
+  });
+
+  test('no callback when the AI says it is not the moment, and none for rude customers', () async {
+    final model = FakeModel(line: 'OK lor, bye.')..callBack = false;
+    final (game, m) = await newGame(model);
+    var g = await game.start('raj', 'powerbank');
+    expect((await game.move(g['id'] as String, move: 'walk'))['event'], 'letgo');
+    m!.callBack = true;
+    m.move = '{"move": "rude", "price": null}';
+    g = await game.start('raj', 'powerbank');
+    await game.move(g['id'] as String, text: 'you cheat people one');
+    final asks = m.calls.length;
+    expect((await game.move(g['id'] as String, move: 'walk'))['event'], 'letgo');
+    final after = m.calls.sublist(asks);
+    expect(
+      after.where((c) => '${(c['messages'] as List)[0]['content']}'.contains('walking away from your')),
+      isEmpty,
+      reason: 'no need to ask the AI after rudeness',
+    );
   });
 
   test('test connection explains the result', () async {

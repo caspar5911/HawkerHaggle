@@ -192,17 +192,21 @@ class Game {
     return pool[math.Random(stableSeed('$seed-${h.s.rounds}-$event')).nextInt(pool.length)];
   }
 
-  String _playerText(String move, double? price, String seed) {
+  String _playerText(String move, double? price, String seed, [String who = 'boss']) {
     final options = (_playerLines[move] ?? _playerLines['smalltalk']) as List;
-    return '${options[math.Random(stableSeed(seed)).nextInt(options.length)]}'.replaceAll(r'${price}', money(price));
+    return '${options[math.Random(stableSeed(seed)).nextInt(options.length)]}'
+        .replaceAll(r'${price}', money(price))
+        .replaceAll('{who}', who);
   }
+
+  String _who(_Session ss) => '${ss.stall['address'] ?? 'boss'}';
 
   List<Map<String, Object?>> _suggestions(_Session ss) => [
     for (final (i, s) in ss.h.suggestions().indexed)
       {
         'move': s['move'],
         'price': s['price'],
-        'text': _playerText(s['move'] as String, s['price'] as double?, '${ss.id}-${ss.h.s.rounds}-$i'),
+        'text': _playerText(s['move'] as String, s['price'] as double?, '${ss.id}-${ss.h.s.rounds}-$i', _who(ss)),
       },
   ];
 
@@ -293,8 +297,8 @@ class Game {
       'stars': out?.stars ?? 0,
       'saved': out?.saved ?? 0.0,
       'suggestions': ss.shown,
-      'accept_text': _playerText('accept', h.s.ask, ss.id),
-      'walk_text': _playerText('walk', null, ss.id),
+      'accept_text': _playerText('accept', h.s.ask, ss.id, _who(ss)),
+      'walk_text': _playerText('walk', null, ss.id, _who(ss)),
     };
   }
 
@@ -325,7 +329,8 @@ class Game {
     final h = ss.h;
     if (h.s.done) throw GameError(409, 'This haggle is over');
     final stall = ss.stall, item = ss.item;
-    var useAi = false, readAi = false;
+    final useAi = ai.enabled; // every move, typed or tapped, is part of the conversation
+    var readAi = false;
     var unclear = '';
     var heard = const Heard('smalltalk', null);
     String kind;
@@ -339,17 +344,16 @@ class Game {
       price = heard.price;
       readAi = heard.ai;
       unclear = heard.unclear;
-      useAi = ai.enabled; // her reply is AI-written even when the reading took the fast path
       you = t;
     } else if (move == 'confirm' || move == 'cancel') {
       kind = move!;
       you = kind == 'confirm' && h.s.pending != null ? 'Deal! ${money(h.s.pending)}' : 'Wait, let me think first.';
     } else if (move == 'buy') {
       kind = 'buy';
-      you = _playerText('accept', h.s.pending ?? h.s.ask, '$id-${h.s.rounds}-x');
+      you = _playerText('accept', h.s.pending ?? h.s.ask, '$id-${h.s.rounds}-x', _who(ss));
     } else if (move == 'walk' || move == 'accept') {
       kind = move!;
-      you = _playerText(kind, kind == 'accept' ? h.s.ask : null, '$id-${h.s.rounds}-x');
+      you = _playerText(kind, kind == 'accept' ? h.s.ask : null, '$id-${h.s.rounds}-x', _who(ss));
     } else if (pick != null) {
       if (pick < 0 || pick >= ss.shown.length) throw GameError(400, 'No such suggestion');
       final s = ss.shown[pick];
@@ -376,7 +380,18 @@ class Game {
       if (heard.also.isNotEmpty && !const ['accept', 'confirm', 'walk', 'buy', 'cancel'].contains(kind)) {
         h.side(heard.also); // "so nice, 20 can?": the compliment counts too (within its limits)
       }
-      out = h.move(kind, price);
+      bool? callBack;
+      if (kind == 'walk' && ai.enabled && h.canCallBack()) {
+        // Walking away: the AI judges whether this is the right moment for a final-final price.
+        callBack = await ai.callBack(
+          stall: stall,
+          item: item,
+          history: ss.chat,
+          ask: h.s.ask,
+          lastOffer: h.s.lastOffer,
+        );
+      }
+      out = h.move(kind, price, callBack);
       event = out.event;
     }
     String? said;

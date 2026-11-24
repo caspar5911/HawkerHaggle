@@ -179,7 +179,8 @@
         "Takes cash or PayNow",
         "No delivery and no reservations: first come, first served",
         "Gives plastic bags"
-      ]
+      ],
+      "address": "Auntie"
     },
     {
       "id": "lim",
@@ -359,7 +360,8 @@
         "Cash only",
         "Cleans and scales the fish for customers",
         "No reservations"
-      ]
+      ],
+      "address": "Uncle"
     },
     {
       "id": "raj",
@@ -535,7 +537,8 @@
         "Takes cash, PayNow or card",
         "Gives a receipt if asked",
         "No delivery"
-      ]
+      ],
+      "address": "Boss"
     },
     {
       "id": "siti",
@@ -714,43 +717,62 @@
         "Takes cash or PayNow",
         "Her kueh is halal, made at home",
         "Can gift-wrap the scarf"
-      ]
+      ],
+      "address": "Kak"
     }
   ],
   "player": {
     "offer": [
-      "${price} can or not?",
-      "${price} lah, OK?",
-      "How about ${price}?"
+      "{who}, ${price} can or not?",
+      "${price} lah {who}, OK?",
+      "How about ${price}?",
+      "{who}, ${price} can? Very fair already.",
+      "${price}, I take now!",
+      "Aiyo {who}, ${price} lah, please?",
+      "Can do ${price} or not, {who}?",
+      "${price}? Help me a bit lah {who}."
     ],
     "compliment": [
-      "Wah, looks so good!",
+      "Wah {who}, looks so good!",
       "Your stall the best here!",
-      "So nice, I like!"
+      "So nice, I like!",
+      "{who}, your stuff always top quality one.",
+      "Wah, so fresh! {who} got good eye."
     ],
     "competitor": [
       "Next stall selling cheaper leh...",
-      "Other stall gave me better price."
+      "Other stall gave me better price, {who}.",
+      "{who}, the other side cheaper you know?",
+      "Hmm, I saw cheaper just now..."
     ],
     "bulk": [
       "If I buy two, cheaper?",
-      "Two, can give discount?"
+      "Two, can give discount?",
+      "{who}, I take two, special price?",
+      "Buy two, {who} give better price lah."
     ],
     "regular": [
       "I come every week one leh!",
-      "Remember me? I always buy here!"
+      "Remember me? I always buy here!",
+      "{who}, I'm your regular customer leh!",
+      "Every week I buy from you one, {who}!"
     ],
     "smalltalk": [
       "So busy today ah?",
-      "Business good?"
+      "Business good?",
+      "{who}, you eat already?",
+      "Hot today hor?"
     ],
     "walk": [
       "Aiya, never mind lah.",
-      "I think first ah..."
+      "I think first ah...",
+      "Ok lah {who}, I go walk walk first.",
+      "Never mind, I see other stall."
     ],
     "accept": [
       "OK lah, ${price}!",
-      "Deal, ${price}!"
+      "Deal, ${price}!",
+      "OK {who}, ${price}, I take!"
     ]
   }
 }

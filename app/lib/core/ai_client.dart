@@ -15,8 +15,7 @@ import 'voice.dart';
 
 /// She mustn't call a price final on these moments: she can still come down.
 const notFinal = [
-  'counter', 'plead', 'flattered', 'regular', 'competitor_drop', 'pity', 'bulk', 'callback', 'smalltalk', 'unsure',
-  'clarify', //
+  'counter', 'plead', 'flattered', 'regular', 'competitor_drop', 'pity', 'bulk', 'smalltalk', 'unsure', 'clarify', //
 ];
 final finalWords = pyRe(
   r"\b(final|last price|lowest|rock bottom|cannot go lower|can't go lower|cannot lower|no lower)\b",
@@ -179,6 +178,29 @@ class AiClient {
       }
     }
     return heardByRules(text);
+  }
+
+  /// Walking away: is this the right moment to call them back with a final-final price? Null when busy or unsure.
+  Future<bool?> callBack({
+    required Map stall,
+    required Map item,
+    List<Map> history = const [],
+    required double ask,
+    double? lastOffer,
+  }) async {
+    final often = (((stall['personality'] as Map?)?['callback'] ?? 0.5) as num).toDouble();
+    final system = callbackPrompt
+        .replaceAll('{name}', '${stall['name']}')
+        .replaceAll('{persona}', '${stall['persona']}')
+        .replaceAll('{stall}', '${stall['stall']}'.toLowerCase())
+        .replaceAll('{item}', '${item['name']}')
+        .replaceAll('{often}', often >= 0.7 ? 'often' : (often >= 0.4 ? 'sometimes' : 'rarely'));
+    final user =
+        'Your price now: ${money(ask)}.${lastOffer != null ? ' Their last offer: ${money(lastOffer)}.' : ''}'
+        '\nConversation:\n${transcript(history, '${stall['name']}', limit: 14)}';
+    final raw = await chat(system, user, json: true, temperature: 0.3);
+    final v = raw == null ? null : _jsonObject(raw)?['call_back'];
+    return v is bool ? v : null;
   }
 
   /// The stallholder's line, or null (use a ready-made line) if the model is unavailable or keeps breaking rules.

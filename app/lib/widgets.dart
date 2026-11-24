@@ -91,9 +91,10 @@ class _AwningPainter extends CustomPainter {
 
 /// A button that squishes when pressed and gives a small buzz.
 class Bouncy extends StatefulWidget {
-  const Bouncy({super.key, required this.child, required this.onTap, this.enabled = true});
+  const Bouncy({super.key, required this.child, required this.onTap, this.onLongPress, this.enabled = true});
   final Widget child;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final bool enabled;
   @override
   State<Bouncy> createState() => _BouncyState();
@@ -106,6 +107,13 @@ class _BouncyState extends State<Bouncy> {
     return GestureDetector(
       onTapDown: widget.enabled ? (_) => setState(() => _down = true) : null,
       onTapCancel: () => setState(() => _down = false),
+      onLongPress: widget.enabled && widget.onLongPress != null
+          ? () {
+              setState(() => _down = false);
+              HapticFeedback.mediumImpact();
+              widget.onLongPress!();
+            }
+          : null,
       onTapUp: widget.enabled
           ? (_) {
               setState(() => _down = false);

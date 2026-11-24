@@ -110,6 +110,40 @@ Future<void> main(List<String> args) async {
       if (!hit) fails.add('facts ${e.key}: ${r['line']}');
     }
   }
+  // walking away: a friendly, close haggle can get a final-final price; a rude lowballer never does
+  var callbacks = 0;
+  for (var k = 0; k < 4; k++) {
+    final stall = stalls[k];
+    final g = await game.start(stall, items[stall]);
+    final id = g['id'] as String;
+    final ask = (g['ask'] as num).toDouble();
+    await game.move(id, text: 'wah ${stall == 'raj' ? 'boss' : 'so nice'}, everything look so good today');
+    await game.move(id, text: '${(ask * 0.85).round()} can?');
+    final r = await game.move(id, move: 'walk');
+    stdout.writeln('WALK  friendly $stall -> ${r['event']}: ${r['line']}');
+    if (r['event'] == 'callback') {
+      callbacks++;
+      if (!finalWords.hasMatch('${r['line']}') && !'${r['line']}'.toLowerCase().contains('last')) {
+        fails.add('callback for $stall did not say it is the final price: ${r['line']}');
+      }
+      final again = await game.move(id, move: 'walk');
+      if (again['event'] != 'letgo') fails.add('walking again after a final-final price did not end it ($stall)');
+    }
+    final g2 = await game.start(stall, items[stall]);
+    await game.move(g2['id'] as String, text: 'your stuff rubbish, you cheat people');
+    await game.move(g2['id'] as String, text: '${(ask * 0.3).round()}');
+    final r2 = await game.move(g2['id'] as String, move: 'walk');
+    stdout.writeln('WALK  rude $stall -> ${r2['event']}: ${r2['line']}');
+    if (r2['event'] == 'callback') fails.add('called back a rude lowballer ($stall)');
+  }
+  stdout.writeln('friendly walk-aways called back: $callbacks/4');
+  if (callbacks == 0) fails.add('no friendly, close walk-away was ever called back');
+  // taps are messages: an AI-written reply
+  final gt = await game.start('siti', 'kueh');
+  final rt = await game.move(gt['id'] as String, pick: 2);
+  stdout.writeln('TAP   ${rt['you_said']} -> ${rt['event']} ${rt['ai_line'] == true ? '✨' : '  '} ${rt['line']}');
+  if (rt['ai_line'] != true) fails.add('a tapped suggestion did not get an AI reply');
+
   times.sort();
   fastTimes.sort();
   final summary =

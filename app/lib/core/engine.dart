@@ -146,7 +146,14 @@ class Haggle {
     return _out('confirm', offer);
   }
 
-  Outcome move(String kind, [double? price]) {
+  /// Could they call a leaving customer back with one final-final price? Only with real room left, not after
+  /// they've already given their best price, and not for someone who was rude.
+  bool canCallBack() {
+    final f = floorNow();
+    return !s.done && !s.bestGiven && s.ask - f > f * 0.04 && s.mood > -1.5;
+  }
+
+  Outcome move(String kind, [double? price, bool? callBack]) {
     if (s.done) return _out('over');
     if (kind == 'buy') {
       // The app's "OK lah, $X" button after its own "Confirm $X" tap: already confirmed.
@@ -202,7 +209,7 @@ class Haggle {
       'competitor' => _competitor(),
       'regular' => _regular(),
       'rude' => _rude(),
-      'walk' => _walk(),
+      'walk' => _walk(callBack),
       'accept' => _accept(),
       _ => _smalltalk(),
     };
@@ -366,13 +373,18 @@ class Haggle {
     return _out('rude');
   }
 
-  Outcome _walk() {
+  /// Walking away. At the right moment (the AI judges the conversation; without it, personality and mood decide)
+  /// they call you back once with a final-final price, which really is final.
+  Outcome _walk(bool? callBack) {
     final f = floorNow();
-    final room = s.ask - f;
-    if (!s.bestGiven && room > f * 0.04 && rng.nextDouble() < p.callback * (0.6 + 0.15 * s.mood)) {
-      s.ask = math.max(nice((s.ask + f) / 2), nice(f));
-      _tire(10);
-      return _out('callback');
+    if (canCallBack()) {
+      final yes = callBack ?? rng.nextDouble() < p.callback * (0.6 + 0.15 * s.mood);
+      if (yes) {
+        s.ask = math.max(nice((s.ask + f) / 2), nice(f));
+        s.bestGiven = true;
+        _tire(10);
+        return _out('callback');
+      }
     }
     _finish('walked');
     return _out('letgo');
@@ -384,8 +396,10 @@ class Haggle {
   List<Map<String, Object?>> suggestions() {
     if (s.done || s.pending != null) return [];
     final a = s.ask;
-    final bold = nice(a * 0.6);
-    var safer = nice(a * 0.82);
+    // Amounts vary a little from turn to turn so they don't feel mechanical (never from the secret floor).
+    final r = s.rounds % 5;
+    final bold = nice(a * const [0.6, 0.57, 0.63, 0.55, 0.62][r]);
+    var safer = nice(a * const [0.82, 0.8, 0.85, 0.78, 0.84][r]);
     if (safer >= a) safer = nice(a - (a < 20 ? 0.5 : 1));
     final tactics = [
       for (final m in const ['compliment', 'competitor', 'bulk', 'regular'])

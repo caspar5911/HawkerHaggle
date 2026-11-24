@@ -86,13 +86,13 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         fresh = [t for t in fmt if t not in said] or fmt
         return fresh[random.Random(f"{seed}-{h.s.rounds}-{event}").randrange(len(fresh))]
 
-    def player_text(move: str, price=None, seed: str = "") -> str:
+    def player_text(move: str, price=None, seed: str = "", who: str = "boss") -> str:
         options = PLAYER_LINES.get(move) or PLAYER_LINES["smalltalk"]
-        return random.Random(seed).choice(options).replace("${price}", money(price))
+        return random.Random(seed).choice(options).replace("${price}", money(price)).replace("{who}", who)
 
-    def suggestions(h: Haggle, sid: str) -> list[dict]:
+    def suggestions(h: Haggle, sid: str, who: str = "boss") -> list[dict]:
         return [{"move": s["move"], "price": s["price"],
-                 "text": player_text(s["move"], s["price"], f"{sid}-{h.s.rounds}-{i}")}
+                 "text": player_text(s["move"], s["price"], f"{sid}-{h.s.rounds}-{i}", who)}
                 for i, s in enumerate(h.suggestions())]
 
     def read(text: str, h: Haggle, chat: list, stall: dict, item: dict) -> Heard:
@@ -141,8 +141,9 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
                 "patience": max(0, round(h.s.patience)), "mood": round(h.s.mood, 1), "qty": h.s.qty,
                 "done": h.s.done, "result": h.s.result, "deal": h.s.deal, "pending": h.s.pending,
                 "stars": out.stars if out else 0, "saved": out.saved if out else 0.0,
-                "suggestions": suggestions(h, sid), "accept_text": player_text("accept", h.s.ask, sid),
-                "walk_text": player_text("walk", None, sid), "live_left": live_left}
+                "suggestions": suggestions(h, sid, stall.get("address", "boss")),
+                "accept_text": player_text("accept", h.s.ask, sid, stall.get("address", "boss")),
+                "walk_text": player_text("walk", None, sid, stall.get("address", "boss")), "live_left": live_left}
 
     def load(sid: str, p: dict):
         sess = store.session(sid, p["id"])
@@ -222,12 +223,13 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             you = ("Deal! " + money(h.s.pending)) if kind == "confirm" and h.s.pending else "Wait, let me think first."
         elif body.move == "buy":
             kind, price = "buy", None
-            you = player_text("accept", h.s.pending or h.s.ask, f"{sid}-{h.s.rounds}-x")
+            you = player_text("accept", h.s.pending or h.s.ask, f"{sid}-{h.s.rounds}-x", stall.get("address", "boss"))
         elif body.move in ("walk", "accept"):
             kind, price = body.move, None
-            you = player_text(kind, h.s.ask if kind == "accept" else None, f"{sid}-{h.s.rounds}-x")
+            you = player_text(kind, h.s.ask if kind == "accept" else None, f"{sid}-{h.s.rounds}-x",
+                              stall.get("address", "boss"))
         elif body.pick is not None:
-            sug = suggestions(h, sid)
+            sug = suggestions(h, sid, stall.get("address", "boss"))
             if body.pick >= len(sug):
                 raise HTTPException(400, "No such suggestion")
             kind, price, you = sug[body.pick]["move"], sug[body.pick]["price"], sug[body.pick]["text"]

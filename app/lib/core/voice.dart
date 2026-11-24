@@ -47,7 +47,7 @@ String? checked(String? text, Iterable<num> allowed, {Iterable<num> counts = con
   return text.isEmpty ? null : text;
 }
 
-const endings = ['accept', 'confirm', 'letgo', 'refuse', 'greet'];
+const endings = ['accept', 'confirm', 'letgo', 'refuse', 'greet', 'callback'];
 
 /// How she feels right now, so the tone follows the game (and warns the player before she gives up).
 String moodLine(String event, double? patience, String also) {
