@@ -129,6 +129,14 @@
         "clarify": [
           "Eh my dear, you mean you take at {price} or still want to bargain?",
           "Hah? You buy already or not? Still {price} ah."
+        ],
+        "confirm": [
+          "OK lah, {price}! Confirm ah, my dear?",
+          "Aiyo you win. {price}, deal or not?"
+        ],
+        "unsure": [
+          "Take your time, my dear. Still {price}.",
+          "No rush, auntie wait for you. {price}."
         ]
       }
     },
@@ -261,6 +269,14 @@
         "clarify": [
           "So? Take at {price} or not?",
           "You buying or talking? {price}."
+        ],
+        "confirm": [
+          "{price}. Confirm?",
+          "Can. {price}. Take or not?"
+        ],
+        "unsure": [
+          "Think fast. {price}.",
+          "Hmm. Still {price}."
         ]
       }
     },
@@ -393,6 +409,14 @@
         "clarify": [
           "Boss, you taking at {price} or still thinking? Say clearly!",
           "Boss boss, that one yes or no? {price}!"
+        ],
+        "confirm": [
+          "OK boss, {price}! Confirm plus chop?",
+          "Steady boss, {price}! Deal ah?"
+        ],
+        "unsure": [
+          "No problem boss, {price} still waiting for you!",
+          "Take your time boss, {price}."
         ]
       }
     },
@@ -525,6 +549,14 @@
         "clarify": [
           "Adik, you mean you take at {price}, or not yet?",
           "Sorry adik, you want it at {price} or still thinking?"
+        ],
+        "confirm": [
+          "OK adik, {price}! Confirm ya?",
+          "Boleh, {price}. Deal, adik?"
+        ],
+        "unsure": [
+          "Take your time, adik. Still {price}.",
+          "No rush adik, {price} ya."
         ]
       }
     }

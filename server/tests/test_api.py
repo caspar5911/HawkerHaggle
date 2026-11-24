@@ -62,10 +62,14 @@ def test_tap_mode_haggle_to_the_end():
     assert "floor" not in g
     for _ in range(12):
         g = c.post(f"/v1/haggle/{g['id']}/move", json={"pick": 1}, headers=h).json()
+        if g["pending"]:
+            assert g["event"] == "confirm" and g["suggestions"] == [] and not g["done"]
+            g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "confirm"}, headers=h).json()
         if g["done"]:
             break
     else:
         g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "accept"}, headers=h).json()
+        g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "confirm"}, headers=h).json()
     assert g["done"] and g["result"] in ("deal", "walked", "refused") and g["line"]
     assert c.post(f"/v1/haggle/{g['id']}/move", json={"pick": 0}, headers=h).status_code == 409
     me = c.get("/v1/me", headers=h).json()
@@ -226,3 +230,26 @@ def test_word_rules_never_close_a_deal_on_a_vague_ok():
         assert rules(vague)[0] != "accept", vague
     for yes in ("deal", "ok deal", "ok I take it", "auntie ok lah, I buy", "pack for me"):
         assert rules(yes)[0] == "accept", yes
+
+
+def test_typed_yes_confirms_a_waiting_deal_but_vague_text_does_not():
+    model = FakeModel(move='{"move": "accept", "price": null}', line="Aiyo OK lah")
+    c, _ = client(model)
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"move": "accept"}, headers=h).json()
+    assert g["event"] == "confirm" and g["pending"] == 32 and not g["done"]
+    model.move = '{"move": "clarify", "price": null, "unclear": "yes or no"}'
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "hmm"}, headers=h).json()
+    assert g["event"] == "clarify" and g["pending"] == 32 and not g["done"]     # still waiting
+    model.move = '{"move": "accept", "price": null}'
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "yes deal"}, headers=h).json()
+    assert g["done"] and g["result"] == "deal" and g["deal"] == 32
+
+
+def test_the_buy_100_for_150_case_never_closes_a_deal():
+    c, _ = client()                                             # word rules only, like after the daily AI limit
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
+    g = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "I buy 100 for 150?"}, headers=h).json()
+    assert g["event"] == "clarify" and not g["done"] and g["pending"] is None

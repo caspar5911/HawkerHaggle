@@ -31,7 +31,7 @@ MOVES_PER_MINUTE = 40
 
 class Move(BaseModel):
     pick: int | None = Field(default=None, ge=0, le=2, description="index of a suggested move (tap mode)")
-    move: str | None = Field(default=None, description="'walk' or 'accept' (always available)")
+    move: str | None = Field(default=None, description="'walk' or 'accept' (always available); 'confirm' or 'cancel' when a deal is pending")
     text: str | None = Field(default=None, max_length=300, description="free text (live mode)")
 
 
@@ -65,7 +65,8 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
     def line(stall: dict, item: dict, event: str, h: Haggle, offer=None, seed: int = 0, chat=()) -> str:
         """A ready-made line, avoiding ones already said in this haggle while there are fresh ones left."""
         options = stall["lines"].get(event) or stall["lines"]["smalltalk"]
-        fmt = [o.format(item=item["name"], price=money(h.s.deal or h.s.ask), offer=money(offer)) for o in options]
+        price = money(h.s.deal or h.s.pending or h.s.ask)
+        fmt = [o.format(item=item["name"], price=price, offer=money(offer)) for o in options]
         said = {m.get("text") for m in chat if m.get("who") == "them"}
         fresh = [t for t in fmt if t not in said] or fmt
         return fresh[random.Random(f"{seed}-{h.s.rounds}-{event}").randrange(len(fresh))]
@@ -84,7 +85,7 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         return {"id": sid, "stall": stall["id"], "item": item["id"], "event": event, "line": said,
                 "ai_line": ai_line, "you_said": you, "ask": h.s.ask, "opening": h.s.opening,
                 "patience": max(0, round(h.s.patience)), "mood": round(h.s.mood, 1), "qty": h.s.qty,
-                "done": h.s.done, "result": h.s.result, "deal": h.s.deal,
+                "done": h.s.done, "result": h.s.result, "deal": h.s.deal, "pending": h.s.pending,
                 "stars": out.stars if out else 0, "saved": out.saved if out else 0.0,
                 "suggestions": suggestions(h, sid), "accept_text": player_text("accept", h.s.ask, sid),
                 "walk_text": player_text("walk", None, sid), "live_left": live_left}
@@ -160,11 +161,14 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
         use_ai, unclear = False, ""
         if body.text:
             if live_left > 0 and ai.enabled:
-                heard = ai.understand(body.text, chat, h.s.ask, item["name"], stall["name"])
+                heard = ai.understand(body.text, chat, h.s.ask, item["name"], stall["name"], pending=h.s.pending)
                 kind, price, use_ai, unclear = heard.move, heard.price, heard.ai, heard.unclear
             else:
                 kind, price = rules(body.text)
             you = body.text.strip()
+        elif body.move in ("confirm", "cancel"):
+            kind, price = body.move, None
+            you = ("Deal! " + money(h.s.pending)) if kind == "confirm" and h.s.pending else "Wait, let me think first."
         elif body.move in ("walk", "accept"):
             kind, price = body.move, None
             you = player_text(kind, h.s.ask if kind == "accept" else None, f"{sid}-{h.s.rounds}-x")
@@ -175,6 +179,8 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             kind, price, you = sug[body.pick]["move"], sug[body.pick]["price"], sug[body.pick]["text"]
         else:
             raise HTTPException(400, "Send pick, move or text")
+        if h.s.pending is not None and body.text and kind == "accept" and not (price and price < h.s.pending):
+            kind = "confirm"        # a typed yes to "deal at $X, confirm?"
         if kind == "accept" and price and price < h.s.ask:
             kind = "offer"          # "ok 24 lah" while they ask 26 is an offer of 24, not a yes to 26
         if kind == "clarify":
@@ -185,7 +191,8 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             event = out.event
         said, ai_line = None, False
         if use_ai:
-            said = ai.say(stall, item, event, {"ask": h.s.ask, "offer": out.offer if out else None, "deal": h.s.deal},
+            said = ai.say(stall, item, event, {"ask": h.s.ask, "offer": out.offer if out else None,
+                                               "deal": h.s.deal or h.s.pending},
                           history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening],
                           unclear=unclear)
             ai_line = said is not None

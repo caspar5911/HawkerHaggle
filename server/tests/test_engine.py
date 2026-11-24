@@ -13,14 +13,17 @@ def test_nice_prices():
 
 def test_paying_the_asking_price_is_a_one_star_deal():
     h = Haggle(FISH, SOFT)
-    out = h.move("accept")
+    agreed = h.move("accept")
+    assert agreed.event == "confirm" and not agreed.done and agreed.pending == 22.0   # nothing ends without a yes
+    out = h.move("confirm")
     assert out.done and out.result == "deal" and out.deal == 22.0 and out.stars == 1 and out.saved == 0
 
 
 def test_offer_at_or_above_ask_deals_at_the_ask_never_more():
     h = Haggle(FISH, SOFT)
     out = h.move("offer", 30)
-    assert out.deal == 22.0
+    assert out.pending == 22.0
+    assert h.move("confirm").deal == 22.0
 
 
 def test_counter_offers_come_down_but_never_below_the_secret_floor():
@@ -42,6 +45,8 @@ def test_a_patient_player_can_reach_three_stars():
     out = None
     for _ in range(10):
         out = h.move("offer", nice(h.floor_now()))
+        if out.event == "confirm":
+            out = h.move("confirm")
         if out.done:
             break
     assert out.result == "deal" and out.stars == 3 and out.saved > 0.35
@@ -109,7 +114,9 @@ def test_garbage_input_is_harmless():
     assert h.move("offer", float("nan")).event == "confused"
     assert h.move("hack the planet").event == "smalltalk"
     assert h.move("offer", -5).event == "confused"
+    assert h.move("confirm").event == "smalltalk"            # nothing to confirm yet
     h.move("accept")
+    h.move("confirm")
     assert h.move("offer", 1).event == "over"
 
 
@@ -121,6 +128,8 @@ def test_every_haggle_ends_within_the_round_limit(seed):
     for _ in range(20):
         kind = rnd.choice(["offer", "compliment", "competitor", "bulk", "smalltalk", "walk"])
         out = h.move(kind, rnd.uniform(5, 25) if kind == "offer" else None)
+        if out.event == "confirm":
+            out = h.move("confirm")
         if out.done:
             break
     assert h.s.done and h.s.rounds <= 12
@@ -135,3 +144,22 @@ def test_can_cheaper_gives_a_little_then_asks_for_a_number():
     h.move("plead")
     assert h.move("plead").event == "plead_no"
     assert h.s.ask >= nice(h.floor_now())
+
+
+def test_not_yet_keeps_the_agreed_price_and_bargaining_goes_on():
+    h = Haggle(FISH, SOFT)
+    agreed = h.move("offer", 21)
+    assert agreed.event == "confirm" and agreed.pending == 21
+    out = h.move("cancel")
+    assert out.event == "unsure" and not out.done and h.s.ask == 21 and h.s.pending is None
+    assert h.suggestions()                                     # back to normal bargaining
+    again = h.move("offer", 20)
+    assert again.event in ("confirm", "counter", "final")
+
+
+def test_a_new_move_while_a_deal_waits_cancels_it_first():
+    h = Haggle(FISH, SOFT)
+    assert h.move("offer", 21).event == "confirm"
+    assert h.suggestions() == []                               # app shows Deal / Not yet
+    h.move("walk")
+    assert h.s.pending is None

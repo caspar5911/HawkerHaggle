@@ -58,6 +58,8 @@ class Sfx {
     switch (event) {
       case 'accept':
         play('coin');
+      case 'confirm':
+        play('star', volume: 0.6);
       case 'insulted' || 'rude':
         play('huff');
       case 'competitor_annoyed' || 'flattery_tired' || 'refuse' || 'final' || 'plead_no':

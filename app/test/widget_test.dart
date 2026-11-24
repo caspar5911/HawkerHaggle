@@ -11,7 +11,7 @@ import 'package:http/testing.dart';
 
 const look = {'skin': '#F5D0B5', 'hair': '#4A3B35', 'shirt': '#F28FA3', 'apron': '#FFF2C7', 'accessory': 'perm'};
 
-Map<String, dynamic> game(String line, {String event = 'greet', bool done = false}) => {
+Map<String, dynamic> game(String line, {String event = 'greet', bool done = false, num? pending}) => {
   'id': 'g1',
   'stall': 'mei',
   'item': 'mango',
@@ -27,13 +27,16 @@ Map<String, dynamic> game(String line, {String event = 'greet', bool done = fals
   'done': done,
   'result': done ? 'deal' : '',
   'deal': done ? 18 : null,
+  'pending': pending,
   'stars': done ? 1 : 0,
   'saved': 0.0,
-  'suggestions': [
-    {'move': 'offer', 'price': 11, 'text': '\$11 can or not?'},
-    {'move': 'offer', 'price': 15, 'text': '\$15 lah, OK?'},
-    {'move': 'compliment', 'price': null, 'text': 'Wah, looks so good!'},
-  ],
+  'suggestions': pending != null
+      ? []
+      : [
+          {'move': 'offer', 'price': 11, 'text': '\$11 can or not?'},
+          {'move': 'offer', 'price': 15, 'text': '\$15 lah, OK?'},
+          {'move': 'compliment', 'price': null, 'text': 'Wah, looks so good!'},
+        ],
   'accept_text': 'OK lah, \$18!',
   'walk_text': 'Aiya, never mind lah.',
   'live_left': 15,
@@ -65,7 +68,17 @@ MockClient fakeServer() => MockClient((req) async {
       ],
     },
     '/v1/haggle' => game('Morning my dear! \$18 only.'),
-    '/v1/haggle/g1/move' => game('OK lah OK lah, \$18!', event: 'accept', done: true),
+    '/v1/haggle/g1/move' when req.body.contains('"confirm"') => game(
+      'OK lah OK lah, \$18!',
+      event: 'accept',
+      done: true,
+    ),
+    '/v1/haggle/g1/move' when req.body.contains('"accept"') => game(
+      'Aiyo you win. \$18, deal or not?',
+      event: 'confirm',
+      pending: 18,
+    ),
+    '/v1/haggle/g1/move' => game('Hehe, nice try. Still \$18.', event: 'smalltalk'),
     _ => {'detail': 'nope'},
   };
   return http.Response(jsonEncode(body), 200, headers: {'content-type': 'application/json; charset=utf-8'});
@@ -97,6 +110,10 @@ void main() {
     expect(find.text('\$11 can or not?'), findsOneWidget);
 
     await tester.tap(find.text('OK lah, \$18'));
+    await settle(tester, 1500);
+    expect(find.text('Close the deal at \$18?'), findsOneWidget); // nothing ends without a yes
+    expect(find.text('Deal! 🎉'), findsNothing);
+    await tester.tap(find.text('Deal, \$18!'));
     await settle(tester, 2500);
     expect(find.text('Deal! 🎉'), findsOneWidget);
     await settle(tester, 4000); // let confetti and timers finish
@@ -118,7 +135,7 @@ void main() {
     await tester.tap(find.text('Send'));
     await settle(tester, 2500);
     expect(sent.last, contains('my wife will scold me lah'));
-    expect(find.text('my wife will scold me lah'), findsOneWidget); // shown in the chat
+    expect(find.text('my wife will scold me lah', skipOffstage: false), findsOneWidget); // shown in the chat
     await settle(tester, 4000);
   });
 }

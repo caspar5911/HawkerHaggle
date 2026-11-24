@@ -561,6 +561,7 @@ class _Controls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sugs = g['suggestions'] as List;
+    final pending = g['pending'] as num?;
     final liveLeft = (g['live_left'] as num).toInt();
     final icons = {
       'offer': '💰',
@@ -580,48 +581,52 @@ class _Controls extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              for (var i = 0; i < sugs.length; i++)
-                Bouncy(
-                  enabled: !busy,
-                  onTap: () => send(pick: i, mine: sugs[i]['text'] as String),
-                  child: Pill(
-                    text: sugs[i]['text'] as String,
-                    icon: icons[sugs[i]['move']] ?? '💬',
-                    color: Palette.cream,
+          if (pending != null)
+            _ConfirmDeal(price: pending, busy: busy, send: send)
+          else ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (var i = 0; i < sugs.length; i++)
+                  Bouncy(
+                    enabled: !busy,
+                    onTap: () => send(pick: i, mine: sugs[i]['text'] as String),
+                    child: Pill(
+                      text: sugs[i]['text'] as String,
+                      icon: icons[sugs[i]['move']] ?? '💬',
+                      color: Palette.cream,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Bouncy(
+                    enabled: !busy,
+                    onTap: () => send(move: 'accept', mine: g['accept_text'] as String),
+                    child: Pill(
+                      text: 'OK lah, ${money(g['ask'] as num)}',
+                      icon: '🤝',
+                      color: Palette.green,
+                      textColor: Colors.white,
+                    ),
                   ),
                 ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Bouncy(
-                  enabled: !busy,
-                  onTap: () => send(move: 'accept', mine: g['accept_text'] as String),
-                  child: Pill(
-                    text: 'OK lah, ${money(g['ask'] as num)}',
-                    icon: '🤝',
-                    color: Palette.green,
-                    textColor: Colors.white,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Bouncy(
+                    enabled: !busy,
+                    onTap: () => send(move: 'walk', mine: g['walk_text'] as String),
+                    child: const Pill(text: 'Walk away', icon: '🚶'),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Bouncy(
-                  enabled: !busy,
-                  onTap: () => send(move: 'walk', mine: g['walk_text'] as String),
-                  child: const Pill(text: 'Walk away', icon: '🚶'),
-                ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
           const SizedBox(height: 8),
           // Typing opens a box in the middle of the screen, above the keyboard, so nothing gets hidden.
           Bouncy(
@@ -795,6 +800,59 @@ class _TypeBox extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// "Deal at $X?" The stallholder has agreed; nothing ends until the player says yes.
+class _ConfirmDeal extends StatelessWidget {
+  const _ConfirmDeal({required this.price, required this.busy, required this.send});
+  final num price;
+  final bool busy;
+  final Future<void> Function({int? pick, String? move, String? text, required String mine}) send;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.85, end: 1),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.elasticOut,
+      builder: (_, s, child) => Transform.scale(scale: s, child: child),
+      child: Column(
+        children: [
+          Text(
+            'Close the deal at ${money(price)}?',
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Palette.ink),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: Bouncy(
+                  enabled: !busy,
+                  onTap: () => send(move: 'confirm', mine: 'Deal! ${money(price)}'),
+                  child: Pill(
+                    text: 'Deal, ${money(price)}!',
+                    icon: '🤝',
+                    color: Palette.green,
+                    textColor: Colors.white,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: Bouncy(
+                  enabled: !busy,
+                  onTap: () => send(move: 'cancel', mine: 'Wait, let me think first.'),
+                  child: const Pill(text: 'Not yet', icon: '✋'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

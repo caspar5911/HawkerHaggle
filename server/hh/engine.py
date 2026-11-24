@@ -46,6 +46,7 @@ class State:
     done: bool = False
     result: str = ""            # "deal", "walked", "refused"
     deal: float | None = None
+    pending: float | None = None    # the stallholder agreed at this price; waiting for the player to confirm
 
 
 @dataclass
@@ -58,6 +59,7 @@ class Outcome:
     offer: float | None = None
     stars: int = 0
     saved: float = 0.0          # fraction below the opening price
+    pending: float | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -108,18 +110,43 @@ class Haggle:
     def _out(self, event: str, offer: float | None = None) -> Outcome:
         saved = 1 - self.s.deal / self.s.opening if self.s.deal else 0.0
         return Outcome(event=event, ask=self.s.ask, done=self.s.done, result=self.s.result, deal=self.s.deal,
-                       offer=offer, stars=self.stars(), saved=round(saved, 3))
+                       offer=offer, stars=self.stars(), saved=round(saved, 3), pending=self.s.pending)
+
+    def _agree(self, price: float, offer: float | None = None) -> Outcome:
+        """The stallholder says yes at `price`; the haggle ends only when the player confirms."""
+        self.s.pending = price
+        return self._out("confirm", offer)
 
     # ------------------------------------------------------------------ moves
     def move(self, kind: str, price: float | None = None) -> Outcome:
         if self.s.done:
             return self._out("over")
+        if kind == "confirm":
+            if self.s.pending is None:
+                kind = "smalltalk"
+            else:
+                deal, self.s.pending = self.s.pending, None
+                self._finish("deal", deal)
+                return self._out("accept", deal)
+        if kind == "cancel":
+            if self.s.pending is None:
+                kind = "smalltalk"
+            else:
+                # "Wait, not yet": the price they agreed stays on the table, but it costs a little patience.
+                self.s.ask, self.s.pending = min(self.s.ask, self.s.pending), None
+                self._tire(6)
+                return self._out("unsure")
+        if self.s.pending is not None:
+            # Any other move while a deal waits for confirmation: the player is still bargaining.
+            self.s.ask, self.s.pending = min(self.s.ask, self.s.pending), None
         if kind not in MOVES:
             kind = "smalltalk"
         if kind in ONCE and kind in self.s.used:
             kind = "smalltalk"
         self.s.rounds += 1
         out = getattr(self, f"_{kind}")(price) if kind == "offer" else getattr(self, f"_{kind}")()
+        if out.event == "confirm":
+            return out              # a deal on the table always gets its confirmation step
         if not self.s.done and self.s.patience <= 0:
             self._finish("refused")
             return self._out("refuse")
@@ -136,14 +163,12 @@ class Haggle:
         self.s.last_offer = x
         f = self.floor_now()
         if x >= self.s.ask:
-            self._finish("deal", self.s.ask)
-            return self._out("accept", x)
+            return self._agree(self.s.ask, x)
         # How far below their current ask they'll still say yes: a share of the item's whole bargaining range
         # (not of the remaining gap, or an offer at the floor could never be accepted).
         give = (self.item.ask - self.item.floor) * clamp(0.25 + 0.06 * self.s.mood - 0.15 * self.p.stubborn, 0.05, 0.5)
         if x >= f and x >= self.s.ask - give:
-            self._finish("deal", x)
-            return self._out("accept", x)
+            return self._agree(x, x)
         if x < f * 0.7:
             self._tire(22)
             self.s.mood = clamp(self.s.mood - 1, -3, 3)
@@ -219,15 +244,14 @@ class Haggle:
         return self._out("letgo")
 
     def _accept(self, _=None) -> Outcome:
-        self._finish("deal", self.s.ask)
-        return self._out("accept", self.s.ask)
+        return self._agree(self.s.ask, self.s.ask)
 
     # ------------------------------------------------------------------ tap mode
     def suggestions(self) -> list[dict]:
         """Three moves for tap mode: two offers (bold, safer) and one tactic. Amounts come from the asking
         price only, so they never reveal the secret floor."""
-        if self.s.done:
-            return []
+        if self.s.done or self.s.pending is not None:
+            return []           # a deal is waiting for confirmation: the app shows Deal / Not yet instead
         a = self.s.ask
         bold, safer = nice(a * 0.6), nice(a * 0.82)
         if safer >= a:
