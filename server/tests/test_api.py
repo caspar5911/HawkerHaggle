@@ -552,3 +552,25 @@ def test_only_the_games_own_web_page_may_use_the_relay_from_another_site():
     assert r.headers["access-control-allow-origin"] == "https://caspar5911.github.io"
     r = c.get("/v1/stalls", headers={"Origin": "https://caspar5911.github.io"})
     assert "access-control-allow-origin" not in r.headers                  # nothing else is opened up
+
+
+def test_her_reply_must_say_her_real_price_not_just_repeat_the_offer():
+    from hh.ai import own_price_missing
+    nums = {"ask": 16.5, "offer": 16.0, "deal": None}
+    assert own_price_missing("OK lah, $16 for you!", nums)                 # the bug: her price is $16.50
+    assert not own_price_missing("$16 cannot lah, $16.50 already very good.", nums)
+    assert not own_price_missing("Aiyo, so sweet one!", nums)              # no price mentioned: fine
+    assert not own_price_missing("Deal, $16!", {"ask": 18, "offer": 16, "deal": 16})   # agreed at $16
+
+    class OfferEcho(FakeModel):
+        def post(self, url, json=None, headers=None, timeout=None):
+            self.calls.append(json)
+            if json.get("response_format"):
+                return FakeResp('{"move": "smalltalk", "price": null}')
+            n = len([x for x in self.calls if not x.get("response_format")])
+            return FakeResp("OK lah, $5 for you!" if n == 1 else "Aiyo, still $32, my dear.")
+    c, _ = client(OfferEcho())
+    h, _ = register(c)
+    g = c.post("/v1/haggle", json={"stall": "mei", "item": "durian"}, headers=h).json()
+    r = c.post(f"/v1/haggle/{g['id']}/move", json={"text": "hello auntie"}, headers=h).json()
+    assert r["line"] == "Aiyo, still $32, my dear."

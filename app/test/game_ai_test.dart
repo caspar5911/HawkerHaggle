@@ -66,7 +66,7 @@ Future<(Game, FakeModel?)> newGame([FakeModel? model]) async {
 
 void main() {
   test('plain offers skip the AI reading, but her reply is still AI', () async {
-    final (game, m) = await newGame(FakeModel(line: r'Aiyo, $20 cannot lah'));
+    final (game, m) = await newGame(FakeModel(line: 'Aiyo, that one cannot lah, my dear!'));
     final g = await game.start('mei', 'durian');
     final r = await game.move(g['id'] as String, text: '20 can?');
     expect(m!.reads, isEmpty);
@@ -186,7 +186,7 @@ void main() {
   });
 
   test('tapping a suggestion is a message: no AI reading, but an AI-written reply', () async {
-    final (game, m) = await newGame(FakeModel(line: r'Aiyo, $11 too little lah, my dear!'));
+    final (game, m) = await newGame(FakeModel(line: 'Aiyo, too little lah, my dear!'));
     final g = await game.start('mei', 'mango');
     final sug = (g['suggestions'] as List).first as Map;
     expect('${sug['text']}', anyOf(contains('Auntie'), isNot(contains('{who}'))));
@@ -265,6 +265,18 @@ void main() {
     final system = '${(m!.says.last['messages'] as List)[0]['content']}';
     expect(system, contains('You know this customer'));
     expect(system, contains('box of mangoes'));
+  });
+
+  test("her reply must say her real price, not just repeat the customer's offer", () async {
+    expect(ownPriceMissing(r'OK lah, $16 for you!', {'ask': 16.5, 'offer': 16, 'deal': null}), isTrue);
+    expect(ownPriceMissing(r'$16 cannot lah, $16.50 already very good.', {'ask': 16.5, 'offer': 16}), isFalse);
+    expect(ownPriceMissing('Aiyo, so sweet one!', {'ask': 16.5, 'offer': 16}), isFalse);
+    expect(ownPriceMissing(r'Deal, $16!', {'ask': 18, 'offer': 16, 'deal': 16}), isFalse);
+    final (game, m) = await newGame(FakeModel());
+    m!.lines = [r'OK lah, $5 for you!', r'Aiyo, still $32, my dear.'];
+    final g = await game.start('mei', 'durian');
+    final r = await game.move(g['id'] as String, text: 'hello auntie');
+    expect(r['line'], r'Aiyo, still $32, my dear.');
   });
 
   test('test connection explains the result', () async {

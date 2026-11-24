@@ -86,6 +86,11 @@ Future<void> main(List<String> args) async {
       problems.add('missed the flirt');
     }
     if (move == 'flirt' && r['event'] != 'deflect') problems.add('flirt not deflected');
+    final own = [r['ask'], r['deal'], r['pending']].whereType<num>().map((v) => v.toDouble()).toList();
+    final said = [for (final m in RegExp(r'\$\s*(\d+(?:\.\d+)?)').allMatches('${r['line']}')) double.parse(m[1]!)];
+    if (said.isNotEmpty && r['event'] != 'clarify' && !said.any((a) => own.any((o) => (o - a).abs() < 0.001))) {
+      problems.add('mentions a price but not her real one (${own.join('/')})');
+    }
     if (r['ai_line'] == true) aiLines++;
     final hard = problems.isNotEmpty;
     if (hard) fails.add('$moment "$msg": ${problems.join('; ')}');

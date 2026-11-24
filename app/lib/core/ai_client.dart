@@ -23,6 +23,17 @@ final finalWords = pyRe(
   ignoreCase: true,
 );
 
+/// A reply that mentions prices must include her real one (asking price, or the agreed/sold price). Otherwise
+/// "OK lah, $16" can repeat the customer's offer as if it were hers while the real price is $16.50.
+bool ownPriceMissing(String text, Map<String, double?> numbers) {
+  final amounts = {for (final m in RegExp(r'\$\s*(\d+(?:\.\d+)?)').allMatches(text)) pyRound(double.parse(m[1]!), 2)};
+  final own = {
+    for (final k in const ['ask', 'deal'])
+      if (numbers[k] != null) pyRound(numbers[k]!, 2),
+  };
+  return amounts.isNotEmpty && own.isNotEmpty && amounts.intersection(own).isEmpty;
+}
+
 class AiConfig {
   const AiConfig({this.endpoint = '', this.model = '', this.apiKey = ''});
   final String endpoint; // e.g. https://host/v1
@@ -296,6 +307,12 @@ class AiClient {
       if (good != null && event == 'confirm' && !good.contains('?')) {
         good = null;
         problem = 'no question asking them to confirm';
+      }
+      if (good != null && event != 'clarify' && ownPriceMissing(good, numbers)) {
+        good = null;
+        problem =
+            "a price that isn't yours: if you mention a price, say your real price "
+            '${money(numbers['deal'] ?? numbers['ask'])}';
       }
       if (good != null && notFinal.contains(event) && finalWords.hasMatch(good)) {
         good = null;

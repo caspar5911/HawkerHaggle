@@ -343,6 +343,9 @@ class AI:
             problem = "a price or number you may not use"
             if good and event == "confirm" and "?" not in good:
                 good, problem = None, "no question asking them to confirm"
+            if good and event != "clarify" and own_price_missing(good, numbers):
+                good, problem = None, ("a price that isn't yours: if you mention a price, say your real price "
+                                       f"{money(numbers.get('deal') or numbers.get('ask'))}")
             if good and event in NOT_FINAL and FINAL_WORDS.search(good):
                 good, problem = None, "a claim that your price is final, when you can still move"
             if good and len(good.split()) > max_words * 2:
@@ -354,6 +357,14 @@ class AI:
                      f"{', '.join(money(v) for v in prices.values()) or 'none'}; no other prices, no percentages; "
                      f"under {max_words} words.")
         return None
+
+
+def own_price_missing(text: str, numbers: dict) -> bool:
+    """A reply that mentions prices must include her real one (her asking price, or the agreed/sold price). Otherwise
+    "OK lah, $16" can repeat the customer's offer as if it were hers while the real price is $16.50."""
+    amounts = {round(float(n), 2) for n in re.findall(r"\$\s*(\d+(?:\.\d+)?)", text)}
+    own = {round(float(numbers[k]), 2) for k in ("ask", "deal") if numbers.get(k) is not None}
+    return bool(amounts) and bool(own) and not (amounts & own)
 
 
 def money(v) -> str:
