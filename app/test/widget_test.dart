@@ -294,5 +294,7 @@ void main() {
     expect(faceFor('plead_no', 0), Face.annoyed);
     expect(faceFor('insulted', 0), Face.angry);
     expect(faceFor('letgo', 0), Face.sad);
+    expect(faceFor('pity', 0), Face.sad);
+    expect(faceFor('pity_tired', 0), Face.annoyed);
   });
 }

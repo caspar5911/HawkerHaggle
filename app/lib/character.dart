@@ -25,12 +25,15 @@ Face faceFor(String event, double mood) {
     case 'competitor_annoyed':
     case 'flattery_tired':
     case 'plead_no':
+    case 'pity_tired':
       return Face.annoyed;
     case 'insulted':
     case 'rude':
       return Face.angry;
     case 'letgo':
     case 'refuse':
+    case 'pity':
+    case 'budget_best':
       return Face.sad;
     default:
       return mood >= 1.5 ? Face.happy : (mood <= -1 ? Face.annoyed : Face.neutral);

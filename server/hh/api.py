@@ -209,7 +209,7 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             said = ai.say(stall, item, event, {"ask": h.s.ask, "offer": out.offer if out else None,
                                                "deal": h.s.deal or h.s.pending},
                           history=chat, heard=you, also_ok=[m.get("ask") for m in chat] + [h.s.opening],
-                          unclear=unclear)
+                          unclear=unclear, budget=h.s.budget)
             ai_line = said is not None
             store.add_ai_use(p["id"], today())          # usage stats only, not a limit
         said = said or line(stall, item, event, h, offer=out.offer if out else None, seed=sess["seed"], chat=chat)

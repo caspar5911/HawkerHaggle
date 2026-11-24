@@ -18,12 +18,12 @@ import requests
 
 log = logging.getLogger("hh.ai")
 
-MOVES = ("offer", "plead", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
+MOVES = ("offer", "budget", "plead", "pity", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
 
 EVENTS = {
     "greet": "You greet the customer and say the asking price.",
     "counter": "The customer offered {offer}. You refuse it but come down to {ask}.",
-    "final": "The customer offered {offer}. You won't go lower than {ask}.",
+    "final": "The customer offered {offer}. You won't go lower than {ask}. If they said that's all they have, say kindly you understand but still can't.",
     "insulted": "The customer offered only {offer}, which insults you. Your price stays {ask}.",
     "accept": "The customer confirmed: sold at {deal}. Close the deal happily.",
     "confirm": "You agree to sell at {deal}, but the customer has NOT confirmed yet. Say yes happily, then END with a question asking them to confirm at {deal} (e.g. '..., deal or not?'). Don't say it's sold or wrap it yet.",
@@ -38,6 +38,9 @@ EVENTS = {
     "plead": "The customer asks for a cheaper price. You sigh and come down a little to {ask}.",
     "plead_no": "The customer keeps asking for cheaper without naming a price. You hold at {ask} and tell them to name a price.",
     "rude": "The customer was rude. You're offended.",
+    "budget_best": "The customer says they only have {offer}. That's below what you can sell for. Kindly tell them your real lowest price is {ask}; you truly can't go lower.",
+    "pity": "The customer told you a sad story. Show real sympathy, in character; your price is now {ask}.",
+    "pity_tired": "The customer keeps telling sad stories. Stay kind but firm; your price is still {ask}.",
     "clarify": "You're not sure what the customer means ({unclear}). Ask them, in character, to say clearly; your price is still {ask}.",
     "callback": "The customer walked away. You call them back, offering {ask}.",
     "letgo": "The customer walked away. You let them go.",
@@ -50,8 +53,12 @@ Read the WHOLE message carefully, word by word, in Singlish (lah, leh, lor, hor,
 expensive, wah lau, aiyo...), together with the conversation so far. First write what they really mean in one
 plain sentence ("reading"), then choose exactly one move:
 
-offer      - they name a price they want to pay ("20 can?", "$15 lah", "my budget only 18", "ok lah 24").
+offer      - they name a price they want to pay ("20 can?", "$15 lah", "ok lah 24").
              A price they quote for ANOTHER stall is competitor, not offer.
+budget     - they say a number is ALL they have or can pay: "I only have $16", "my budget only 18", "16 is all I
+             got", "wallet left $16". price is that number.
+pity       - a sad story to get sympathy WITHOUT naming a number: hungry, starving, nothing to eat, no money, lost
+             job, sick, sad day. (With a number it is budget or offer.)
 plead      - they ask for cheaper / discount / best price WITHOUT naming a number.
 compliment - they praise the goods or the stallholder.
 competitor - they say another stall or shop is cheaper.
@@ -169,7 +176,7 @@ class AI:
 
     # ------------------------------------------------------------------ 2. say
     def say(self, stall: dict, item: dict, event: str, numbers: dict, history=None, heard: str | None = None,
-            also_ok=(), unclear: str = "") -> str | None:
+            also_ok=(), unclear: str = "", budget: float | None = None) -> str | None:
         """The stallholder's line, or None (use a ready-made line) if the model is unavailable or the reply
         mentions a number the engine didn't give it. `also_ok`: earlier asking prices, true to mention."""
         prices = {k: v for k, v in numbers.items() if v is not None}
@@ -182,11 +189,12 @@ class AI:
                                                                **{k: money(v) for k, v in numbers.items()}),
                             prices=", ".join(money(v) for v in prices.values()) or "none")
         user = (f"Conversation so far:\n{transcript(history, stall['name'])}\n\n"
+                + (f"Remember: the customer said they only have {money(budget)}.\n" if budget else "")
                 + (f"The customer just said: <<<{heard[:300]}>>>\n" if heard else "")
                 + f"Your reply as {stall['name']}:")
         # When asking back, she may repeat the customer's own counts ("100 pieces ah?"), never as a $ price.
         counts = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", heard or "")] if event == "clarify" else []
-        allowed = list(prices.values()) + [a for a in also_ok if a]
+        allowed = list(prices.values()) + [a for a in also_ok if a] + ([budget] if budget else [])
         for attempt in range(2):
             text = self._chat(system, user, json_mode=False, temperature=0.9)
             if text is None:
@@ -245,6 +253,8 @@ WORDS = [
     ("bulk", r"\b(two|2 pcs|buy more|buy 2|bulk|both)\b"),
     ("regular", r"\b(every week|regular|always (buy|come)|remember me)\b"),
     ("rude", r"\b(stupid|idiot|cheat|scam|rubbish|lousy)\b"),
+    ("pity", r"\b(starving|hungry|nothing to eat|no food|no money|broke|jobless|lost my job|retrenched|sick|"
+             r"hospital|kesian|pity me|very poor|so poor)\b"),
     ("plead", r"\b(cheaper|discount|less|lower|best price|kurang|reduce|so ex|so expensive)\b"),
     ("compliment", r"\b(nice|fresh|beautiful|pretty|best|good|sweet|shiok|handsome|lovely)\b"),
     ("accept", r"\b(deal|i('ll| will)? (take|buy)( it| this| one| lah)?|pack (it|for me)|wrap (it|for me))\b"),
@@ -263,6 +273,10 @@ def plain_yes(text: str) -> bool:
 
 def rules(text: str) -> tuple[str, float | None]:
     t = text.lower()
+    bud = re.search(r"\b(only (have|got|left)|budget|all i (have|got)|can only (pay|afford)|left)\b[^\d]{0,12}\$?\s*(\d+(?:\.\d{1,2})?)"
+                    r"|\$?\s*(\d+(?:\.\d{1,2})?)\s*(is|only)?\s*all i (have|got)", t)
+    if bud:
+        return "budget", float(bud.group(5) or bud.group(6))
     qty = re.search(r"\b(buy|take|want|give me|get)\s+(\d+)\b(?!\s*(dollars?|bucks|\$))", t)
     if qty and int(qty.group(2)) != 1:
         return ("bulk", None) if int(qty.group(2)) == 2 else ("clarify", None)   # "I buy 100 for 150": ask

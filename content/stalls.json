@@ -17,7 +17,8 @@
         "stubborn": 0.35,
         "flattery": 0.85,
         "temper": 0.35,
-        "callback": 0.7
+        "callback": 0.7,
+        "kind": 0.85
       },
       "items": [
         {
@@ -137,6 +138,18 @@
         "unsure": [
           "Take your time, my dear. Still {price}.",
           "No rush, auntie wait for you. {price}."
+        ],
+        "budget_best": [
+          "Aiyo, {offer} really cannot, my dear. Auntie best price {price}, that's it.",
+          "{offer} only ah? Haiz... lowest I can do is {price}, really."
+        ],
+        "pity": [
+          "Aiyo, poor thing! Come, {price} for you, eat something first ah.",
+          "Wah, so pitiful... OK lah, {price}, auntie also got heart."
+        ],
+        "pity_tired": [
+          "My dear, everybody also got story one. Still {price}.",
+          "Aiyo, auntie also hungry leh. {price} lah."
         ]
       }
     },
@@ -157,7 +170,8 @@
         "stubborn": 0.75,
         "flattery": 0.2,
         "temper": 0.6,
-        "callback": 0.35
+        "callback": 0.35,
+        "kind": 0.25
       },
       "items": [
         {
@@ -277,6 +291,18 @@
         "unsure": [
           "Think fast. {price}.",
           "Hmm. Still {price}."
+        ],
+        "budget_best": [
+          "{offer}? Cannot. Lowest {price}.",
+          "{offer} no. {price}, that's my best."
+        ],
+        "pity": [
+          "Hmm. {price}. Go eat.",
+          "Haiz. {price}."
+        ],
+        "pity_tired": [
+          "Sad story don't sell fish. {price}.",
+          "Everyone also say that. {price}."
         ]
       }
     },
@@ -297,7 +323,8 @@
         "stubborn": 0.3,
         "flattery": 0.5,
         "temper": 0.25,
-        "callback": 0.9
+        "callback": 0.9,
+        "kind": 0.5
       },
       "items": [
         {
@@ -417,6 +444,18 @@
         "unsure": [
           "No problem boss, {price} still waiting for you!",
           "Take your time boss, {price}."
+        ],
+        "budget_best": [
+          "Boss, {offer} I really lose money! Rock bottom {price}, swear!",
+          "Aiyo boss, {offer} cannot, best best {price}!"
+        ],
+        "pity": [
+          "Aiyo boss, so sad! OK, special kindness price {price}!",
+          "Boss, you make me tear! {price} for you."
+        ],
+        "pity_tired": [
+          "Boss, story very nice, but price still {price}!",
+          "Aiyo boss, now you acting already! {price}."
         ]
       }
     },
@@ -437,7 +476,8 @@
         "stubborn": 0.5,
         "flattery": 0.6,
         "temper": 0.3,
-        "callback": 0.55
+        "callback": 0.55,
+        "kind": 0.8
       },
       "items": [
         {
@@ -557,6 +597,18 @@
         "unsure": [
           "Take your time, adik. Still {price}.",
           "No rush adik, {price} ya."
+        ],
+        "budget_best": [
+          "Aiyo adik, {offer} not enough... my best is {price}, really.",
+          "Sorry adik, {offer} cannot. Lowest {price} ya."
+        ],
+        "pity": [
+          "Kesian adik... OK, {price} for you. Take care ya.",
+          "Aiyo adik, you okay or not? {price}, I help a bit."
+        ],
+        "pity_tired": [
+          "Adik, kak also need to feed my family. Still {price}.",
+          "Hmm adik, {price} already very kind ya."
         ]
       }
     }

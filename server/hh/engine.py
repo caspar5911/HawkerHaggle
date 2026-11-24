@@ -9,7 +9,7 @@ import math
 import random
 from dataclasses import asdict, dataclass, field
 
-MOVES = ("offer", "plead", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
+MOVES = ("offer", "budget", "plead", "pity", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
 ONCE = ("competitor", "bulk", "regular")    # tactics that only work once per haggle
 MAX_ROUNDS = 12
 
@@ -20,6 +20,7 @@ class Personality:
     flattery: float     # 0..1: how much compliments soften them
     temper: float       # 0..1: how fast patience runs out
     callback: float     # 0..1: chance they call you back when you walk away
+    kind: float = 0.5   # 0..1: how much a sad story ("no money, very hungry") softens them
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,9 @@ class State:
     used: list = field(default_factory=list)
     compliments: int = 0
     pleads: int = 0
+    pities: int = 0
+    budget: float | None = None     # "I only have $16": the player's stated limit
+    best_given: bool = False        # they already said their real best price for a too-small budget
     last_offer: float | None = None
     done: bool = False
     result: str = ""            # "deal", "walked", "refused"
@@ -69,6 +73,12 @@ def nice(price: float) -> float:
     """Prices people actually say: 50-cent steps under $20, whole dollars above."""
     step = 0.5 if price < 20 else 1.0
     return round(round(price / step) * step, 2)
+
+
+def nice_up(price: float) -> float:
+    """The nearest price people say that is not below `price`."""
+    step = 0.5 if price < 20 else 1.0
+    return round(math.ceil(round(price / step, 6)) * step, 2)
 
 
 def clamp(x: float, lo: float, hi: float) -> float:
@@ -127,7 +137,8 @@ class Haggle:
             self._finish("deal", deal)
             return self._out("accept", deal)
         if self.s.pending is not None and (kind == "accept" or (
-                kind == "offer" and price is not None and math.isfinite(price) and nice(price) >= self.s.pending)):
+                kind in ("offer", "budget") and price is not None and math.isfinite(price)
+                and nice(price) >= self.s.pending)):
             kind = "confirm"        # "OK lah" or the agreed price again, while a deal waits: that's a yes
         if kind == "confirm":
             if self.s.pending is None:
@@ -155,7 +166,7 @@ class Haggle:
         if kind in ONCE and kind in self.s.used:
             kind = "smalltalk"
         self.s.rounds += 1
-        out = getattr(self, f"_{kind}")(price) if kind == "offer" else getattr(self, f"_{kind}")()
+        out = getattr(self, f"_{kind}")(price) if kind in ("offer", "budget") else getattr(self, f"_{kind}")()
         if out.event == "confirm":
             return out              # a deal on the table always gets its confirmation step
         if not self.s.done and self.s.patience <= 0:
@@ -166,11 +177,18 @@ class Haggle:
             return self._out("refuse")
         return out
 
-    def _offer(self, price: float | None) -> Outcome:
+    def _budget(self, price: float | None) -> Outcome:
+        """"I only have $16": a firm limit, not an opening bid."""
+        if price is not None and math.isfinite(price) and price > 0:
+            self.s.budget = nice(price)
+        return self._offer(price, firm=True)
+
+    def _offer(self, price: float | None, firm: bool = False) -> Outcome:
         if price is None or not math.isfinite(price) or price <= 0:
             self._tire(6)
             return self._out("confused")
         x = nice(price)
+        firm = firm or x == self.s.last_offer       # saying the same number again means it
         self.s.last_offer = x
         f = self.floor_now()
         if x >= self.s.ask:
@@ -178,16 +196,40 @@ class Haggle:
         # How far below their current ask they'll still say yes: a share of the item's whole bargaining range
         # (not of the remaining gap, or an offer at the floor could never be accepted).
         give = (self.item.ask - self.item.floor) * clamp(0.25 + 0.06 * self.s.mood - 0.15 * self.p.stubborn, 0.05, 0.5)
-        if x >= f and x >= self.s.ask - give:
-            return self._agree(x, x)
+        if self.s.best_given and x < self.s.ask:
+            self._tire(9)
+            return self._out("final", x)            # they already said their real best price
+        if x >= f and (firm or x >= self.s.ask - give):
+            return self._agree(x, x)                # a firm limit they can live with: yes
         if x < f * 0.7:
             self._tire(22)
             self.s.mood = clamp(self.s.mood - 1, -3, 3)
             return self._out("insulted", x)
+        if firm:
+            # A real limit below what they can do: no more $1 steps. Once, they say their real best price.
+            self._tire(9)
+            if not self.s.best_given:
+                self.s.best_given = True
+                best = nice_up(f)                   # honest: this really is the lowest they'll go
+                if best < self.s.ask:
+                    self.s.ask = best
+                    return self._out("budget_best", x)
+            return self._out("final", x)
         before = self.s.ask
         self._concede(x, 0.25 + 0.08 * self.s.mood - 0.15 * self.p.stubborn)
         self._tire(7)
         return self._out("final" if self.s.ask >= before else "counter", x)
+
+    def _pity(self, _=None) -> Outcome:
+        """A sad story. Soft-hearted stallholders soften once; nobody goes below their secret lowest price."""
+        self.s.pities += 1
+        if self.s.pities > 1:
+            self._tire(8 + 10 * (1 - self.p.kind))
+            return self._out("pity_tired")
+        self.s.mood = clamp(self.s.mood + 2 * self.p.kind, -3, 3)
+        self._concede(self.floor_now(), 0.35 * self.p.kind)
+        self._tire(3)
+        return self._out("pity")
 
     def _compliment(self, _=None) -> Outcome:
         self.s.compliments += 1

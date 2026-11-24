@@ -62,7 +62,7 @@ class Sfx {
         play('star', volume: 0.6);
       case 'insulted' || 'rude':
         play('huff');
-      case 'competitor_annoyed' || 'flattery_tired' || 'refuse' || 'final' || 'plead_no':
+      case 'competitor_annoyed' || 'flattery_tired' || 'refuse' || 'final' || 'plead_no' || 'pity_tired':
         play('hmm');
       case 'letgo':
         play('whoosh');

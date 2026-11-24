@@ -163,3 +163,50 @@ def test_a_new_move_while_a_deal_waits_cancels_it_first():
     assert h.suggestions() == []                               # app shows Deal / Not yet
     h.move("walk")
     assert h.s.pending is None
+
+
+from hh.engine import nice_up  # noqa: E402
+
+KIND = Personality(stubborn=0.3, flattery=0.5, temper=0.3, callback=0.5, kind=0.85)
+GRUFF = Personality(stubborn=0.75, flattery=0.2, temper=0.6, callback=0.35, kind=0.25)
+
+
+def test_a_budget_she_can_live_with_is_a_yes():
+    h = Haggle(FISH, SOFT)
+    out = h.move("budget", 14)                      # floor is 13
+    assert out.event == "confirm" and out.pending == 14
+
+
+def test_a_budget_a_bit_too_small_gets_her_real_best_price_once_then_no_more_dollar_steps():
+    h = Haggle(FISH, SOFT)
+    first = h.move("budget", 11)                    # below the floor (13), not insulting
+    assert first.event == "budget_best" and h.s.ask == nice_up(h.floor_now()) and h.s.ask >= FISH.floor * 0.9
+    best = h.s.ask
+    for _ in range(3):                              # "I only have 11" again and again: she holds
+        again = h.move("budget", 11)
+        if again.done:
+            break
+        assert again.event == "final" and h.s.ask == best
+    h2 = Haggle(FISH, SOFT)
+    h2.move("budget", 11)
+    assert h2.move("offer", h2.s.ask - 1).event == "final"     # her best really is her best
+
+
+def test_repeating_the_same_offer_counts_as_a_firm_limit():
+    h = Haggle(FISH, SOFT)
+    h.move("offer", 12)
+    assert h.move("offer", 12).event in ("budget_best", "confirm")
+
+
+def test_pity_softens_kind_stallholders_more_and_wears_off():
+    kind, gruff = Haggle(FISH, KIND), Haggle(FISH, GRUFF)
+    kind.move("pity"); gruff.move("pity")
+    assert kind.s.ask < gruff.s.ask <= FISH.ask
+    assert kind.move("pity").event == "pity_tired"
+    for _ in range(5):
+        kind.move("pity")
+    assert kind.s.ask >= nice(FISH.floor * 0.9)     # never below the secret minimum
+
+
+def test_nice_up_never_rounds_below():
+    assert nice_up(13.01) == 13.5 and nice_up(13.0) == 13.0 and nice_up(20.2) == 21.0

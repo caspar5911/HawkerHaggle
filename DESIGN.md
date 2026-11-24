@@ -52,3 +52,11 @@ The AI first writes what the player means in one plain sentence, then picks a mo
 yes ("deal", "OK I take it", "pack for me"). A vague "ok lah", "can lah" or "ok but..." becomes **clarify**: the
 stallholder asks back, and nothing changes (no price move, no patience, no round used). The word-rule fallback
 follows the same rule. Every haggle keeps its chat, so the AI reads each message with the whole conversation.
+
+## Budgets, pity and the secret lowest price
+Every item has a secret lowest price (`floor`). A good mood can take up to 10% off it, never more.
+- **"I only have $16"** (or the same offer twice) is a firm limit. If it reaches their lowest price they say yes.
+  If it's a bit under, they say their real lowest price once, and that really is final: no more $1 steps.
+  Far under is an insult. The stallholder remembers the budget for the rest of the chat.
+- **Pity** ("starving, no money, lost my job") works once, by personality (`kind`): Auntie Mei and Kak Siti soften
+  a lot, Uncle Lim hardly. A second sob story tires them. Nobody goes below the lowest price.
