@@ -164,6 +164,9 @@ class Game {
   }
 
   Map<String, Object?> today() => progress.today();
+  List<Map<String, Object?>> history() => progress.history();
+  Map<String, Object?> historyItem(String id) =>
+      progress.historyItem(id) ?? (throw GameError(404, 'That haggle is no longer kept'));
   List<Map<String, Object?>> stickers() => progress.stickers();
   Map<String, Object?> stallProfile(String id) {
     if (_stalls[id] == null) throw GameError(404, 'No such stall');
@@ -420,7 +423,7 @@ class Game {
     }
     final aiLine = said != null;
     said ??= _line(stall, item, surprise.isEmpty ? 'greet' : 'greet_$surprise', ss.h, seed: seed);
-    ss.chat.add({'who': 'them', 'text': said, 'ask': ss.h.s.ask});
+    ss.chat.add({'who': 'them', 'text': said, 'ask': ss.h.s.ask, if (aiLine) 'ai': true});
     return _view(ss, said, 'greet', null, null, aiLine);
   }
 
@@ -510,7 +513,10 @@ class Game {
         stall: stall,
         item: item,
         event: event,
-        numbers: {'ask': h.s.ask, 'offer': out?.offer, 'deal': h.s.deal ?? h.s.pending},
+        // a "no sale" ending mentions no price at all
+        numbers: const ['refuse', 'letgo', 'rival_bought'].contains(event)
+            ? const <String, double?>{}
+            : {'ask': h.s.ask, 'offer': out?.offer, 'deal': h.s.deal ?? h.s.pending},
         history: ss.chat,
         heard: you,
         alsoOk: [
@@ -538,7 +544,7 @@ class Game {
       'move': kind,
       if (heard.reading.isNotEmpty || heard.also.isNotEmpty) ...{'reading': heard.reading, 'also': heard.also},
     });
-    ss.chat.add({'who': 'them', 'text': said, 'ask': h.s.ask});
+    ss.chat.add({'who': 'them', 'text': said, 'ask': h.s.ask, if (aiLine) 'ai': true});
     if (h.s.done && !ss.recorded) {
       ss.recorded = true;
       final r = progress.finish(
@@ -554,6 +560,7 @@ class Game {
         },
         qty: h.s.qty,
         flags: {'nice': ss.nice, 'called_back': ss.calledBack, 'hard': hard},
+        chat: ss.chat,
       );
       ss.finish = {'stickers': r.stickers, 'mum': r.mum, 'unlocked': r.unlocked};
       await _save();

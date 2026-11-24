@@ -96,6 +96,13 @@ class _MarketScreenState extends State<MarketScreen> {
                       ),
                     ),
                     IconButton(
+                      key: const ValueKey('history'),
+                      tooltip: 'Past haggles',
+                      icon: const Text('📜', style: TextStyle(fontSize: 22)),
+                      onPressed: () =>
+                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => HistoryScreen(api: widget.api))),
+                    ),
+                    IconButton(
                       key: const ValueKey('sticker_book'),
                       icon: const Text('📒', style: TextStyle(fontSize: 24)),
                       onPressed: () async {

@@ -113,6 +113,34 @@ class Fake extends Game {
   };
 
   @override
+  List<Map<String, Object?>> history() => [
+    {
+      'id': 'h1',
+      'at': '2026-11-24T20:30:00',
+      'stall': 'mei',
+      'item': 'mango',
+      'result': 'deal',
+      'deal': 15,
+      'stars': 2,
+      'saved': 0.17,
+      'qty': 1,
+      'stall_name': 'Auntie Mei',
+      'item_name': 'box of mangoes',
+      'emoji': '🥭',
+    },
+  ];
+
+  @override
+  Map<String, Object?> historyItem(String id) => {
+    ...history().first,
+    'chat': [
+      {'who': 'them', 'text': 'Morning my dear! \$18 only.'},
+      {'who': 'you', 'text': '\$15 lah, OK?'},
+      {'who': 'them', 'text': 'OK lah, \$15 for you!', 'ai': true},
+    ],
+  };
+
+  @override
   List<Map<String, Object?>> stickers() => [
     {'id': 'first_deal', 'emoji': '🤝', 'title': 'First deal', 'how': 'Close your first deal', 'earned': '2026-11-24'},
     {'id': 'half_off', 'emoji': '✂️', 'title': 'Half price!', 'how': 'Get half off', 'earned': null},
@@ -452,6 +480,21 @@ void main() {
     await settle(tester, 1000);
     expect(shared.single, contains('33% off'));
     await settle(tester, 3000);
+  });
+
+  testWidgets('past haggles: the list, and a chat to reread', (tester) async {
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('history')));
+    await settle(tester);
+    expect(find.text('box of mangoes · Auntie Mei'), findsOneWidget);
+    expect(find.textContaining('Bought for \$15'), findsOneWidget);
+    await tester.tap(find.text('box of mangoes · Auntie Mei'));
+    await settle(tester);
+    expect(find.text('\$15 lah, OK?'), findsOneWidget);
+    expect(find.textContaining('OK lah, \$15 for you!'), findsOneWidget);
+    expect(find.text('Bought for \$15'), findsOneWidget);
+    await settle(tester, 2000);
   });
 
   test('faces match the moment', () {

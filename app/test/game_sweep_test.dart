@@ -130,6 +130,9 @@ Future<(Map, int)> play(
     check(g, seen);
     final nowAsk = (g['ask'] as num).toDouble();
     expect(nowAsk <= lastAsk + 1e-9, isTrue, reason: '$style: price went up $lastAsk -> $nowAsk');
+    if (const ['refuse', 'rival_bought'].contains(g['event'])) {
+      expect(nowAsk, lastAsk, reason: '$style: a no-sale ending came with a better price'); // no last-second drop
+    }
     lastAsk = nowAsk;
     if (g['done'] == true && g['result'] == 'deal') {
       expect(wasPending || body['move'] == 'buy', isTrue, reason: '$style: deal without a yes ($body)');

@@ -140,6 +140,7 @@ class Haggle:
     def move(self, kind: str, price: float | None = None, call_back: bool | None = None) -> Outcome:
         if self.s.done:
             return self._out("over")
+        ask_start = self.s.ask         # a no-sale ending keeps the price from before this move
         if kind == "buy":
             # The app's "OK lah, $X" button after its own "Confirm $X" tap: the player has already confirmed.
             deal, self.s.pending = self.s.pending if self.s.pending is not None else self.s.ask, None
@@ -164,6 +165,7 @@ class Haggle:
                 self.s.ask, self.s.pending = min(self.s.ask, self.s.pending), None
                 self._tire(6)
                 if self.s.patience <= 0:
+                    self.s.ask = ask_start
                     self._finish("refused")
                     return self._out("refuse")
                 return self._out("unsure")
@@ -181,10 +183,8 @@ class Haggle:
             out = getattr(self, f"_{kind}")(price) if kind in ("offer", "budget", "bulk") else getattr(self, f"_{kind}")()
         if out.event == "confirm":
             return out              # a deal on the table always gets its confirmation step
-        if not self.s.done and self.s.patience <= 0:
-            self._finish("refused")
-            return self._out("refuse")
-        if not self.s.done and self.s.rounds >= MAX_ROUNDS:
+        if not self.s.done and (self.s.patience <= 0 or self.s.rounds >= MAX_ROUNDS):
+            self.s.ask = ask_start      # she's refusing: the price doesn't improve on the way out
             self._finish("refused")
             return self._out("refuse")
         return out

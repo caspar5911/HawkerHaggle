@@ -283,7 +283,9 @@ class Progress {
     required Map record,
     required int qty,
     required Map flags,
+    List<Map> chat = const [],
   }) {
+    _keepChat(record, qty, chat);
     final stall = '${record['stall']}';
     final fresh = <String>{};
     final lockedBefore = {
@@ -310,6 +312,58 @@ class Progress {
     ];
     if (newly.isNotEmpty) _earn('new_stall', fresh);
     return (stickers: fresh.toList(), mum: mum, unlocked: newly);
+  }
+
+  // ---------------------------------------------------------------- past haggles (chat history)
+  static const historyKept = 30;
+
+  void _keepChat(Map record, int qty, List<Map> chat) {
+    if (chat.isEmpty) return;
+    final list = (p['history'] ??= <Object>[]) as List;
+    list.add({
+      'id': '${record['at']}-${record['stall']}-${record['item']}',
+      'at': record['at'],
+      'stall': record['stall'],
+      'item': record['item'],
+      'result': record['result'],
+      'deal': record['deal'],
+      'stars': record['stars'],
+      'saved': record['saved'],
+      'event': record['event'],
+      'qty': qty,
+      'chat': [
+        for (final m in chat.length > 60 ? chat.sublist(chat.length - 60) : chat)
+          {'who': m['who'], 'text': m['text'], if (m['ai'] == true) 'ai': true},
+      ],
+    });
+    if (list.length > historyKept) list.removeRange(0, list.length - historyKept);
+  }
+
+  /// Past haggles, newest first (without the chat, for the list).
+  List<Map<String, Object?>> history() {
+    final items = {
+      for (final s in content['stalls'] as List)
+        for (final i in (s as Map)['items'] as List) '${s['id']}/${(i as Map)['id']}': (s, i),
+    };
+    return [
+      for (final h in ((p['history'] as List?) ?? const []).reversed.cast<Map>())
+        {
+          for (final e in h.entries)
+            if (e.key != 'chat') e.key as String: e.value,
+          'stall_name': items['${h['stall']}/${h['item']}']?.$1['name'] ?? h['stall'],
+          'item_name': items['${h['stall']}/${h['item']}']?.$2['name'] ?? h['item'],
+          'emoji': items['${h['stall']}/${h['item']}']?.$2['emoji'] ?? '🛒',
+          'look': items['${h['stall']}/${h['item']}']?.$1['look'],
+          'messages': (h['chat'] as List?)?.length ?? 0,
+        },
+    ];
+  }
+
+  /// One past haggle with its whole chat.
+  Map<String, Object?>? historyItem(String id) {
+    final h = ((p['history'] as List?) ?? const []).cast<Map>().where((x) => x['id'] == id).firstOrNull;
+    if (h == null) return null;
+    return {...history().firstWhere((x) => x['id'] == id), 'chat': h['chat']};
   }
 
   /// Rudeness costs friendship straight away.

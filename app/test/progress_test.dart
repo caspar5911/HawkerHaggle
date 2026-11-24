@@ -298,4 +298,27 @@ void main() {
     expect(x['qty'], 2);
     expect(((g.today()['items'] as List).first as Map)['paid'], x['deal']); // per piece, not doubled
   });
+
+  test('past haggles keep the whole chat (AI lines marked), newest first, the last 30, wiped with my data', () async {
+    final (g, _, _) = await newGame();
+    final r = await g.start('mei', 'durian', 'none');
+    await g.move(r['id'] as String, text: 'wah so expensive');
+    await g.move(r['id'] as String, move: 'walk');
+    final h = g.history();
+    expect(h, hasLength(1));
+    expect(h.first['item_name'], 'durian (1 kg)');
+    expect(h.first['result'], anyOf('walked', 'deal'));
+    final one = g.historyItem(h.first['id'] as String);
+    final chat = (one['chat'] as List).cast<Map>();
+    expect(chat.first['who'], 'them'); // her greeting
+    expect(chat.map((m) => m['text']), contains('wah so expensive'));
+    for (var i = 0; i < 35; i++) {
+      await finishHaggle(g, 'raj', 'case');
+    }
+    expect(g.history(), hasLength(30));
+    expect(g.history().first['stall'], 'raj'); // newest first
+    expect(() => g.historyItem('nope'), throwsA(isA<GameError>()));
+    await g.deleteAll();
+    expect(g.history(), isEmpty);
+  });
 }

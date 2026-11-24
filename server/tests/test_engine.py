@@ -271,3 +271,15 @@ def test_no_callback_when_the_moment_is_wrong_or_they_were_rude():
     h.move("rude")
     assert not h.can_call_back()
     assert h.move("walk", call_back=True).event == "letgo"
+
+
+def test_a_refusal_never_comes_with_a_better_price():
+    for seed in range(40):
+        h = Haggle(FISH, HARD, seed=seed)
+        last = h.s.ask
+        for _ in range(12):
+            out = h.move("offer", 10.0)
+            if out.done:
+                assert out.event == "refuse" and out.ask == last, (seed, last, out.ask)
+                break
+            last = out.ask

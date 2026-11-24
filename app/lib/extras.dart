@@ -338,3 +338,126 @@ Future<Uint8List?> _capturePng(GlobalKey key) async {
     return null;
   }
 }
+
+/// Past haggles: the last 30 finished chats, newest first.
+class HistoryScreen extends StatelessWidget {
+  const HistoryScreen({super.key, required this.api});
+  final Api api;
+
+  static String resultText(Map h) => switch (h['result']) {
+    'deal' => 'Bought for ${money(h['deal'] as num)}${((h['qty'] ?? 1) as num) > 1 ? ' each (2)' : ''}',
+    'walked' => 'Walked away',
+    'lost' => 'Auntie Rose got it',
+    _ => 'No sale',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Past haggles'), backgroundColor: Palette.cream),
+      backgroundColor: Palette.cream,
+      body: FutureBuilder<List<Map<String, dynamic>>>(
+        future: api.history(),
+        builder: (c, snap) {
+          final list = snap.data ?? const [];
+          if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+          if (list.isEmpty) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No haggles yet. Your finished chats will be kept here.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Palette.soft, fontSize: 16),
+                ),
+              ),
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.all(16),
+            itemCount: list.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (_, i) {
+              final h = list[i];
+              final when = '${h['at']}'.length >= 16 ? '${h['at']}'.substring(0, 16).replaceFirst('T', ' ') : '';
+              return Bouncy(
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => HistoryChatScreen(api: api, id: '${h['id']}'),
+                  ),
+                ),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+                  child: Row(
+                    children: [
+                      Text('${h['emoji']}', style: const TextStyle(fontSize: 30)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${h['item_name']} · ${h['stall_name']}',
+                              style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                            ),
+                            Text('${resultText(h)} · $when', style: const TextStyle(color: Palette.soft, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      if (h['result'] == 'deal') Stars(count: (h['stars'] as num).toInt(), size: 14, animate: false),
+                      const Icon(Icons.chevron_right_rounded, color: Palette.soft),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// One past haggle's chat, read-only.
+class HistoryChatScreen extends StatelessWidget {
+  const HistoryChatScreen({super.key, required this.api, required this.id});
+  final Api api;
+  final String id;
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: api.historyItem(id),
+      builder: (c, snap) {
+        final h = snap.data;
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(h == null ? 'Past haggle' : '${h['item_name']} · ${h['stall_name']}'),
+            backgroundColor: Palette.cream,
+          ),
+          backgroundColor: Palette.cream,
+          body: h == null
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+                  children: [
+                    for (final m in (h['chat'] as List).cast<Map>())
+                      Bubble(text: '${m['text']}', mine: m['who'] == 'you', sparkle: m['ai'] == true),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                        child: Text(
+                          HistoryScreen.resultText(h),
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}

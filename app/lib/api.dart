@@ -110,6 +110,9 @@ class Api {
       _run((g) => [for (final s in g.stickers()) Map<String, dynamic>.from(s)]);
   Future<Map<String, dynamic>> stallProfile(String id) => _run((g) => Map<String, dynamic>.from(g.stallProfile(id)));
   Future<bool> hard() => _run((g) => g.hard);
+  Future<List<Map<String, dynamic>>> history() =>
+      _run((g) => [for (final h in g.history()) Map<String, dynamic>.from(h)]);
+  Future<Map<String, dynamic>> historyItem(String id) => _run((g) => Map<String, dynamic>.from(g.historyItem(id)));
   Future<void> setHard(bool on) => _run((g) => g.setHard(on));
   Future<String> reportsText() => _run((g) => g.reportsText());
 

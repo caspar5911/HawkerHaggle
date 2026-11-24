@@ -185,6 +185,7 @@ class Haggle {
 
   Outcome move(String kind, [double? price, bool? callBack]) {
     if (s.done) return _out('over');
+    final askStart = s.ask; // a no-sale ending keeps the price from before this move
     if (kind == 'buy') {
       // The app's "OK lah, $X" button after its own "Confirm $X" tap: already confirmed.
       final deal = s.pending ?? s.ask;
@@ -215,6 +216,7 @@ class Haggle {
         s.pending = null;
         _tire(6);
         if (s.patience <= 0) {
+          s.ask = askStart;
           _finish('refused');
           return _out('refuse');
         }
@@ -247,15 +249,13 @@ class Haggle {
     if (s.event == 'rival' && !s.done && s.rivalLeft > 0) {
       s.rivalLeft -= 1;
       if (s.rivalLeft == 0) {
+        s.ask = askStart;
         _finish('lost'); // the rival auntie bought the last one
         return _out('rival_bought');
       }
     }
-    if (!s.done && s.patience <= 0) {
-      _finish('refused');
-      return _out('refuse');
-    }
-    if (!s.done && s.rounds >= maxRounds) {
+    if (!s.done && (s.patience <= 0 || s.rounds >= maxRounds)) {
+      s.ask = askStart; // she's refusing: the price doesn't improve on the way out
       _finish('refused');
       return _out('refuse');
     }
