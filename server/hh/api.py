@@ -3,6 +3,7 @@
 Auth: POST /v1/device once, keep the token, send it as `Authorization: Bearer <token>`."""
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import json
 import math
@@ -20,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from .accounts import AccountError, Accounts
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
 from .engine import Haggle, Item, Personality, State
 from .store import Store
@@ -38,6 +40,21 @@ WEB = Path(os.environ.get("HH_WEB", str(ROOT / "server" / "var" / "web")))   # t
 RELAY_PER_MINUTE = 60
 # Web pages elsewhere that may use the AI relay (the game's GitHub Pages copy). Everything else stays same-origin.
 RELAY_ORIGINS = [o for o in os.environ.get("HH_RELAY_ORIGINS", "https://caspar5911.github.io").split(",") if o]       # tailscale serve / a relay on this machine
+# The public gateway (a friend's domain forwarding here over Tailscale). With HH_GATE=1 every request that `tailscale
+# serve` didn't tag with a person's login (tagged devices, anything not through serve), or that comes from one of
+# HH_GATEWAY_LOGINS, counts as public: it may only use the account endpoints and the AI relay, and the relay needs an
+# approved account. Tailscale users keep playing with no account. uvicorn listens on 127.0.0.1 only, so every real
+# request comes through serve, which replaces any login or address header a client sends.
+GATE = os.environ.get("HH_GATE") == "1"
+GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS", "").split(",") if x.strip()}
+PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
+                "/ai/accounts/logout", "/ai/accounts/password"}
+ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
+PUBLIC_AI_PER_MINUTE = 20      # per account
+PUBLIC_AI_PER_DAY = 600        # per account (a haggle move is about 2 calls)
+PUBLIC_AI_DAY_CAP = 5000       # all public players together
+RELAY_AT_ONCE = 2              # AI calls through the relay at the same time (the GX10 is shared with other work)
+RELAY_WAIT = 60                # seconds a call may wait for its turn
 
 
 class Move(BaseModel):
@@ -51,16 +68,45 @@ class Start(BaseModel):
     item: str | None = None
 
 
-def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
+class Login(BaseModel):
+    username: str = Field(max_length=40)
+    password: str = Field(max_length=200)
+
+
+class NewPassword(BaseModel):
+    old: str = Field(max_length=200)
+    new: str = Field(max_length=200)
+
+
+class Decide(BaseModel):
+    id: int
+    action: str = Field(max_length=10)
+
+
+def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accounts | None = None,
+               gate: bool | None = None, gateway_logins: set[str] | None = None) -> FastAPI:
     store = store or Store(os.environ.get("HH_DB", str(ROOT / "server" / "var" / "hh.db")))
     ai = ai or AI()
+    accounts = accounts or Accounts(os.environ.get("HH_ACCOUNTS_DB", str(ROOT / "server" / "var" / "accounts.db")))
+    gate = GATE if gate is None else gate
+    gateway_logins = GATEWAY_LOGINS if gateway_logins is None else {x.lower() for x in gateway_logins}
+    relay_turns = asyncio.Semaphore(RELAY_AT_ONCE)
     app = FastAPI(title="Hawker Haggle", version="1")
+
+    def from_public(request: Request) -> bool:
+        if not gate:
+            return False
+        login = request.headers.get("tailscale-user-login", "").strip().lower()
+        return not login or login in gateway_logins
 
     @app.middleware("http")
     async def relay_cors(request: Request, call_next):
         """Let the GitHub Pages copy of the game call the AI relay (and nothing else). Chrome also asks permission
-        before a public page talks to a private (Tailscale) address: say yes for the relay."""
+        before a public page talks to a private (Tailscale) address: say yes for the relay. Public requests (the
+        gateway) only ever see the account endpoints and the relay."""
         origin = request.headers.get("origin", "")
+        if from_public(request) and request.url.path not in PUBLIC_PATHS:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
         allowed = origin in RELAY_ORIGINS and request.url.path.startswith("/ai/")
         if request.method == "OPTIONS" and request.url.path.startswith("/ai/"):
             from starlette.responses import Response
@@ -332,13 +378,84 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             raise HTTPException(404, "No such file")
         return FileResponse(DOWNLOADS / name, media_type="application/vnd.android.package-archive", filename=name)
 
+    # ------------------------------------------------------------------ accounts (for players without Tailscale)
+    def bearer(authorization: str) -> str:
+        return authorization.removeprefix("Bearer ").strip()
+
+    def account_call(f):
+        try:
+            return f()
+        except AccountError as e:
+            raise HTTPException(e.code, e.message)
+
+    @app.post("/ai/accounts/signup")
+    def signup(body: Login, request: Request):
+        limit("acct:" + client_ip(request), ACCOUNT_PER_MINUTE)
+        return account_call(lambda: accounts.signup(body.username, body.password))
+
+    @app.post("/ai/accounts/login")
+    def account_login(body: Login, request: Request):
+        limit("acct:" + client_ip(request), ACCOUNT_PER_MINUTE)
+        return account_call(lambda: accounts.login(body.username, body.password, admin_allowed=not from_public(request)))
+
+    @app.post("/ai/accounts/me")
+    def account_me(request: Request, authorization: str = Header(default="")):
+        out = account_call(lambda: accounts.me(bearer(authorization)))
+        if out["admin"] and from_public(request):
+            raise HTTPException(401, "Please log in again.")
+        return out
+
+    @app.post("/ai/accounts/logout")
+    def account_logout(authorization: str = Header(default="")):
+        accounts.logout(bearer(authorization))
+        return {"ok": True}
+
+    @app.post("/ai/accounts/password")
+    def account_password(body: NewPassword, request: Request, authorization: str = Header(default="")):
+        limit("acct:" + client_ip(request), ACCOUNT_PER_MINUTE)
+        row = accounts.who(bearer(authorization))
+        if row is not None and row["role"] == "admin" and from_public(request):
+            raise HTTPException(401, "Please log in again.")
+        account_call(lambda: accounts.change_password(bearer(authorization), body.old, body.new))
+        return {"ok": True}
+
+    def admin_only(request: Request, authorization: str) -> None:
+        row = accounts.who(bearer(authorization))
+        if from_public(request) or row is None or row["role"] != "admin":
+            raise HTTPException(403, "Admin only")
+
+    @app.post("/ai/admin/players")
+    def admin_players(request: Request, authorization: str = Header(default="")):
+        admin_only(request, authorization)
+        return {"players": accounts.list(), "ai_today": accounts.calls_today(),
+                "default_password": bool(accounts.me(bearer(authorization))["default_password"])}
+
+    @app.post("/ai/admin/decide")
+    def admin_decide(body: Decide, request: Request, authorization: str = Header(default="")):
+        admin_only(request, authorization)
+        return account_call(lambda: accounts.decide(body.id, body.action))
+
     @app.post("/ai/v1/chat/completions")
-    async def relay(request: Request):
+    async def relay(request: Request, authorization: str = Header(default="")):
         """The web version of the game talks to the AI through here, so the page and the AI share one address (a
         browser won't let a page call another site that doesn't allow it). Only chat completions, size-limited,
-        rate-limited per player address, to the AI set in the server's .env. Reachable only on the owner's
-        Tailscale."""
-        limit("relay:" + client_ip(request), RELAY_PER_MINUTE)
+        rate-limited per player address, to the AI set in the server's .env. Tailscale users need nothing more;
+        public players (the gateway) need an approved account and have daily allowances."""
+        limit("relay:" + client_ip(request), RELAY_PER_MINUTE * (10 if from_public(request) else 1))
+        if from_public(request):
+            row = accounts.who(bearer(authorization))
+            if row is None:
+                raise HTTPException(401, "Log in (Settings > Account) so the stallholders can chat with AI.")
+            if row["role"] == "admin":
+                raise HTTPException(401, "Please log in again.")
+            if row["status"] == "pending":
+                raise HTTPException(403, "Your account is waiting for the admin to approve it.")
+            if row["status"] != "approved":
+                raise HTTPException(403, "Your account can't use the AI.")
+            limit(f"relay-acct:{row['id']}", PUBLIC_AI_PER_MINUTE)
+            if accounts.calls_today() >= PUBLIC_AI_DAY_CAP:
+                raise HTTPException(429, "The market's AI is resting for today. Come back tomorrow!")
+            account_call(lambda: accounts.use_ai(row, PUBLIC_AI_PER_DAY))
         if not ai.enabled:
             raise HTTPException(503, "No AI set on this server")
         body = await request.body()
@@ -360,10 +477,16 @@ def create_app(store: Store | None = None, ai: AI | None = None) -> FastAPI:
             return ai.http.post(f"{ai.base_url.rstrip('/')}/chat/completions", json=data, headers=headers, timeout=90)
 
         try:
+            await asyncio.wait_for(relay_turns.acquire(), RELAY_WAIT)
+        except asyncio.TimeoutError:
+            raise HTTPException(503, "The market's AI is busy. Try again in a moment.")
+        try:
             from starlette.concurrency import run_in_threadpool
             r = await run_in_threadpool(call)
         except Exception:                           # noqa: BLE001 - any network trouble is a 502 for the page
             raise HTTPException(502, "The AI didn't answer")
+        finally:
+            relay_turns.release()
         try:
             return JSONResponse(r.json(), status_code=r.status_code)
         except ValueError:

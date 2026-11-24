@@ -418,10 +418,20 @@ void main() {
     await tester.tap(find.byType(Switch).first);
     await settle(tester, 500);
 
-    await tester.dragUntilVisible(find.text('Save'), find.byType(ListView).last, const Offset(0, -200));
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('ai_endpoint')),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    await tester.ensureVisible(find.byKey(const ValueKey('ai_endpoint')));
+    await settle(tester, 300);
     await tester.enterText(find.byKey(const ValueKey('ai_endpoint')), 'https://example.test/v1/');
     await tester.enterText(find.byKey(const ValueKey('ai_model')), 'test-model');
     await tester.enterText(find.byKey(const ValueKey('ai_key')), 'secret');
+    FocusManager.instance.primaryFocus?.unfocus(); // the keyboard goes; the list stops moving
+    await settle(tester, 500);
+    await tester.ensureVisible(find.text('Save'));
+    await settle(tester, 300);
     await tester.tap(find.text('Save'));
     await settle(tester, 1500);
     expect(api.ai.endpoint, 'https://example.test/v1/');

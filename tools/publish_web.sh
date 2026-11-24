@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Build the web version and publish it to GitHub Pages (the gh-pages branch).
-#   tools/publish_web.sh "test 14" https://<relay host>/ai/v1 gx10-current
-# The AI address goes in through --dart-define only, never into the repo's source.
+#   tools/publish_web.sh "test 14" https://<relay host>/ai/v1 gx10-current [https://<account server>]
+# The AI address goes in through --dart-define only, never into the repo's source. The account server (Settings >
+# Account) defaults to the relay's own host.
 set -euo pipefail
-label="$1"; endpoint="$2"; model="$3"
+label="$1"; endpoint="$2"; model="$3"; account="${4:-${endpoint%/ai/v1}}"
 cd "$(dirname "$0")/../app"
 . ~/dev-tools/env.sh
 flutter build web --release --no-web-resources-cdn --pwa-strategy=none --base-href /HawkerHaggle/ \
-  --dart-define=BUILD_LABEL="$label web" --dart-define=AI_ENDPOINT="$endpoint" --dart-define=AI_MODEL="$model"
+  --dart-define=BUILD_LABEL="$label web" --dart-define=AI_ENDPOINT="$endpoint" --dart-define=AI_MODEL="$model" \
+  --dart-define=ACCOUNT_SERVER="$account"
 out=$(mktemp -d)
 cp -r build/web/. "$out" && touch "$out/.nojekyll"
 cd "$out" && git init -q -b gh-pages && git add -A

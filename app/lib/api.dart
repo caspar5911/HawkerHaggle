@@ -5,6 +5,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'accounts.dart';
 import 'core/ai_client.dart';
 import 'core/game.dart';
 
@@ -12,6 +13,10 @@ import 'core/game.dart';
 ///   flutter build apk --dart-define=AI_ENDPOINT=https://host/v1 --dart-define=AI_MODEL=name
 const defaultEndpoint = String.fromEnvironment('AI_ENDPOINT');
 const defaultModel = String.fromEnvironment('AI_MODEL');
+
+/// The market server whose accounts the Account screen offers first (a private build: the owner's relay; later a
+/// public address). Players can type any other address.
+const defaultAccountServer = String.fromEnvironment('ACCOUNT_SERVER');
 
 /// Which build this is, shown at the bottom of Settings: flutter build ... --dart-define=BUILD_LABEL="test 11".
 const buildLabel = String.fromEnvironment('BUILD_LABEL', defaultValue: 'dev');
@@ -48,6 +53,7 @@ class Api {
     Game? game,
     this.builtInEndpoint = defaultEndpoint,
     this.builtInModel = defaultModel,
+    this.accountServer = defaultAccountServer,
   }) : _store = store ?? SecureKeyValue(),
        _aiHttp = aiHttp,
        _content = content,
@@ -57,6 +63,7 @@ class Api {
   final String builtInEndpoint;
   final String builtInModel;
   bool get hasBuiltInAi => builtInEndpoint.isNotEmpty;
+  final String accountServer;
 
   final KeyValue _store;
   final http.Client? _aiHttp;
@@ -66,6 +73,8 @@ class Api {
   AiConfig _ai = const AiConfig();
 
   AiConfig get ai => _ai;
+  Account? _account;
+  Account? get account => _account;
 
   Future<void> ensureDevice() => _ready ??= _init();
 
@@ -77,6 +86,7 @@ class Api {
       model: _orDefault(await _store.read('ai_model'), builtInModel),
       apiKey: await _store.read('ai_key') ?? '',
     );
+    _account = Account.fromJson(await _store.read('account'));
     _game ??= Game(content: _content!, store: _store);
     _game!.ai = AiClient(_ai, client: _aiHttp);
     await _game!.load();
@@ -131,6 +141,91 @@ class Api {
 
   /// Settings > "Use default AI": back to the AI this build came with.
   Future<void> useBuiltInAi() => setAi(endpoint: builtInEndpoint, model: builtInModel, apiKey: '');
+
+  // ---------------------------------------------------------------- accounts (playing without Tailscale)
+  AccountClient _accounts(String server) => AccountClient(server, client: _aiHttp);
+
+  /// Sign up or log in. A player's login becomes their AI key for that server's relay; the admin's doesn't touch
+  /// the AI settings (they play over Tailscale).
+  Future<Account> signIn({
+    required String server,
+    required String username,
+    required String password,
+    bool signUp = false,
+  }) async {
+    await ensureDevice();
+    final c = _accounts(server);
+    final info = signUp ? await c.signUp(username, password) : await c.logIn(username, password);
+    final acc = Account(server: c.server, username: '', token: '', status: '').withInfo(info);
+    await _saveAccount(acc);
+    if (!acc.admin) {
+      await setAi(
+        endpoint: relayFor(acc.server),
+        model: _ai.model.isEmpty ? (builtInModel.isEmpty ? 'gx10-current' : builtInModel) : _ai.model,
+        apiKey: acc.token,
+      );
+    }
+    return acc;
+  }
+
+  Future<void> _saveAccount(Account? a) async {
+    _account = a;
+    if (a == null) {
+      await _store.delete('account');
+    } else {
+      await _store.write('account', jsonEncode(a.toJson()));
+    }
+  }
+
+  /// Ask the server for the latest status (waiting / approved / ...). Logged out there: logged out here too.
+  Future<Account?> refreshAccount() async {
+    await ensureDevice();
+    final a = _account;
+    if (a == null) return null;
+    try {
+      await _saveAccount(a.withInfo(await _accounts(a.server).me(a.token)));
+    } on AccountError catch (e) {
+      if (e.code == 401) await _forget(a);
+      rethrow;
+    }
+    return _account;
+  }
+
+  Future<void> _forget(Account a) async {
+    await _saveAccount(null);
+    if (_ai.apiKey == a.token) await setAi(endpoint: builtInEndpoint, model: builtInModel, apiKey: '');
+  }
+
+  Future<void> signOut() async {
+    await ensureDevice();
+    final a = _account;
+    if (a == null) return;
+    try {
+      await _accounts(a.server).logOut(a.token);
+    } on AccountError {
+      // logged out here anyway
+    }
+    await _forget(a);
+  }
+
+  Future<void> changePassword(String old, String neu) async {
+    final a = _account;
+    if (a == null) throw AccountError('Log in first.');
+    await _accounts(a.server).changePassword(a.token, old, neu);
+    await _saveAccount(a.withInfo({'default_password': false, 'admin': a.admin}));
+  }
+
+  Future<Map<String, dynamic>> players() async {
+    final a = _account;
+    if (a == null || !a.admin) throw AccountError('Admin only.');
+    return _accounts(a.server).players(a.token);
+  }
+
+  Future<Map<String, dynamic>> decide(int id, String action) async {
+    final a = _account;
+    if (a == null || !a.admin) throw AccountError('Admin only.');
+    return _accounts(a.server).decide(a.token, id, action);
+  }
 
   Future<String> testAi({required String endpoint, required String model, required String apiKey}) async {
     final c = AiClient(

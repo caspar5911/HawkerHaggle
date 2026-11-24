@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'account_screens.dart';
 import 'api.dart';
 import 'character.dart';
 import 'extras.dart';
@@ -1539,6 +1540,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: const TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
             ),
           ],
+          const SizedBox(height: 28),
+          AccountSection(
+            api: api,
+            onAiChanged: () => setState(() {
+              _endpoint.text = api.ai.endpoint;
+              _model.text = api.ai.model;
+              _key.text = api.ai.apiKey;
+              _testResult = null;
+            }),
+          ),
           const SizedBox(height: 28),
           const Text('Your reports', style: _title),
           const SizedBox(height: 6),
