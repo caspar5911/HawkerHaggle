@@ -258,4 +258,44 @@ void main() {
     final missing = {for (final (id, _, _, _) in stickerDefs) id}.difference(earned);
     expect(missing, isEmpty, reason: 'never earned: $missing');
   });
+
+  test(
+    "Mum's list keeps your best price per piece, and a better deal can turn over budget into under budget",
+    () async {
+      final (g, _, _) = await newGame();
+      final items = (g.today()['items'] as List).cast<Map>();
+      // first: both bought at the asking price (over budget)
+      for (final i in items) {
+        await finishHaggle(g, i['stall'] as String, i['item'] as String);
+      }
+      expect(g.today()['complete'], isTrue);
+      expect(g.today()['under'], isFalse);
+      final paidFirst = ((g.today()['items'] as List).first as Map)['paid'] as num;
+      // then a much better deal on the first item: the list takes the lower price
+      final first = items.first;
+      final r = await g.start(first['stall'] as String, first['item'] as String, 'none');
+      final id = r['id'] as String;
+      var x = await g.move(id, text: 'I only have \$${((first['fair'] as num) * 0.8).floor()}'); // her real best price
+      x = await g.move(id, text: '\$${x['ask']} ok I take');
+      if (x['pending'] != null) x = await g.move(id, move: 'confirm');
+      final paidNow = ((g.today()['items'] as List).first as Map)['paid'] as num;
+      expect(paidNow, lessThan(paidFirst));
+      expect(paidNow, x['deal']);
+      expect('${x['mum']}'.toLowerCase(), contains('better'));
+      // a worse deal later doesn't replace it
+      await finishHaggle(g, first['stall'] as String, first['item'] as String);
+      expect(((g.today()['items'] as List).first as Map)['paid'], paidNow);
+    },
+  );
+
+  test("buying two counts the price per piece on Mum's list", () async {
+    final (g, _, _) = await newGame();
+    final i = (g.today()['items'] as List).cast<Map>().first;
+    final r = await g.start(i['stall'] as String, i['item'] as String, 'none');
+    final id = r['id'] as String;
+    var x = await g.move(id, text: 'I take two, cheaper?');
+    x = await g.move(id, move: 'buy');
+    expect(x['qty'], 2);
+    expect(((g.today()['items'] as List).first as Map)['paid'], x['deal']); // per piece, not doubled
+  });
 }

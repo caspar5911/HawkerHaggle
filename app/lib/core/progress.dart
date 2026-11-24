@@ -200,11 +200,25 @@ class Progress {
     final onList = (t['items'] as List).any((i) => '${(i as Map)['stall']}/${i['item']}' == key);
     final d = _map('daily');
     final bought = (d['bought'] as Map);
-    if (!onList || bought.containsKey(key)) return null;
-    bought[key] = deal * qty;
+    if (!onList) return null;
+    // Mum wants one of each: count the price per piece, and keep your best (lowest) price today.
+    final before = bought[key] as num?;
+    if (before != null && deal >= before) return null;
+    final wasComplete = today()['complete'] == true;
+    bought[key] = deal;
     final after = today();
     if (after['complete'] != true) {
-      return "Mum: Good, one done! Now the other one ah. Budget ${_money(after['budget'] as num)} total.";
+      return before != null
+          ? 'Mum: Better price this time, ${_money(deal)}! I take this one.'
+          : "Mum: Good, one done! Now the other one ah. Budget ${_money(after['budget'] as num)} total.";
+    }
+    if (wasComplete) {
+      // a better deal after the list was already done: update the verdict (and the sticker if now under budget)
+      final spent = after['spent'] as double, budget = after['budget'] as double;
+      if (spent <= budget) _earn('list_under', newStickers);
+      return spent <= budget
+          ? 'Mum: Wah, better deal! Now ${_money(spent)} total, under budget 🥰'
+          : 'Mum: Better price, ${_money(spent)} total now. Still ${_money(spent - budget)} over budget ah.';
     }
     final spent = after['spent'] as double, budget = after['budget'] as double;
     final s = _map('streak');
