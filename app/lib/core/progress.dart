@@ -134,9 +134,9 @@ class Progress {
         .where((i) => i['id'] == f['last_item'])
         .map((i) => '${i['name']}')
         .firstOrNull;
-    final name = playerName.replaceAll(RegExp(r'\s*\d+$'), '');
+    final name = playerName.replaceAll(RegExp(r'\d+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim(); // number-free
     return [
-      'You know this customer${lvl >= 2 ? ', $name' : ''}: they have come to your stall ${visits > 5 ? 'many times' : 'a few times'}.',
+      'You know this customer${lvl >= 2 && name.isNotEmpty ? ', $name' : ''}: they have come to your stall ${visits > 5 ? 'many times' : 'a few times'}.',
       if (lastItem != null) 'Last time they bought your $lastItem; you may ask how it was.',
       if (lvl >= 3) 'They are one of your favourite customers: be extra warm.',
       if (((f['rude'] ?? 0) as num) > 0 && lvl < 2) 'They were rude to you once; you remember.',

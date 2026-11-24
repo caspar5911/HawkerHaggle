@@ -115,6 +115,8 @@ class Api {
       _run((g) => [for (final h in g.history()) Map<String, dynamic>.from(h)]);
   Future<Map<String, dynamic>> historyItem(String id) => _run((g) => Map<String, dynamic>.from(g.historyItem(id)));
   Future<void> setHard(bool on) => _run((g) => g.setHard(on));
+  Future<String> setName(String name) => _run((g) => g.setName(name));
+  Future<String> randomName() => _run((g) => g.randomName());
   Future<String> reportsText() => _run((g) => g.reportsText());
 
   /// Settings > AI: point the game at any OpenAI-compatible endpoint (or none, for simple mode).

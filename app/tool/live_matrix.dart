@@ -169,6 +169,7 @@ Future<void> main(List<String> args) async {
   // a friend is greeted like a friend (a fresh player: the checks above were rude to some stallholders)
   final friendGame = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), surprises: false);
   await friendGame.load();
+  await friendGame.setName('Jing Qi'); // a name the player picked
   for (var i = 0; i < 2; i++) {
     final g = await friendGame.start('lim', 'pomfret', 'none');
     await friendGame.move(g['id'] as String, move: 'buy');
@@ -176,6 +177,7 @@ Future<void> main(List<String> args) async {
   final fg = await friendGame.start('lim', 'pomfret', 'none');
   stdout.writeln('FRIEND hearts ${fg['hearts']} ${fg['ai_line'] == true ? '✨' : '  '} ${fg['line']}');
   if (fg['ai_line'] != true) fails.add('a friend did not get an AI greeting');
+  stdout.writeln('FRIEND greeting uses the chosen name: ${'${fg['line']}'.contains('Jing Qi')}');
   // the new stalls, in their own voices, with true facts
   for (final (st, it, q, words) in [
     ('lee', 'oolong', 'where is this tea from?', ['anxi', 'fujian', 'tie guan yin']),

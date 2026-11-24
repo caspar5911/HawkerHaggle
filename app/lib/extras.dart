@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'api.dart';
+import 'core/game.dart' show nameMax;
 import 'character.dart';
 import 'widgets.dart';
 
@@ -696,6 +697,115 @@ class _ChallengesScreenState extends State<ChallengesScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------- your name
+/// "What should the aunties call you?" On first launch it comes with a random name ready to keep.
+/// Returns the saved name, or null if closed without saving.
+Future<String?> askName(BuildContext context, Api api, {required String current, bool first = false}) =>
+    showDialog<String>(
+      context: context,
+      barrierDismissible: !first,
+      builder: (_) => _NameDialog(api: api, current: current, first: first),
+    );
+
+class _NameDialog extends StatefulWidget {
+  const _NameDialog({required this.api, required this.current, required this.first});
+  final Api api;
+  final String current;
+  final bool first;
+  @override
+  State<_NameDialog> createState() => _NameDialogState();
+}
+
+class _NameDialogState extends State<_NameDialog> {
+  late final _c = TextEditingController(text: widget.current);
+  String? _error;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final name = await widget.api.setName(_c.text);
+      if (mounted) Navigator.of(context).pop(name);
+    } on ApiError catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.message;
+          _saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Palette.cream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      title: Text(
+        widget.first ? '👋 Welcome to the market!' : '👋 Your name',
+        style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'What should the aunties and uncles call you? Your friends at the stalls will remember it.',
+            style: TextStyle(height: 1.4, color: Palette.soft),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('name_field'),
+            controller: _c,
+            autofocus: !widget.first,
+            maxLength: nameMax,
+            textCapitalization: TextCapitalization.words,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _save(),
+            onChanged: (_) => _error == null ? null : setState(() => _error = null),
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: Colors.white,
+              errorText: _error,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+              suffixIcon: IconButton(
+                key: const ValueKey('name_dice'),
+                tooltip: 'Random name',
+                icon: const Text('🎲', style: TextStyle(fontSize: 20)),
+                onPressed: () async {
+                  final n = await widget.api.randomName();
+                  if (mounted) {
+                    setState(() {
+                      _c.text = n;
+                      _error = null;
+                    });
+                  }
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        if (!widget.first) TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        FilledButton(
+          key: const ValueKey('name_save'),
+          style: FilledButton.styleFrom(backgroundColor: Palette.teal),
+          onPressed: _saving ? null : _save,
+          child: Text(widget.first ? "Let's go!" : 'Save'),
+        ),
+      ],
     );
   }
 }

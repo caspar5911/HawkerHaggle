@@ -62,13 +62,24 @@ class Fake extends Game {
   final sent = <Map<String, dynamic>>[];
   int flags = 0;
   bool down = false;
+  String name = 'Shiok Otter 123';
+  bool named = true; // false: a first launch, which asks for a name
 
   @override
   Future<void> load() async {}
   @override
   Map<String, Object?> me() {
     if (down) throw GameError(0, "Can't reach the market. Check your internet.");
-    return {'name': 'Shiok Otter 123', 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0};
+    return {'name': name, 'named': named, 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0};
+  }
+
+  @override
+  Future<String> setName(String raw) async {
+    final n = cleanName(raw);
+    if (n == null) throw GameError(400, 'Pick a name with some letters in it.');
+    name = n;
+    named = true;
+    return n;
   }
 
   @override
@@ -216,6 +227,45 @@ void main() {
     expect(fake.sent.map((m) => m['move']), ['buy']);
     expect(find.text('Deal! 🎉'), findsOneWidget);
     expect(find.textContaining('Full price'), findsOneWidget);
+    await settle(tester, 4000);
+  });
+
+  testWidgets('first launch asks for a name (random one ready); the 👋 chip and Settings change it', (tester) async {
+    final fake = Fake([])..named = false;
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.text('👋 Welcome to the market!'), findsOneWidget);
+    expect(find.text('Cancel'), findsNothing); // must pick (or keep) one
+    await tester.tap(find.byKey(const ValueKey('name_dice')));
+    await settle(tester, 300);
+    final rolled = tester.widget<TextField>(find.byKey(const ValueKey('name_field'))).controller!.text;
+    expect(rolled, isNot('Shiok Otter 123'));
+    await tester.enterText(find.byKey(const ValueKey('name_field')), '  123 ');
+    await tester.tap(find.byKey(const ValueKey('name_save')));
+    await settle(tester, 500);
+    expect(find.text('Pick a name with some letters in it.'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('name_field')), 'Caspar <b>');
+    await tester.tap(find.byKey(const ValueKey('name_save')));
+    await settle(tester, 800);
+    expect(find.text('👋 Welcome to the market!'), findsNothing);
+    expect(fake.name, 'Caspar b');
+    expect(find.text('👋 Caspar b ✏️'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('name_chip')));
+    await settle(tester, 500);
+    await tester.enterText(find.byKey(const ValueKey('name_field')), 'Ah Boy');
+    await tester.tap(find.byKey(const ValueKey('name_save')));
+    await settle(tester, 800);
+    expect(find.text('👋 Ah Boy ✏️'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await settle(tester);
+    expect(find.text('Ah Boy'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('settings_name')));
+    await settle(tester, 500);
+    await tester.tap(find.text('Cancel'));
+    await settle(tester, 500);
+    expect(fake.name, 'Ah Boy');
     await settle(tester, 4000);
   });
 
@@ -424,6 +474,8 @@ void main() {
     await api.setAi(endpoint: 'https://other.example/v1', model: 'other', apiKey: '');
     expect(api.ai.endpoint, 'https://other.example/v1'); // another saved address wins...
     await tester.dragUntilVisible(find.text('Use default AI'), find.byType(ListView).last, const Offset(0, -200));
+    await tester.ensureVisible(find.text('Use default AI'));
+    await settle(tester, 300);
     await tester.tap(find.text('Use default AI'));
     await settle(tester, 1000);
     expect(api.ai.endpoint, 'https://my-model.example/v1'); // ...until you tap the button

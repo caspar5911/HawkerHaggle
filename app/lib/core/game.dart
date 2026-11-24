@@ -38,6 +38,16 @@ class MemoryKeyValue implements KeyValue {
   Future<void> delete(String key) async => data.remove(key);
 }
 
+const nameMax = 20;
+
+/// Letters (any language), numbers, spaces and . ' - only; spaces squeezed; at most [nameMax] characters.
+/// Null if nothing is left or there's no letter in it.
+String? cleanName(String raw) {
+  var s = raw.replaceAll(RegExp(r"[^\p{L}\p{M}\p{N} .'\-]", unicode: true), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  s = String.fromCharCodes(s.runes.take(nameMax)).trim();
+  return RegExp(r'\p{L}', unicode: true).hasMatch(s) ? s : null;
+}
+
 const _adj = [
   'Shiok',
   'Steady',
@@ -150,14 +160,24 @@ class Game {
     final raw = await store.read('profile');
     _profile = raw == null ? {} : Map<String, Object?>.from(jsonDecode(raw) as Map);
     if (_profile['name'] == null) {
-      _profile = {
-        'name': '${_adj[_rnd.nextInt(_adj.length)]} ${_noun[_rnd.nextInt(_noun.length)]} ${_rnd.nextInt(900) + 100}',
-        'haggles': <Object>[],
-        'reports': <Object>[],
-      };
+      _profile = {'name': randomName(), 'haggles': <Object>[], 'reports': <Object>[]};
     }
     progress.migrate(); // older profiles get the new parts, with credit for past haggles
     await _save();
+  }
+
+  /// A fun made-up name, offered on first launch (and by the 🎲 button).
+  String randomName() =>
+      '${_adj[_rnd.nextInt(_adj.length)]} ${_noun[_rnd.nextInt(_noun.length)]} ${_rnd.nextInt(900) + 100}';
+
+  /// The player picks their own name (it goes into the AI's notes, so only letters, numbers, spaces and . ' -).
+  Future<String> setName(String raw) async {
+    final name = cleanName(raw);
+    if (name == null) throw GameError(400, 'Pick a name with some letters in it.');
+    _profile['name'] = name;
+    _profile['named'] = true;
+    await _save();
+    return name;
   }
 
   bool get hard => _profile['hard'] == true;
@@ -185,6 +205,7 @@ class Game {
     final done = _done;
     return {
       'name': _profile['name'],
+      'named': _profile['named'] == true,
       'haggles': done.length,
       'deals': done.where((h) => h['result'] == 'deal').length,
       'stars': done.fold<int>(0, (a, h) => a + ((h['stars'] ?? 0) as num).toInt()),

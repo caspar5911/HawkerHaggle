@@ -158,6 +158,8 @@ void main() {
       clock.nextDay();
     }
     expect(g.progress.hearts('siti'), 3);
+    expect(g.progress.memoryNote('siti', 'Ah Boy 88'), contains('Ah Boy:'));
+    expect(g.progress.memoryNote('siti', '88'), startsWith('You know this customer:'));
     final r = await g.start('siti', 'kueh', 'none');
     expect(r['hearts'], 3);
     expect(r['ask'], r['opening']);

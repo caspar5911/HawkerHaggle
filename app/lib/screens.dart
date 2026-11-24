@@ -41,9 +41,20 @@ class _MarketScreenState extends State<MarketScreen> {
         _challenges = r[3];
         _error = null;
       });
+      if (_me?['named'] != true && !_asking) await _editName(first: true);
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
     }
+  }
+
+  bool _asking = false;
+
+  /// First launch (or a tap on 👋): pick the name the stallholders call you.
+  Future<void> _editName({bool first = false}) async {
+    _asking = true;
+    final name = await askName(context, widget.api, current: '${_me?['name'] ?? ''}', first: first);
+    _asking = false;
+    if (name != null && mounted) setState(() => _me = {...?_me, 'name': name, 'named': true});
   }
 
   Future<void> _openChallenges() async {
@@ -149,7 +160,7 @@ class _MarketScreenState extends State<MarketScreen> {
                     ),
                   ],
                 ),
-                if (_me != null) _Hello(me: _me!),
+                if (_me != null) _Hello(me: _me!, onName: _editName),
                 const SizedBox(height: 12),
                 if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
                 if (_today != null) TodayCard(today: _today!, onItem: _openById),
@@ -179,8 +190,9 @@ class _MarketScreenState extends State<MarketScreen> {
 }
 
 class _Hello extends StatelessWidget {
-  const _Hello({required this.me});
+  const _Hello({required this.me, required this.onName});
   final Map<String, dynamic> me;
+  final VoidCallback onName;
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -189,7 +201,7 @@ class _Hello extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
-          _Chip('👋 ${me['name']}'),
+          GestureDetector(key: const ValueKey('name_chip'), onTap: onName, child: _Chip('👋 ${me['name']} ✏️')),
           _Chip('⭐ ${me['best_stars'] ?? me['stars']}'),
           _Chip('🤝 ${me['deals']} deals'),
           if (((me['streak'] ?? 0) as num) > 0) _Chip('🔥 ${me['streak']} days'),
@@ -1338,6 +1350,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _testResult;
   int _reports = 0;
   bool _hard = false;
+  String _name = '';
 
   @override
   void initState() {
@@ -1346,9 +1359,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await widget.api.ensureDevice();
       final n = await widget.api.reportCount();
       final hard = await widget.api.hard();
+      final me = await widget.api.me();
       if (!mounted) return;
       setState(() {
         _hard = hard;
+        _name = '${me['name']}';
         _endpoint.text = widget.api.ai.endpoint;
         _model.text = widget.api.ai.model;
         _key.text = widget.api.ai.apiKey;
@@ -1394,7 +1409,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'is sent to that AI to read and to write the replies in "✨" bubbles.',
             style: TextStyle(height: 1.4),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
+          ListTile(
+            key: const ValueKey('settings_name'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Your name', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(_name),
+            trailing: const Icon(Icons.edit_rounded, color: Palette.soft),
+            onTap: () async {
+              final n = await askName(context, api, current: _name);
+              if (n != null && mounted) setState(() => _name = n);
+            },
+          ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Sound effects', style: TextStyle(fontWeight: FontWeight.w600)),
