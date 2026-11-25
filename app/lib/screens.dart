@@ -679,6 +679,83 @@ class _Tell extends StatelessWidget {
   );
 }
 
+/// Whispers between two friends in a co-op haggle (the same set the server allows). The stallholder never hears them.
+const whispers = {
+  'firm': '🧱 Go firm now!',
+  'sweet': '😊 Sweet-talk first',
+  'wait': '✋ Wait, let me try',
+  'deal': '🤝 Take the deal!',
+  'walk': '🚶 Walk away!',
+  'yours': '👉 Your turn',
+};
+
+/// Co-op: your friend's last whisper, and a button to whisper back. One of you reads the stallholder and calls it,
+/// the other plays it.
+class WhisperBar extends StatelessWidget {
+  const WhisperBar({super.key, required this.heard, required this.friend, required this.onSay});
+  final String heard; // "Melody: 🧱 Go firm now!", or '' (nothing new)
+  final String friend;
+  final void Function(String id) onSay;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
+    child: Row(
+      children: [
+        Expanded(
+          child: heard.isEmpty
+              ? Text(
+                  '🤫 Whisper to $friend: the stallholder won\'t hear',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, color: Palette.soft),
+                )
+              : Container(
+                  key: const ValueKey('whisper_heard'),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(color: const Color(0xFFEDE3FA), borderRadius: BorderRadius.circular(14)),
+                  child: Text(
+                    '🤫 $heard',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF4B2E83)),
+                  ),
+                ),
+        ),
+        const SizedBox(width: 8),
+        Bouncy(
+          key: const ValueKey('whisper_open'),
+          onTap: () => showModalBottomSheet<void>(
+            context: context,
+            backgroundColor: Palette.cream,
+            builder: (c) => SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final e in whispers.entries)
+                      Bouncy(
+                        key: ValueKey('whisper:${e.key}'),
+                        onTap: () {
+                          Navigator.pop(c);
+                          onSay(e.key);
+                        },
+                        child: Pill(text: e.value),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          child: const Pill(text: 'Whisper', icon: '🤫'),
+        ),
+      ],
+    ),
+  );
+}
+
 class _Msg {
   _Msg(this.text, this.mine, {this.sparkle = false, this.typed = false});
   final String text;
@@ -724,6 +801,11 @@ class _HaggleScreenState extends State<HaggleScreen> {
   Timer? _poll;
   bool _pulling = false;
   final _friendMoves = <Map>[];
+  int _turn = 0; // goes up with every answer; a friend's move made on an older turn isn't played
+  int _bounced = 0; // friend moves not played because you both moved at once (the friend's phone notices)
+  String _aside = ''; // "one at a time lah!" after a clash, until the next answer
+  String _whisper = ''; // the friend's last whisper (shown for a while)
+  Timer? _whisperTimer;
   bool _dilemmaDone = false;
   Object? _twistAnswered; // the twist already answered (by its haggle state)
   final _savedLines = <String>{};
@@ -737,6 +819,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
   @override
   void dispose() {
     _poll?.cancel();
+    _whisperTimer?.cancel();
     final room = _room;
     if (room != null) widget.api.coopLeave(room);
     _scroll.dispose();
@@ -810,6 +893,8 @@ class _HaggleScreenState extends State<HaggleScreen> {
           setState(() => _friend = '');
         } else if (m['type'] == 'move' && m['from'] == 'guest') {
           _friendMoves.add(m);
+        } else if (m['type'] == 'whisper' && m['from'] == 'guest' && whispers.containsKey(m['say'])) {
+          _heard('$_friend: ${whispers[m['say']]}');
         }
       }
       await _playFriendMoves();
@@ -827,6 +912,18 @@ class _HaggleScreenState extends State<HaggleScreen> {
     while (_friendMoves.isNotEmpty && mounted && !_busy && _g?['done'] != true) {
       final m = _friendMoves.removeAt(0);
       final g = _g!;
+      // You both moved at once: theirs was made on a turn that's gone (the suggestions, the price, a deal may all
+      // have changed), so it isn't played. Their phone gets the new state and they choose again. (A move with no
+      // turn is from an older app: played as before.)
+      final at = m['at'];
+      if (at is num && at.toInt() != _turn) {
+        setState(() {
+          _bounced++;
+          _aside = '🙉 ${widget.stall['name']}: "Eh, one at a time lah!" ($_friend spoke at the same time.)';
+        });
+        _sendState();
+        continue;
+      }
       final pick = (m['pick'] as num?)?.toInt();
       final sug = (g['suggestions'] as List? ?? const []).cast<Map>();
       final said = m['text'] != null
@@ -863,6 +960,9 @@ class _HaggleScreenState extends State<HaggleScreen> {
         'stars', 'saved', 'surprise', 'surprise_note', 'accept_text', 'walk_text', 'tells',
       ])
         k: g[k],
+      'turn': _turn,
+      'bounced': _bounced,
+      'moves': _msgs.where((m) => m.mine).length,
       'suggestions': [
         for (final s in (g['suggestions'] as List? ?? const []).cast<Map>())
           {'text': s['text'], 'move': s['move'], 'price': s['price']},
@@ -929,6 +1029,8 @@ class _HaggleScreenState extends State<HaggleScreen> {
     setState(() {
       _g = g;
       _busy = false;
+      _turn++;
+      _aside = '';
       _msgs.add(_Msg(g['line'] as String, false, sparkle: g['ai_line'] == true));
       _face = faceFor(g['event'] as String, (g['mood'] as num).toDouble());
       _react++;
@@ -958,9 +1060,14 @@ class _HaggleScreenState extends State<HaggleScreen> {
     }
   }
 
-  Future<void> _send({int? pick, String? move, String? text, required String mine, String? friend}) async {
+  /// Plays a move. False if it wasn't played (a move is already being answered, e.g. your friend's).
+  Future<bool> _send({int? pick, String? move, String? text, required String mine, String? friend}) async {
     final g = _g;
-    if (g == null || _busy || g['done'] == true) return;
+    if (g == null || g['done'] == true) return false;
+    if (_busy) {
+      if (friend == null && _friend.isNotEmpty) _toast('👥 $_friend is talking: wait for the answer, then try again.');
+      return false;
+    }
     setState(() {
       _busy = true;
       _msgs.add(_Msg(mine, true, typed: text != null));
@@ -971,7 +1078,25 @@ class _HaggleScreenState extends State<HaggleScreen> {
     } on ApiError catch (e) {
       _toast(e.message);
       if (mounted) setState(() => _busy = false);
+      _sendState(); // the friend's phone stops waiting
     }
+    return true;
+  }
+
+  void _heard(String w) {
+    HapticFeedback.lightImpact();
+    setState(() => _whisper = w);
+    _whisperTimer?.cancel();
+    _whisperTimer = Timer(const Duration(seconds: 20), () {
+      if (mounted) setState(() => _whisper = '');
+    });
+  }
+
+  void _say(String id) {
+    final room = _room;
+    if (room == null || _friend.isEmpty) return;
+    widget.api.coopSend(room, {'type': 'whisper', 'say': id}).ignore();
+    _toast('🤫 You whispered: ${whispers[id]}');
   }
 
   String _banner(Map<String, dynamic>? g) {
@@ -1065,6 +1190,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                           // what you can read in their face after that move
                           if (g != null && !_busy)
                             for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
+                          if (_aside.isNotEmpty && !_busy) _Tell(_aside),
                           // before the first move: a guess at the fair price (checked when the haggle ends)
                           if (g != null && g['done'] != true && _msgs.length == 1 && !_busy && !_guessSkipped)
                             GuessCard(
@@ -1153,6 +1279,8 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     ],
                   ),
                 ),
+                if (g != null && g['done'] != true && _friend.isNotEmpty)
+                  WhisperBar(heard: _whisper, friend: _friend, onSay: _say),
                 if (g != null && g['done'] != true)
                   _Controls(
                     g: g,
@@ -1330,7 +1458,7 @@ class _Controls extends StatelessWidget {
   final String who;
   final bool busy;
   final TextEditingController text;
-  final Future<void> Function({int? pick, String? move, String? text, required String mine}) send;
+  final Future<bool> Function({int? pick, String? move, String? text, required String mine}) send;
 
   @override
   Widget build(BuildContext context) {
@@ -1472,7 +1600,7 @@ class _Controls extends StatelessWidget {
     final t = said?.trim() ?? '';
     if (t.isEmpty) return;
     text.clear();
-    send(text: t, mine: t);
+    if (!await send(text: t, mine: t)) text.text = t; // not sent (someone else is talking): keep what you typed
   }
 }
 
@@ -1729,7 +1857,7 @@ class _ConfirmDeal extends StatelessWidget {
   const _ConfirmDeal({required this.price, required this.busy, required this.send});
   final num price;
   final bool busy;
-  final Future<void> Function({int? pick, String? move, String? text, required String mine}) send;
+  final Future<bool> Function({int? pick, String? move, String? text, required String mine}) send;
 
   @override
   Widget build(BuildContext context) {
@@ -2290,6 +2418,13 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
   bool _pulling = false;
   bool _ended = false;
   int _react = 0;
+  int _bounced = 0; // the host's count of your moves not played (you both moved at once)
+  String _aside = '';
+  String _whisper = '';
+  Timer? _whisperTimer;
+  bool _recorded = false; // your share of the haggle is in your own progress
+  Map<String, Object?>? _share; // what you got: notes, stickers
+  int _typed = 0, _tapped = 0;
 
   Map get _item =>
       (widget.stall['items'] as List).cast<Map>().firstWhere((i) => i['id'] == widget.room['item'], orElse: () => {});
@@ -2305,6 +2440,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
   void dispose() {
     _poll?.cancel();
     _wait?.cancel();
+    _whisperTimer?.cancel();
     widget.api.coopLeave(widget.code);
     _text.dispose();
     _scroll.dispose();
@@ -2323,6 +2459,14 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
       for (final m in (r['messages'] as List).cast<Map>()) {
         _seq = (m['seq'] as num).toInt();
         if (m['type'] == 'state' && m['from'] == 'host') _applyState(m);
+        if (m['type'] == 'whisper' && m['from'] == 'host' && whispers.containsKey(m['say'])) {
+          HapticFeedback.lightImpact();
+          setState(() => _whisper = '${widget.room['host_name']}: ${whispers[m['say']]}');
+          _whisperTimer?.cancel();
+          _whisperTimer = Timer(const Duration(seconds: 20), () {
+            if (mounted) setState(() => _whisper = '');
+          });
+        }
       }
     } on AccountError catch (e) {
       if (e.code == 404 || e.code == 403) {
@@ -2339,12 +2483,21 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
     if (!mounted) return;
     final view = Map<String, dynamic>.from(m['view'] as Map);
     final wasDone = _g?['done'] == true;
+    final newTurn = view['turn'] != _g?['turn'];
+    final bounced = view['bounced'] is num ? (view['bounced'] as num).toInt() : 0;
+    final clashed = bounced > _bounced;
     setState(() {
       _g = view;
       _chat = (m['chat'] as List? ?? const []).cast<Map>();
       _busy = false;
       _react++;
+      _bounced = bounced;
+      if (newTurn) _aside = '';
+      if (clashed) {
+        _aside = '🙉 ${widget.stall['name']}: "Eh, one at a time lah!" (${widget.room['host_name']} spoke first.)';
+      }
     });
+    if (clashed) _toast('👥 ${widget.room['host_name']} moved first: have another look, then try again.');
     Sfx.forEvent('${view['event']}');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -2352,14 +2505,40 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
     if (!wasDone && view['done'] == true && view['result'] == 'deal') {
       HapticFeedback.heavyImpact();
       Sfx.play('deal');
-      widget.api.coopTeamwork().then((s) {
-        if (s.isNotEmpty) _toast('New sticker! 👥 Teamwork');
-      }).ignore();
+    }
+    if (view['done'] == true && !_recorded) {
+      // your share: the haggle goes into your own history, stars, jar and challenges too (once)
+      _recorded = true;
+      widget.api
+          .coopFinish(
+            stall: '${widget.stall['id']}',
+            item: '${widget.room['item']}',
+            view: view,
+            host: '${widget.room['host_name']}',
+            typed: _typed,
+            tapped: _tapped,
+          )
+          .then((r) {
+            if (mounted) setState(() => _share = r);
+          })
+          .catchError((Object _) {})
+          .ignore();
     }
   }
 
-  Future<void> _send({int? pick, String? move, String? text, required String mine}) async {
-    if (_busy || _g == null || _g!['done'] == true) return;
+  void _say(String id) {
+    widget.api.coopSend(widget.code, {'type': 'whisper', 'say': id}).ignore();
+    _toast('🤫 You whispered: ${whispers[id]}');
+  }
+
+  Future<bool> _send({int? pick, String? move, String? text, required String mine}) async {
+    if (_busy || _g == null || _g!['done'] == true) return false;
+    final at = _g!['turn'] is num ? (_g!['turn'] as num).toInt() : null; // the turn you saw (see the host's check)
+    if (text != null) {
+      _typed++;
+    } else if (pick != null) {
+      _tapped++;
+    }
     setState(() {
       _busy = true;
       _chat = [
@@ -2368,7 +2547,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
       ];
     });
     try {
-      await widget.api.coopSend(widget.code, {'type': 'move', 'pick': ?pick, 'move': ?move, 'text': ?text});
+      await widget.api.coopSend(widget.code, {'type': 'move', 'pick': ?pick, 'move': ?move, 'text': ?text, 'at': ?at});
       // the host's phone plays it; the answer comes with the next state (or the busy flag clears after a while)
       _wait?.cancel();
       _wait = Timer(const Duration(seconds: 25), () {
@@ -2377,7 +2556,9 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
     } on AccountError catch (e) {
       _toast(e.message);
       if (mounted) setState(() => _busy = false);
+      return false;
     }
+    return true;
   }
 
   @override
@@ -2415,6 +2596,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                   for (final m in _chat) Bubble(text: '${m['t']}', mine: m['m'] == true, sparkle: m['s'] == true),
                   if (g != null && !_busy)
                     for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
+                  if (_aside.isNotEmpty && !_busy) _Tell(_aside),
                   if (_busy) const Typing(),
                   if (g != null && g['done'] == true)
                     Container(
@@ -2430,6 +2612,28 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                                 : 'No deal this time.',
                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Palette.ink),
                           ),
+                          if (g['result'] == 'deal' && g['stars'] is num) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              '⭐' * (g['stars'] as num).toInt(),
+                              key: const ValueKey('coop_stars'),
+                              style: const TextStyle(fontSize: 24),
+                            ),
+                          ],
+                          for (final n in [
+                            ...(_share?['notes'] as List? ?? const []),
+                            if (_share?['mum'] != null) _share!['mum'],
+                            if ((_share?['stickers'] as List? ?? const []).isNotEmpty)
+                              '🏅 New sticker${(_share!['stickers'] as List).length > 1 ? 's' : ''}!',
+                          ])
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                '$n',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Palette.soft),
+                              ),
+                            ),
                           const SizedBox(height: 10),
                           Bouncy(
                             onTap: () => Navigator.of(context).pop(),
@@ -2441,6 +2645,8 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                 ],
               ),
             ),
+            if (g != null && g['done'] != true)
+              WhisperBar(heard: _whisper, friend: '${widget.room['host_name']}', onSay: _say),
             if (g != null && g['done'] != true)
               _Controls(
                 g: g,

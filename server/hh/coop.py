@@ -17,6 +17,8 @@ MAX_MESSAGES = 300           # per room (older ones are dropped)
 MAX_MESSAGE_BYTES = 8 * 1024
 CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O or 1/I
 FRIEND_MOVES = {"walk", "buy", "accept", "confirm", "cancel"}
+# Whispers between the two friends (the stallholder never hears them): a fixed set, so there's no free text to police.
+WHISPERS = {"firm", "sweet", "wait", "walk", "deal", "yours"}
 
 
 class CoopError(Exception):
@@ -81,7 +83,11 @@ class Rooms:
         if len(json.dumps(msg)) > MAX_MESSAGE_BYTES:
             raise CoopError(413, "Message too big.")
         kind = msg.get("type")
-        if role == "host":
+        if kind == "whisper":
+            if msg.get("say") not in WHISPERS:
+                raise CoopError(400, "No such whisper.")
+            msg = {"type": "whisper", "say": msg["say"]}
+        elif role == "host":
             if kind not in ("state", "end"):
                 raise CoopError(400, "The host sends the haggle's state.")
         else:
@@ -97,8 +103,12 @@ class Rooms:
                 raise CoopError(400, "No such move.")
             if text is not None and not (isinstance(text, str) and 0 < len(text.strip()) <= 300):
                 raise CoopError(400, "Type something (up to 300 characters).")
+            at = msg.get("at")    # the host's turn the friend saw: a move made on an old turn isn't played
+            if at is not None and not (isinstance(at, int) and not isinstance(at, bool) and 0 <= at <= 1_000_000):
+                raise CoopError(400, "Bad turn.")
             msg = {"type": "move", **({"pick": pick} if pick is not None else {}),
-                   **({"move": move} if move is not None else {}), **({"text": text.strip()} if text else {})}
+                   **({"move": move} if move is not None else {}), **({"text": text.strip()} if text else {}),
+                   **({"at": at} if at is not None else {})}
         r["last"] = self.clock()
         seq = self._add(r, role, msg)
         return {"seq": seq}

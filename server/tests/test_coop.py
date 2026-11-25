@@ -76,6 +76,11 @@ def test_rooms_need_a_login_and_only_their_two_players(app):
     {"type": "move", "move": "steal"},
     {"type": "move", "text": "   "},
     {"type": "move", "text": "x" * 301},
+    {"type": "move", "text": "hi", "at": -1},
+    {"type": "move", "text": "hi", "at": "3"},
+    {"type": "move", "text": "hi", "at": True},
+    {"type": "whisper", "say": "you are a cheapo"},    # whispers are a fixed set
+    {"type": "whisper"},
     "not a dict",
 ])
 def test_a_friend_can_only_send_proper_moves(app, msg):
@@ -84,6 +89,24 @@ def test_a_friend_can_only_send_proper_moves(app, msg):
     code = c.post("/ai/coop/create", json={"stall": "mei", "item": "mango"}, headers=host).json()["code"]
     c.post("/ai/coop/join", json={"code": code}, headers=friend)
     assert c.post("/ai/coop/send", json={"code": code, "msg": msg}, headers=friend).status_code == 400
+
+
+def test_a_move_keeps_the_turn_it_was_made_on_and_whispers_go_both_ways(app):
+    c = app
+    host, friend = player(c, "Arella"), player(c, "Melody")
+    code = c.post("/ai/coop/create", json={"stall": "mei", "item": "mango"}, headers=host).json()["code"]
+    c.post("/ai/coop/join", json={"code": code}, headers=friend)
+    move = {"type": "move", "pick": 1, "at": 4, "extra": "dropped"}
+    assert c.post("/ai/coop/send", json={"code": code, "msg": move}, headers=friend).status_code == 200
+    assert c.post("/ai/coop/send", json={"code": code, "msg": {"type": "whisper", "say": "firm", "x": 1}},
+                  headers=friend).status_code == 200
+    assert c.post("/ai/coop/send", json={"code": code, "msg": {"type": "whisper", "say": "wait"}},
+                  headers=host).status_code == 200
+    got = c.post("/ai/coop/pull", json={"code": code, "after": 1}, headers=host).json()["messages"]
+    assert got[:2] == [{"seq": 2, "from": "guest", "type": "move", "pick": 1, "at": 4},
+                       {"seq": 3, "from": "guest", "type": "whisper", "say": "firm"}]
+    seen = c.post("/ai/coop/pull", json={"code": code, "after": 3}, headers=friend).json()["messages"]
+    assert seen == [{"seq": 4, "from": "host", "type": "whisper", "say": "wait"}]
 
 
 def test_the_host_sends_state_not_moves_and_big_messages_are_refused(app):

@@ -17,7 +17,9 @@ import 'dart:math' as math;
 
 import 'game_sweep_test.dart' show content;
 
-import 'widget_test.dart' show Fake, settle;
+import 'package:hawker_haggle/screens.dart' show CoopGuestScreen;
+
+import 'widget_test.dart' show Fake, game, settle;
 
 /// A pretend market server with the same rules as server/hh/accounts.py (the server's own tests cover the real one).
 class Market {
@@ -752,5 +754,189 @@ void main() {
       await settle(tester, 300);
       expect(m.rooms, isEmpty);
     });
+
+    List<Map> roomMsgs(Market m, String code, String type) => [
+      for (final x in (m.rooms[code]!['messages'] as List<Map>))
+        if (x['type'] == type) x,
+    ];
+
+    testWidgets("talking at the same time: a friend's move made on an old turn isn't played, and whispers stay "
+        'between the two of you', (tester) async {
+      final m = Market();
+      final fake = Fake([
+        game('Hmm, \$16 lah.', event: 'counter', ask: 16),
+        game('OK \$15.', event: 'counter', ask: 15),
+      ]);
+      final api = Api(
+        game: fake,
+        content: const {},
+        store: MemoryKeyValue(),
+        aiHttp: m.client,
+        builtInEndpoint: 'https://glm.example/v1',
+        builtInModel: 'gx10-current',
+        accountServer: 'https://market.example.com',
+      );
+      await api.signIn(server: api.accountServer, username: 'Arella', password: 'kopi1234', signUp: true);
+      await tester.binding.setSurfaceSize(const Size(420, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(HawkerHaggleApp(api: api));
+      await settle(tester, 2000);
+      await tester.ensureVisible(find.text('box of mangoes'));
+      await tester.tap(find.text('box of mangoes'));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('coop_invite')));
+      await settle(tester, 800);
+      final code = m.rooms.keys.single;
+      await tester.tap(find.text('OK'));
+      await settle(tester, 400);
+      final friend = apiWith(m);
+      await friend.signIn(server: 'market.example.com', username: 'Melody', password: 'kopi1234', signUp: true);
+      await friend.coopJoin(code);
+      await tester.pump(const Duration(milliseconds: 1600));
+      await settle(tester, 1000);
+      final turn = ((roomMsgs(m, code, 'state').last['view'] as Map)['turn'] as num).toInt();
+      // both of the friend's moves were made on the same turn: the first is played, the second came too late
+      await friend.coopSend(code, {'type': 'move', 'pick': 0, 'at': turn});
+      await friend.coopSend(code, {'type': 'move', 'text': '\$12 can?', 'at': turn});
+      await friend.coopSend(code, {'type': 'whisper', 'say': 'firm'});
+      await tester.pump(const Duration(milliseconds: 1600));
+      await settle(tester, 2500);
+      expect(fake.sent, [
+        {'pick': 0, 'friend': 'melody'},
+      ]);
+      expect(find.textContaining('one at a time lah'), findsOneWidget);
+      final last = roomMsgs(m, code, 'state').last['view'] as Map;
+      expect(last['bounced'], 1); // the friend's phone gets the new state at once (no waiting on "typing…")
+      expect(last['turn'], turn + 1);
+      expect(find.byKey(const ValueKey('whisper_heard')), findsOneWidget);
+      expect(find.textContaining('Go firm now!'), findsOneWidget);
+      // the host whispers back; a move from an older app (no turn) is played as before
+      await tester.tap(find.byKey(const ValueKey('whisper_open')));
+      await settle(tester, 600);
+      await tester.tap(find.byKey(const ValueKey('whisper:wait')));
+      await settle(tester, 600);
+      expect(roomMsgs(m, code, 'whisper').last, containsPair('say', 'wait'));
+      await friend.coopSend(code, {'type': 'move', 'text': 'auntie please'});
+      await tester.pump(const Duration(milliseconds: 1600));
+      await settle(tester, 2500);
+      expect(fake.sent.last, {'text': 'auntie please', 'friend': 'melody'});
+      expect(fake.sent.length, 2); // whispers never reach the stallholder
+      await tester.pumpWidget(const SizedBox());
+      await settle(tester, 300);
+    });
+
+    testWidgets("the friend's phone: moves carry the turn, the host's whisper shows, and the friend gets their own "
+        'share of the deal (once)', (tester) async {
+      final m = Market();
+      final guest = _Guest();
+      final api = Api(
+        game: guest,
+        content: const {},
+        store: MemoryKeyValue(),
+        aiHttp: m.client,
+        builtInEndpoint: 'https://glm.example/v1',
+        builtInModel: 'gx10-current',
+        accountServer: 'https://market.example.com',
+      );
+      final host = apiWith(m);
+      await host.signIn(server: 'market.example.com', username: 'Arella', password: 'kopi1234', signUp: true);
+      await api.signIn(server: api.accountServer, username: 'Melody', password: 'kopi1234', signUp: true);
+      final code = await host.coopCreate('mei', 'mango');
+      final room = await api.coopJoin(code);
+      final stall = (guest.stalls()['stalls'] as List).first as Map;
+      await tester.binding.setSurfaceSize(const Size(420, 1200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CoopGuestScreen(api: api, code: code, room: room, stall: stall),
+        ),
+      );
+      await host.coopSend(code, {
+        'type': 'state',
+        'view': {...game('\$16 lah.', ask: 16), 'turn': 3, 'bounced': 0},
+        'chat': <Object>[],
+      });
+      await tester.pump(const Duration(milliseconds: 1600));
+      await settle(tester, 800);
+      await tester.tap(find.text('\$11 can or not?'));
+      await settle(tester, 600);
+      expect(roomMsgs(m, code, 'move').last, containsPair('at', 3));
+      // the host moved first: the friend's move bounced, they're told and can choose again
+      await host.coopSend(code, {
+        'type': 'state',
+        'view': {...game('\$15 lah.', ask: 15), 'turn': 4, 'bounced': 1},
+        'chat': <Object>[],
+      });
+      await host.coopSend(code, {'type': 'whisper', 'say': 'deal'});
+      await tester.pump(const Duration(milliseconds: 1600));
+      await settle(tester, 800);
+      expect(find.textContaining('one at a time lah'), findsOneWidget);
+      expect(find.textContaining('Take the deal!'), findsWidgets);
+      // the deal closes; the state may come twice, but the friend's share is counted once
+      final done = {
+        ...game('Deal!', result: 'deal', deal: 14, stars: 3, saved: 0.22),
+        'turn': 5,
+        'bounced': 1,
+        'moves': 4,
+      };
+      await host.coopSend(code, {'type': 'state', 'view': done, 'chat': <Object>[]});
+      await host.coopSend(code, {'type': 'state', 'view': done, 'chat': <Object>[]});
+      await tester.pump(const Duration(milliseconds: 1600));
+      await settle(tester, 1200);
+      expect(guest.finished, 1);
+      expect(guest.view?['deal'], 14);
+      expect(guest.tapped, 1);
+      expect(find.byKey(const ValueKey('coop_stars')), findsOneWidget);
+      expect(find.textContaining('into your savings jar'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await settle(tester, 300);
+    });
+
+    test("coopFinish puts the friend's share into their own progress: the haggle, stars, jar and Teamwork", () async {
+      final m = Market();
+      final api = phone(m);
+      final s = (content['stalls'] as List).first as Map;
+      final item = (s['items'] as List).first as Map;
+      final ask = (item['ask'] as num).toDouble();
+      final before = (await api.me())['haggles'] as num;
+      final r = await api.coopFinish(
+        stall: '${s['id']}',
+        item: '${item['id']}',
+        view: {'result': 'deal', 'deal': ask - 3, 'opening': ask, 'stars': 3, 'saved': 0.2, 'qty': 1, 'moves': 5},
+        host: 'arella',
+        typed: 2,
+      );
+      expect((await api.me())['haggles'], before + 1);
+      expect(r['stickers'], containsAll(['first_deal', 'three_stars', 'teamwork']));
+      expect((r['notes'] as List).join(' '), contains('into your savings jar'));
+      expect(((await api.me())['stars'] as num) >= 3, isTrue);
+    });
   });
+}
+
+/// The friend's phone: counts its share of a co-op haggle instead of saving it.
+class _Guest extends Fake {
+  _Guest() : super([]);
+  int finished = 0;
+  Map? view;
+  int tapped = 0;
+  @override
+  Future<Map<String, Object?>> coopFinish({
+    required String stall,
+    required String item,
+    required Map view,
+    String host = '',
+    int typed = 0,
+    int tapped = 0,
+  }) async {
+    finished++;
+    this.view = view;
+    this.tapped = tapped;
+    return {
+      'stickers': ['teamwork'],
+      'mum': null,
+      'unlocked': <String>[],
+      'notes': ['🫙 \$4 into your savings jar (\$4 saved).'],
+    };
+  }
 }

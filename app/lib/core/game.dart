@@ -626,6 +626,66 @@ class Game {
     return fresh.toList();
   }
 
+  /// A live co-op haggle ended on the host's phone; this is the friend's phone. The friend gets their share too: the
+  /// haggle in their own history (stars, Mum's list, challenges, XP, friendship) and the savings in their own jar.
+  /// [view] is the host's last state; [typed]/[tapped] are the friend's own moves. Call once per haggle.
+  Future<Map<String, Object?>> coopFinish({
+    required String stall,
+    required String item,
+    required Map view,
+    String host = '',
+    int typed = 0,
+    int tapped = 0,
+  }) async {
+    final deal = view['result'] == 'deal' && view['deal'] is num;
+    final qty = view['qty'] is num ? (view['qty'] as num).toInt() : 1;
+    final dealt = deal ? (view['deal'] as num).toDouble() : null;
+    final r = progress.finish(
+      record: {
+        'stall': stall,
+        'item': item,
+        'result': '${view['result'] ?? 'walked'}',
+        'deal': dealt,
+        'stars': deal && view['stars'] is num ? (view['stars'] as num).toInt() : 0,
+        'saved': view['saved'] is num ? (view['saved'] as num).toDouble() : 0.0,
+        'event': '${view['event'] ?? ''}',
+        'at': now().toIso8601String(),
+        'day': dayKey(now()),
+        'qty': qty,
+        'moves': view['moves'] is num ? (view['moves'] as num).toInt() : 99,
+        'typed': typed,
+        'tapped': tapped,
+        'tactics': const <String>[],
+        'patience': view['patience'] is num ? (view['patience'] as num).round() : 0,
+        'called_back': false,
+        'hard': false,
+        'rude': false,
+        'coop': true,
+        if (host.isNotEmpty) 'with': host,
+      },
+      qty: qty,
+      flags: const {},
+    );
+    final fresh = <String>{...r.stickers};
+    final notes = <String>[];
+    if (deal) {
+      progress.earn('teamwork', fresh);
+      final opening = view['opening'] is num ? (view['opening'] as num).toDouble() : dealt!;
+      final kept = ((opening - dealt!) * qty * 100).round() / 100;
+      if (kept > 0) {
+        progress.addToJar(kept);
+        notes.add('🫙 ${money(kept)} into your savings jar (${money(progress.jar)} saved).');
+      }
+    }
+    await _save();
+    return {
+      'stickers': fresh.toList(),
+      'mum': r.mum,
+      'unlocked': r.unlocked,
+      'notes': [...r.notes, ...notes],
+    };
+  }
+
   /// [friend]: in a live co-op haggle, the friend who made this move (the host's game plays it).
   Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text, String? friend}) async {
     final ss = _sessions[id];

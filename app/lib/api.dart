@@ -475,6 +475,16 @@ class Api {
   /// A haggle closed together: both players get the Teamwork sticker.
   Future<List<String>> coopTeamwork() => _run((g) => g.teamwork());
 
+  /// The friend's share of a co-op haggle that just ended (see [Game.coopFinish]).
+  Future<Map<String, Object?>> coopFinish({
+    required String stall,
+    required String item,
+    required Map view,
+    String host = '',
+    int typed = 0,
+    int tapped = 0,
+  }) => _run((g) => g.coopFinish(stall: stall, item: item, view: view, host: host, typed: typed, tapped: tapped));
+
   Future<Map<String, dynamic>> players() async {
     final a = _account;
     if (a == null || !a.admin) throw AccountError('Admin only.');
