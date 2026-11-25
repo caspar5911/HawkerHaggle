@@ -160,3 +160,14 @@ above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of
   two moves, not with Auntie Rose or low patience, the stallholder challenges you to convince them. The next typed
   message is scored 0–2 by the AI (`pitchPrompt` in prompts_extra.dart; the pitch is data, malformed answers are 0)
   and warms them by up to 1.8 mood, once. A tap lets it lapse.
+- **Juice** (`app/lib/juice.dart`): the price tag rolls down with coins and a ka-ching, an insult or refusal jolts
+  the scene, a deal stamps DEAL!; all finite; Settings > Reduce motion (or the phone's setting) turns movement off.
+- **Savings jar** (`app/lib/core/treats.dart`): what you bargain off an asking price, and your stall's profit, go in;
+  goals: Mum's birthday cake, an awning (customers at your stall pay a little more), a scooter. Never blocks a deal.
+- **Freebies** (into your stock, free; likelier when you're nice; guaranteed after a dry spell), **dilemmas** (help a
+  friend from your jar for friendship, or not), a **quote book** of favourite lines. Off without surprises (tests).
+- **Mid-haggle twists:** a cat, the grandchild calling, a pigeon, a downpour, a kid wanting a sweet; a quick choice
+  changes only the mood, and the next AI reply reacts. From the haggle's seed, once a haggle, never in a rush.
+- **Live co-op** (`server/hh/coop.py`, `/ai/coop/*`): the host's phone runs the haggle and every AI call; the server
+  is only an in-memory mailbox (5-letter codes, two logged-in players per room, proper moves only, limits, idle rooms
+  expire; a server restart closes open rooms). The AI is told when the friend sent a message. Teamwork sticker.
