@@ -49,7 +49,9 @@ class Market {
     final body = req.body.isEmpty ? <String, dynamic>{} : jsonDecode(req.body) as Map<String, dynamic>;
     final tok = (req.headers['Authorization'] ?? '').replaceFirst('Bearer ', '');
     final who = users[tokens[tok]];
-    http.Response out(int code, Object data) => http.Response(jsonEncode(data), code);
+    // like the real server: UTF-8 JSON (progress can hold emoji and any language)
+    http.Response out(int code, Object data) =>
+        http.Response.bytes(utf8.encode(jsonEncode(data)), code, headers: {'content-type': 'application/json'});
     switch (path) {
       case '/ai/accounts/signup':
         final u = '${body['username']}'.toLowerCase();

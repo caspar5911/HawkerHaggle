@@ -584,6 +584,13 @@ class _HaggleScreenState extends State<HaggleScreen> {
 
   void _apply(Map<String, dynamic> g) {
     if (!mounted) return;
+    if (g['found'] != null) _toast('💡 You found ${widget.stall['name']}\'s soft spot: ${g['found']}!');
+    if (g['pitch_score'] != null && _g?['pitch_score'] == null) {
+      _toast(
+        const ['😅 That pitch didn\'t work.', '👍 Not a bad pitch!', '🌟 What a pitch!'][(g['pitch_score'] as num)
+            .toInt()],
+      );
+    }
     setState(() {
       _g = g;
       _busy = false;
@@ -635,7 +642,8 @@ class _HaggleScreenState extends State<HaggleScreen> {
   String _banner(Map<String, dynamic>? g) {
     if (g == null || g['done'] == true) return '';
     final t = widget.target;
-    final note = '${g['surprise_note'] ?? ''}';
+    var note = '${g['surprise_note'] ?? ''}';
+    if (g['challenge'] == true) note = '💬 ${widget.stall['name']} wants convincing! Type your best pitch.';
     if (t == null) return note;
     final beat = '🏆 Beat ${t['name']}\'s ${money(t['price'] as num)}!';
     return note.isEmpty ? beat : '$beat  $note';
@@ -765,12 +773,14 @@ class _HaggleScreenState extends State<HaggleScreen> {
               if (g['result'] == 'deal') const Positioned.fill(child: Confetti()),
               _Result(
                 api: widget.api,
-                g: widget.target == null
-                    ? g
-                    : {
-                        ...g,
-                        'notes': [...(g['notes'] as List? ?? const []), _beatNote(g)],
-                      },
+                g: {
+                  ...g,
+                  'notes': [
+                    if (g['closeness'] != null) g['closeness'],
+                    ...(g['notes'] as List? ?? const []),
+                    if (widget.target != null) _beatNote(g),
+                  ],
+                },
                 stall: widget.stall,
                 item: widget.item,
                 again: _start,

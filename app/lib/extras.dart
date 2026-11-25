@@ -153,6 +153,14 @@ Future<void> showStallProfile(BuildContext context, Api api, Map stall) async {
                   style: TextStyle(color: line == null ? Palette.soft : Palette.ink, height: 1.35),
                 ),
               ),
+            const SizedBox(height: 6),
+            Text(
+              p['soft_spot'] != null
+                  ? '💡 Soft spot: ${p['soft_spot']}'
+                  : '💡 Soft spot: ??? (chat with them to find what they love)',
+              key: const ValueKey('soft_spot'),
+              style: TextStyle(color: p['soft_spot'] != null ? Palette.ink : Palette.soft, fontWeight: FontWeight.w600),
+            ),
             if (p['arc'] case final Map arc) ...[
               const SizedBox(height: 10),
               Text('📖 ${arc['title']}', style: _title),

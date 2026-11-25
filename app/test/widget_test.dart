@@ -612,7 +612,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('shop_open')));
     await settle(tester, 1500);
     expect(find.textContaining('wants your'), findsOneWidget);
-    expect(find.textContaining('You paid'), findsOneWidget);
+    expect(find.textContaining('you paid'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('shop_take')));
     await settle(tester, 1500);
     expect(find.textContaining('Sold for'), findsOneWidget);

@@ -13,6 +13,7 @@ import 'festivals.dart';
 import 'progress.dart';
 import 'reader.dart';
 import 'shop.dart';
+import 'softspots.dart';
 import 'voice.dart';
 
 class GameError implements Exception {
@@ -104,6 +105,11 @@ class _Session {
   final tactics = <String>{}; // compliment, regular, competitor, bulk, plead, pity, budget...
   bool rude = false;
   bool calledBack = false;
+  bool softSpot = false; // their soft spot came up this haggle (warms them once)
+  String found = ''; // the soft spot just found for the first time (shown once)
+  bool challenged = false; // they challenged the customer to convince them (the next typed message is the pitch)
+  bool pitched = false; // a persuasion moment happened this haggle (at most one)
+  int? pitchScore;
   Map<String, Object?> finish = const {}; // new stickers, Mum's note, unlocks (when it ends)
 }
 
@@ -441,6 +447,10 @@ class Game {
           ? '${ss.festival!.emoji} ${ss.festival!.name}: prices are up, everyone is cheerful!'
           : surpriseNote(h.s.event, '${ss.stall['name']}', h.s.rivalLeft),
       'guess': ss.guess,
+      'found': _takeFound(ss), // a soft spot found just now (once)
+      'challenge': ss.challenged, // "convince me!": the next typed message is a pitch
+      'pitch_score': ss.pitchScore,
+      'closeness': h.s.done && h.s.result == 'deal' && h.s.deal != null ? _closeness(ss) : null,
       'rival_left': h.s.rivalLeft,
       'hearts': progress.hearts('${ss.stall['id']}'),
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
@@ -450,6 +460,38 @@ class Game {
       'accept_text': _playerText('accept', h.s.ask, ss.id, _who(ss)),
       'walk_text': _playerText('walk', null, ss.id, _who(ss)),
     };
+  }
+
+  /// Where a stock item was bought (its stallholder), for the shop screen.
+  String? _stockFrom(String productId) {
+    for (final x in progress.stock) {
+      if ('stock:${x['key']}' == productId) return '${x['from']}';
+    }
+    return null;
+  }
+
+  String? _takeFound(_Session ss) {
+    final f = ss.found;
+    ss.found = '';
+    return f.isEmpty ? null : f;
+  }
+
+  /// After a deal: how close it came to the stallholder's real limit, in words (never the number). Measured like
+  /// the stars, against the secret lowest price; a good mood could have gone a little further.
+  String _closeness(_Session ss) {
+    final h = ss.h;
+    final floor = h.item.floor;
+    final r = h.s.deal! / floor;
+    final who = '${ss.stall['name']}';
+    var t = r <= 1.03
+        ? "🎯 Right at $who's limit!"
+        : (r <= 1.10
+              ? "📏 Very close to $who's limit."
+              : (r <= 1.25
+                    ? '📏 There was still some room left.'
+                    : '📏 There was lots of room left: try lower next time!'));
+    if (r > 1.03 && h.floorNow() < floor * 0.97) t += ' In such a good mood, $who might have gone a little lower.';
+    return t;
   }
 
   // ---------------------------------------------------------------- the game
@@ -586,6 +628,24 @@ class Game {
       if (heard.also.isNotEmpty && !const ['accept', 'confirm', 'walk', 'buy', 'cancel'].contains(kind)) {
         h.side(heard.also); // "so nice, 20 can?": the compliment counts too (within its limits)
       }
+      // a soft spot: they love talking about it (once a haggle; found for the profile the first time)
+      final spot = softSpots['${stall['id']}'];
+      if (typed.isNotEmpty && !ss.softSpot && spot != null && spot.heardIn(typed) && kind != 'rude') {
+        ss.softSpot = true;
+        h.warm(1.2);
+        ss.nice++;
+        if (progress.findSoftSpot('${stall['id']}')) ss.found = spot.topic;
+      }
+      // a persuasion moment: the AI scores the pitch, and a good one warms them (once a haggle, within limits)
+      if (ss.challenged) {
+        ss.challenged = false;
+        if (typed.isNotEmpty && kind != 'rude') {
+          final score = await ai.judgePitch(stall: stall, item: item, pitch: typed) ?? 0;
+          ss.pitchScore = score;
+          h.warm(0.9 * score);
+          if (score > 0) ss.nice++;
+        }
+      }
       bool? callBack;
       if (kind == 'walk' && ai.enabled && h.canCallBack()) {
         // Walking away: the AI judges whether this is the right moment for a final-final price.
@@ -614,6 +674,17 @@ class Game {
     }
     String? said;
     var aiLine = false;
+    // A persuasion moment now and then (about 1 haggle in 4, after a couple of moves), only with the AI, never in a
+    // rush (Auntie Rose, low patience). Decided from the haggle's own seed, so it never touches the game's dice.
+    final challengeNow =
+        useAi &&
+        !h.s.done &&
+        !ss.pitched &&
+        !ss.challenged &&
+        h.s.rounds == 2 &&
+        h.s.event != 'rival' &&
+        h.s.patience > 50 &&
+        stableSeed('${ss.seed}-pitch') % 4 == 0;
     if (useAi) {
       said = await ai.say(
         stall: stall,
@@ -636,12 +707,26 @@ class Game {
         also: heard.also,
         note: _notes(
           ss,
-          heard.qty != null && heard.qty! > 2
-              ? 'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).'
-              : '',
+          [
+            if (heard.qty != null && heard.qty! > 2)
+              'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).',
+            if (ss.softSpot && ss.chat.where((m) => m['soft_spot'] == true).isEmpty)
+              'They just talked about ${softSpots['${stall['id']}']!.topic}, your favourite subject: you warm up to them a lot.',
+            if (ss.pitchScore != null && ss.chat.where((m) => m['pitch'] == true).isEmpty)
+              const [
+                'Their pitch did not impress you: say so playfully.',
+                'Their pitch was a fair try: you soften a little.',
+                'Their pitch really won you over: say so warmly.',
+              ][ss.pitchScore!],
+            if (challengeNow) 'End your reply by challenging them, in one short sentence, to convince you why you should give them a better price.',
+          ].join(' '),
         ),
       );
       aiLine = said != null;
+      if (challengeNow && aiLine) {
+        ss.challenged = true; // only when the reply really contains the challenge
+        ss.pitched = true;
+      }
     }
     said ??= _line(stall, item, event, h, offer: out?.offer, seed: ss.seed, chat: ss.chat);
     ss.chat.add({
@@ -649,6 +734,8 @@ class Game {
       'text': you,
       'move': kind,
       if (heard.reading.isNotEmpty || heard.also.isNotEmpty) ...{'reading': heard.reading, 'also': heard.also},
+      if (ss.softSpot && ss.chat.where((m) => m['soft_spot'] == true).isEmpty) 'soft_spot': true,
+      if (ss.pitchScore != null && ss.chat.where((m) => m['pitch'] == true).isEmpty) 'pitch': true,
     });
     ss.chat.add({'who': 'them', 'text': said, 'ask': h.s.ask, if (aiLine) 'ai': true});
     if (h.s.done && !ss.recorded) {
@@ -752,7 +839,21 @@ class Game {
   Future<Map<String, Object?>> shopStart([String? productId]) async {
     final shop = (_profile['shop'] ??= <String, Object?>{}) as Map;
     final n = ((shop['served'] ?? 0) as num).toInt();
-    final product = products.firstWhere((p) => p.id == productId, orElse: () => products[n % products.length]);
+    // what you bought at the market is what you sell (the oldest first); with nothing in stock, wholesale goods
+    final stock = progress.stock;
+    final Product product;
+    if (productId == null && stock.isNotEmpty) {
+      final x = stock.first;
+      product = Product(
+        'stock:${x['key']}',
+        '${x['name']}',
+        '${x['emoji']}',
+        (x['cost'] as num).toDouble(),
+        (x['fair'] as num).toDouble(),
+      );
+    } else {
+      product = products.firstWhere((p) => p.id == productId, orElse: () => products[n % products.length]);
+    }
     final customer = customers[_rnd.nextInt(customers.length)];
     final seed = _rnd.nextInt(1 << 31);
     final sale = Sale(product, customer, seed: seed);
@@ -793,6 +894,9 @@ class Game {
       shop['served'] = ((shop['served'] ?? 0) as num).toInt() + 1;
       final notes = <String>[];
       if (s.sale.result == 'sold') {
+        if (s.sale.product.id.startsWith('stock:')) {
+          progress.takeStock(s.sale.product.id.substring(6), s.sale.product.cost);
+        }
         shop['sales'] = ((shop['sales'] ?? 0) as num).toInt() + 1;
         shop['profit'] = ((shop['profit'] ?? 0) as num).toDouble() + s.sale.profit;
         final fresh = <String>{};
@@ -828,7 +932,9 @@ class Game {
         'emoji': sale.product.emoji,
         'cost': sale.product.cost,
         'fair': sale.product.fair,
+        'from': _stockFrom(sale.product.id),
       },
+      'stock': progress.stock.length,
       'offer': sale.offer,
       'ask': sale.ask,
       'suggestions': sale.done ? <double>[] : sale.suggestions(),

@@ -145,3 +145,18 @@ above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of
   (once helps, more costs patience). Stars by the price against the usual one; profit and sales are counted. The AI
   writes the customer's words with only the code's prices (the same price check); otherwise ready-made lines.
   Selling isn't haggling: no XP, challenges or Market Month; a sticker for a sale at the usual price or more.
+- **Buy low, sell high:** a deal at the market adds what you bought to your stock (per piece, at what you paid; at
+  most 10; not Ah Ma Tan's bicycle rental or Auntie Rosnah's catering tray). Your own stall sells your stock first,
+  so a better haggle means more profit; with no stock it sells wholesale goods. Mum's list items count as stock too.
+- **How close you got:** after a deal, in words only, measured like the stars against the secret lowest price
+  ("Right at Auntie Mei's limit!", "Very close", "Some room left", "Lots of room left"), plus a hint when a good mood
+  would have gone lower.
+- **Memory of how you haggled:** the friend note tells the AI, without numbers, whether last time you bargained
+  hard, paid close to the asking price, or walked away (from 1 heart, like the rest of the note).
+- **Soft spots** (`app/lib/core/softspots.dart`): each stallholder loves one subject (whole words only); mentioning
+  it in a typed message warms them once a haggle (`Haggle.warm`, mood only, within its limits) and the first time
+  it's shown in their profile.
+- **Persuasion moments:** with an AI, about 1 haggle in 4 (from the haggle's own seed, never the game's dice), after
+  two moves, not with Auntie Rose or low patience, the stallholder challenges you to convince them. The next typed
+  message is scored 0–2 by the AI (`pitchPrompt` in prompts_extra.dart; the pitch is data, malformed answers are 0)
+  and warms them by up to 1.8 mood, once. A tap lets it lapse.

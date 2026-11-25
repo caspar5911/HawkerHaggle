@@ -215,6 +215,18 @@ class AiClient {
     return v is bool ? v : null;
   }
 
+  /// Persuasion moments: score the customer's pitch 0..2 (null: no AI answer). Malformed answers count as 0.
+  Future<int?> judgePitch({required Map stall, required Map item, required String pitch}) async {
+    final system = pitchPrompt
+        .replaceAll('{name}', '${stall['name']}')
+        .replaceAll('{persona}', '${stall['persona']}')
+        .replaceAll('{item}', '${item['name']}');
+    final raw = await chat(system, '<<<${pySlice(pitch, 300)}>>>', json: true, temperature: 0.2);
+    if (raw == null) return null;
+    final v = _jsonObject(raw)?['score'];
+    return v is num ? v.round().clamp(0, 2) : 0;
+  }
+
   /// The stallholder's line, or null (use a ready-made line) if the model is unavailable or keeps breaking rules.
   Future<String?> say({
     required Map stall,

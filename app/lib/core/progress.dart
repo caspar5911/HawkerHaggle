@@ -6,6 +6,7 @@ import 'dart:math' as math;
 
 import 'arcs.dart';
 import 'challenges.dart';
+import 'softspots.dart';
 
 /// Base stalls: open from the start, and the only ones the daily list uses (so it's the same list for everyone).
 const baseStalls = ['mei', 'lim', 'raj', 'siti'];
@@ -128,6 +129,22 @@ class Progress {
     f['points'] = math.max(0, math.min(100, points(stall) + n));
   }
 
+  /// How this customer haggled last time at this stall, in words (no numbers), so the stallholder can tease them.
+  String howTheyHaggled(String stall) {
+    final last = _haggles.lastWhere((h) => h['stall'] == stall, orElse: () => const {});
+    final item = (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().where((i) => i['id'] == last['item']);
+    if (last.isEmpty || item.isEmpty) return '';
+    if (last['result'] == 'walked') return 'Last time they walked away without buying; you may tease them about it.';
+    if (last['result'] != 'deal' || last['deal'] == null) return '';
+    final deal = (last['deal'] as num).toDouble();
+    final i = item.first;
+    if (deal <= (i['floor'] as num) * 1.06) {
+      return 'Last time they bargained you down very hard; tease them that they always squeeze you.';
+    }
+    if (deal >= (i['ask'] as num) * 0.95) return 'Last time they paid close to your asking price without much fuss.';
+    return 'Last time they bargained a little, fairly.';
+  }
+
   /// A short, number-free note for the AI, so a friend is greeted like a friend.
   String memoryNote(String stall, String playerName) {
     final lvl = hearts(stall);
@@ -143,9 +160,10 @@ class Progress {
     return [
       'You know this customer${lvl >= 2 && name.isNotEmpty ? ', $name' : ''}: they have come to your stall ${visits > 5 ? 'many times' : 'a few times'}.',
       if (lastItem != null) 'Last time they bought your $lastItem; you may ask how it was.',
+      howTheyHaggled(stall),
       if (lvl >= 3) 'They are one of your favourite customers: be extra warm.',
       if (((f['rude'] ?? 0) as num) > 0 && lvl < 2) 'They were rude to you once; you remember.',
-    ].join(' ');
+    ].where((x) => x.isNotEmpty).join(' ');
   }
 
   // ---------------------------------------------------------------- unlocks
@@ -332,6 +350,7 @@ class Progress {
     _stickersForHaggle(record, flags, fresh);
     _friendStickers(fresh);
     final story = _storyProgress(record, fresh);
+    _addStock(record, qty);
     String? mum;
     if (deal && record['deal'] != null) {
       mum = _onListDeal(stall, '${record['item']}', (record['deal'] as num).toDouble(), qty, fresh);
@@ -418,7 +437,58 @@ class Progress {
       'next_at': lvl < 3 ? heartAt[lvl] : null,
       'story': [for (var i = 0; i < story.length; i++) i < lvl ? story[i] : null],
       if (arcs[stall] != null) 'arc': arc(stall),
+      'soft_spot': softSpotFound(stall) ? softSpots[stall]?.topic : null,
     };
+  }
+
+  // ---------------------------------------------------------------- soft spots
+  /// Mark a stallholder's soft spot as found. True the first time.
+  bool findSoftSpot(String stall) {
+    final found = _map('soft_spots');
+    if (found[stall] == true) return false;
+    found[stall] = true;
+    return true;
+  }
+
+  bool softSpotFound(String stall) => _map('soft_spots')[stall] == true;
+
+  // ---------------------------------------------------------------- stock for your own stall
+  static const stockMax = 10;
+
+  /// Things that can't be resold at your own stall (a day's rental; a catering order).
+  static const notForResale = {'tan/bicycle', 'rosnah/tray'};
+
+  List<Map> get stock => [for (final x in (p['stock'] as List? ?? const [])) x as Map];
+
+  /// A deal at the market: what you bought becomes stock for your own stall, at what you paid per piece.
+  void _addStock(Map record, int qty) {
+    if (record['result'] != 'deal' || record['deal'] == null) return;
+    final key = '${record['stall']}/${record['item']}';
+    if (notForResale.contains(key)) return;
+    final item = (_stalls['${record['stall']}']?['items'] as List? ?? const [])
+        .cast<Map>()
+        .where((i) => i['id'] == record['item'])
+        .firstOrNull;
+    if (item == null) return;
+    final list = (p['stock'] ??= <Object>[]) as List;
+    for (var i = 0; i < qty; i++) {
+      list.add({
+        'key': key,
+        'name': item['name'],
+        'emoji': item['emoji'],
+        'cost': (record['deal'] as num).toDouble(),
+        'fair': (item['fair'] as num).toDouble(),
+        'from': _stalls['${record['stall']}']?['name'],
+      });
+    }
+    if (list.length > stockMax) list.removeRange(0, list.length - stockMax);
+  }
+
+  /// Sold at your own stall: one unit of it leaves your stock.
+  void takeStock(String key, double cost) {
+    final list = (p['stock'] as List?) ?? const [];
+    final i = list.indexWhere((x) => (x as Map)['key'] == key && x['cost'] == cost);
+    if (i >= 0) list.removeAt(i);
   }
 
   // ---------------------------------------------------------------- story arcs

@@ -369,6 +369,14 @@ class Haggle {
     return _out('deflect');
   }
 
+  /// A warm-up from outside the base rules (a soft spot found, a good pitch): mood only, never a price. The game
+  /// calls it at most once per haggle for each reason; mood stays within its limits, and so the floor stays at or
+  /// above 90% of the secret lowest price. Unused by the base rules (the Python reference never calls it).
+  void warm(double amount) {
+    if (s.done) return;
+    s.mood = clamp(s.mood + amount, -3, 3);
+  }
+
   /// The mood part of a second thing said in the same message ("so nice, 20 can?"), within the usual limits.
   void side(String kind) {
     if (s.done) return;

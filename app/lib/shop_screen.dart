@@ -140,7 +140,7 @@ class _ShopScreenState extends State<ShopScreen> {
           children: [
             // the customer in front of your counter
             Container(
-              height: 210,
+              height: 228,
               width: double.infinity,
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
@@ -165,8 +165,18 @@ class _ShopScreenState extends State<ShopScreen> {
                           style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
                         ),
                         Text(
-                          'You paid ${money(product['cost'] as num)} · usually sells for ${money(product['fair'] as num)}',
+                          product['from'] != null
+                              ? 'You bought it at ${product['from']}\'s for ${money(product['cost'] as num)} · usually ${money(product['fair'] as num)}'
+                              : 'Wholesale, you paid ${money(product['cost'] as num)} · usually sells for ${money(product['fair'] as num)}',
+                          textAlign: TextAlign.center,
                           style: const TextStyle(color: Palette.soft, fontSize: 13),
+                        ),
+                        Text(
+                          (s!['stock'] as num) > 0
+                              ? '📦 ${s['stock']} thing${s['stock'] == 1 ? '' : 's'} in stock from the market'
+                              : '📦 Buy things at the market to sell them here',
+                          key: const ValueKey('shop_stock'),
+                          style: const TextStyle(color: Palette.soft, fontSize: 12),
                         ),
                       ],
                     ),
