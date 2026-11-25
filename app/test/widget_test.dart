@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
+import 'package:hawker_haggle/juice.dart';
 import 'package:hawker_haggle/character.dart';
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/extras.dart';
@@ -658,6 +659,32 @@ void main() {
     expect(find.textContaining('What a pitch!'), findsOneWidget);
     expect(find.textContaining("Right at Auntie Mei's limit!"), findsOneWidget);
     await settle(tester, 4000);
+  });
+
+  testWidgets('juice: the DEAL! stamp before the result; Reduce motion in Settings', (tester) async {
+    await openHaggle(tester, [game('OK lah OK lah, \$18!', event: 'accept', result: 'deal', deal: 18, stars: 1)]);
+    await tester.tap(find.text('OK lah, \$18'));
+    await settle(tester, 600);
+    await tester.tap(find.text('Confirm \$18'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('deal_stamp')), findsOneWidget);
+    await settle(tester, 2500);
+    expect(find.byKey(const ValueKey('deal_stamp')), findsNothing); // the result card takes over
+    await settle(tester, 2000);
+  });
+
+  testWidgets('Reduce motion can be switched on in Settings', (tester) async {
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await settle(tester);
+    expect(Motion.reduced, isFalse);
+    await tester.tap(find.byKey(const ValueKey('reduce_motion')));
+    await settle(tester, 400);
+    expect(Motion.reduced, isTrue);
+    await tester.tap(find.byKey(const ValueKey('reduce_motion')));
+    await settle(tester, 400);
+    expect(Motion.reduced, isFalse);
   });
 
   testWidgets('a festival week shows on the market', (tester) async {

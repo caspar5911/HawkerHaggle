@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'juice.dart';
+
 import 'sfx.dart';
 
 class Palette {
@@ -202,17 +204,11 @@ class PriceTag extends StatelessWidget {
                 decoration: TextDecoration.lineThrough,
               ),
             ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 450),
-            transitionBuilder: (child, a) => ScaleTransition(
-              scale: CurvedAnimation(parent: a, curve: Curves.elasticOut),
-              child: FadeTransition(opacity: a, child: child),
-            ),
-            child: Text(
-              money(shown),
-              key: ValueKey(shown),
-              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Palette.ink),
-            ),
+          // the price rolls down to the new one, with a few coins when it drops
+          RollingPrice(
+            value: shown.toDouble(),
+            format: money,
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Palette.ink),
           ),
         ],
       ),

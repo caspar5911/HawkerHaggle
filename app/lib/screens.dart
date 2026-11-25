@@ -7,6 +7,7 @@ import 'account_screens.dart';
 import 'api.dart';
 import 'character.dart';
 import 'extras.dart';
+import 'juice.dart';
 import 'sfx.dart';
 import 'shop_screen.dart';
 import 'web_update.dart';
@@ -548,6 +549,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
   int _react = 0;
   Face _face = Face.happy;
   bool _guessSkipped = false;
+  int _jolt = 0; // the counter slam (insulted, rude, refused)
 
   @override
   void initState() {
@@ -584,6 +586,15 @@ class _HaggleScreenState extends State<HaggleScreen> {
 
   void _apply(Map<String, dynamic> g) {
     if (!mounted) return;
+    final before = (_g?['pending'] ?? _g?['ask']) as num?;
+    final now = (g['pending'] ?? g['ask']) as num?;
+    if (const ['insulted', 'rude', 'refuse'].contains(g['event'])) {
+      _jolt++;
+      HapticFeedback.mediumImpact();
+    } else if (before != null && now != null && now < before && g['done'] != true) {
+      HapticFeedback.selectionClick(); // ka-ching: the price came down
+      Sfx.play('coin', volume: 0.45);
+    }
     if (g['found'] != null) _toast('💡 You found ${widget.stall['name']}\'s soft spot: ${g['found']}!');
     if (g['pitch_score'] != null && _g?['pitch_score'] == null) {
       _toast(
@@ -704,7 +715,10 @@ class _HaggleScreenState extends State<HaggleScreen> {
           children: [
             Column(
               children: [
-                _Scene(stall: widget.stall, item: widget.item, look: look, g: g, face: _face, react: _react),
+                Jolt(
+                  trigger: _jolt,
+                  child: _Scene(stall: widget.stall, item: widget.item, look: look, g: g, face: _face, react: _react),
+                ),
                 Expanded(
                   child: Stack(
                     children: [
@@ -769,6 +783,9 @@ class _HaggleScreenState extends State<HaggleScreen> {
                   ),
               ],
             ),
+            // the moment a deal closes: DEAL! stamped on the screen, then the result card
+            if (g != null && g['done'] == true && g['result'] == 'deal' && !_showResult)
+              const Positioned.fill(child: DealStamp(text: 'DEAL!')),
             if (_showResult && g != null) ...[
               if (g['result'] == 'deal') const Positioned.fill(child: Confetti()),
               _Result(
@@ -1634,6 +1651,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (on) async {
               await Sfx.setMuted(!on);
               if (on) Sfx.play('coin');
+              setState(() {});
+            },
+          ),
+          SwitchListTile(
+            key: const ValueKey('reduce_motion'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Reduce motion', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('No shaking, bouncing or flying coins.'),
+            value: Motion.reduced,
+            onChanged: (on) async {
+              await Motion.set(on);
               setState(() {});
             },
           ),
