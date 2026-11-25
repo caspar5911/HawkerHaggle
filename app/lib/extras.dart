@@ -115,8 +115,9 @@ Future<void> showStallProfile(BuildContext context, Api api, Map stall) async {
     context: context,
     backgroundColor: Palette.cream,
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    isScrollControlled: true,
     builder: (c) => SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -152,6 +153,28 @@ Future<void> showStallProfile(BuildContext context, Api api, Map stall) async {
                   style: TextStyle(color: line == null ? Palette.soft : Palette.ink, height: 1.35),
                 ),
               ),
+            if (p['arc'] case final Map arc) ...[
+              const SizedBox(height: 10),
+              Text('📖 ${arc['title']}', style: _title),
+              const SizedBox(height: 6),
+              for (final (i, ch) in (arc['chapters'] as List).cast<Map>().indexed)
+                Padding(
+                  key: ValueKey('chapter_$i'),
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    switch (ch['state']) {
+                      'done' => '✅ ${ch['title']}: ${ch['text']}',
+                      'open' => '👉 ${ch['title']}: ${ch['text']}',
+                      _ => '🔒 ${ch['title']} (${ch['hearts']} heart${ch['hearts'] == 1 ? '' : 's'})',
+                    },
+                    style: TextStyle(
+                      color: ch['state'] == 'locked' ? Palette.soft : Palette.ink,
+                      fontWeight: ch['state'] == 'open' ? FontWeight.w700 : FontWeight.w400,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+            ],
             const SizedBox(height: 4),
             const Text(
               'Friendship grows with visits and deals, and drops if you are rude.',

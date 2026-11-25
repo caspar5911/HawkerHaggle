@@ -343,6 +343,34 @@ class _ChibiPainter extends CustomPainter {
         p.color = Colors.white.withValues(alpha: 0.9);
         canvas.drawCircle(c.translate(0, -r * 0.78), r * 0.1, p);
       }
+      if (acc == 'beanie') {
+        // a knitted beanie with a folded band and a pom-pom
+        p.color = shirt;
+        canvas.drawArc(Rect.fromCircle(center: c.translate(0, -r * 0.2), radius: r * 1.04), math.pi, math.pi, true, p);
+        p.color = Color.lerp(shirt, Colors.black, 0.2)!;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTRB(c.dx - r * 1.06, c.dy - r * 0.42, c.dx + r * 1.06, c.dy - r * 0.16),
+            Radius.circular(r * 0.12),
+          ),
+          p,
+        );
+        p.color = Colors.white;
+        canvas.drawCircle(c.translate(0, -r * 1.28), r * 0.2, p);
+      }
+      if (acc == 'straw_hat') {
+        // a wide straw sun hat with a ribbon
+        const straw = Color(0xFFE8C77A);
+        p.color = straw;
+        canvas.drawOval(Rect.fromCenter(center: c.translate(0, -r * 0.62), width: r * 2.9, height: r * 0.55), p);
+        canvas.drawArc(Rect.fromCircle(center: c.translate(0, -r * 0.6), radius: r * 0.78), math.pi, math.pi, true, p);
+        p.color = apron;
+        canvas.drawRect(Rect.fromLTRB(c.dx - r * 0.78, c.dy - r * 0.86, c.dx + r * 0.78, c.dy - r * 0.68), p);
+        p.color = Color.lerp(straw, Colors.brown, 0.25)!;
+        for (var i = -2; i <= 2; i++) {
+          canvas.drawCircle(c.translate(i * r * 0.5, -r * 0.6), r * 0.035, p); // weave dots
+        }
+      }
     }
 
     // blush

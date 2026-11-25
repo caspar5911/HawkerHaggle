@@ -126,6 +126,10 @@ class Api {
     }
   }
 
+  /// A stall's name from the content (for "a new stall opened").
+  String stallName(String id) =>
+      ((_content?['stalls'] as List?)?.cast<Map>().where((s) => s['id'] == id).firstOrNull?['name'] ?? id) as String;
+
   Future<Map<String, dynamic>> me() => _run((g) => Map<String, dynamic>.from(g.me()));
   Future<Map<String, dynamic>> stalls() => _run((g) => Map<String, dynamic>.from(g.stalls()));
   Future<Map<String, dynamic>> start(String stall, String item, [String? surprise]) =>

@@ -4,6 +4,7 @@ library;
 
 import 'dart:math' as math;
 
+import 'arcs.dart';
 import 'challenges.dart';
 
 /// Base stalls: open from the start, and the only ones the daily list uses (so it's the same list for everyone).
@@ -38,6 +39,7 @@ const stickerDefs = <(String, String, String, String)>[
   ('month', '👑', 'Hawker of the Month', 'Play on 30 different days'),
   ('sharp_eye', '🧐', 'Sharp eye', 'Guess the fair price within 10%, 5 times'),
   ('festive', '🏮', 'Festival week shopper', 'Close a deal during a festival week'),
+  ('storyteller', '📖', 'Part of the story', "Finish a stallholder's story"),
 ];
 
 String dayKey(DateTime d) =>
@@ -328,6 +330,7 @@ class Progress {
     _addPoints(stall, (deal ? 8 : 2) + math.min(3, ((flags['nice'] ?? 0) as num).toInt()));
     _stickersForHaggle(record, flags, fresh);
     _friendStickers(fresh);
+    final story = _storyProgress(record, fresh);
     String? mum;
     if (deal && record['deal'] != null) {
       mum = _onListDeal(stall, '${record['item']}', (record['deal'] as num).toDouble(), qty, fresh);
@@ -340,7 +343,7 @@ class Progress {
         if (unlocked(s)) s,
     ];
     if (newly.isNotEmpty) _earn('new_stall', fresh);
-    return (stickers: fresh.toList(), mum: mum, unlocked: newly, notes: notes);
+    return (stickers: fresh.toList(), mum: mum, unlocked: newly, notes: [...story, ...notes]);
   }
 
   // ---------------------------------------------------------------- past haggles (chat history)
@@ -413,6 +416,44 @@ class Progress {
       'points': points(stall),
       'next_at': lvl < 3 ? heartAt[lvl] : null,
       'story': [for (var i = 0; i < story.length; i++) i < lvl ? story[i] : null],
+      if (arcs[stall] != null) 'arc': arc(stall),
     };
+  }
+
+  // ---------------------------------------------------------------- story arcs
+  Map _arc(String stall) => (_map('arcs')[stall] ??= <String, Object?>{'done': 0}) as Map;
+
+  /// A regular's story: each chapter done, open (with what to do) or locked (until more hearts).
+  Map<String, Object?> arc(String stall) {
+    final chapters = arcs[stall]!;
+    final done = ((_arc(stall)['done'] ?? 0) as num).toInt();
+    return {
+      'title': arcTitles[stall],
+      'chapters': [
+        for (final (i, c) in chapters.indexed)
+          {
+            'title': c.title,
+            'state': i < done ? 'done' : (i == done && hearts(stall) >= c.hearts ? 'open' : 'locked'),
+            'text': i < done ? c.done : c.ask,
+            'hearts': c.hearts,
+          },
+      ],
+    };
+  }
+
+  /// After a haggle: did it finish the open chapter of anyone's story? (Auntie Mei's can need Uncle Lim's prawns.)
+  List<String> _storyProgress(Map record, Set<String> fresh) {
+    final notes = <String>[];
+    for (final MapEntry(key: stall, value: chapters) in arcs.entries) {
+      final a = _arc(stall);
+      final n = ((a['done'] ?? 0) as num).toInt();
+      if (n >= chapters.length || hearts(stall) < chapters[n].hearts) continue;
+      if (!chapters[n].check(record, a['last'] as Map?)) continue;
+      a['done'] = n + 1;
+      a['last'] = {'day': record['day']};
+      notes.add('📖 ${arcTitles[stall]}, chapter ${n + 1}: ${chapters[n].done}');
+      if (n + 1 == chapters.length) _earn('storyteller', fresh);
+    }
+    return notes;
   }
 }

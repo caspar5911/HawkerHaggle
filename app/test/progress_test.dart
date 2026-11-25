@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/core/game.dart';
+import 'package:hawker_haggle/core/arcs.dart';
 import 'package:hawker_haggle/core/progress.dart';
 
 final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
@@ -268,7 +269,8 @@ void main() {
         if (s['earned'] != null) s['id'],
     };
     // the month-long ones (days played, 7 dailies, a quest week, 30 days) are earned in challenges_test's month
-    const monthLong = {'days3', 'dailies7', 'week_done', 'month'};
+    // (and finishing a whole story takes days of friendship: earned in the story test below)
+    const monthLong = {'days3', 'dailies7', 'week_done', 'month', 'storyteller'};
     final missing = {for (final (id, _, _, _) in stickerDefs) id}.difference(earned).difference(monthLong);
     expect(missing, isEmpty, reason: 'never earned: $missing');
   });
@@ -423,5 +425,43 @@ void main() {
     expect(g.gossipNote('lim'), isNot(contains('rude to Uncle Lim')));
     clock.nextDay();
     expect(g.gossipNote('siti'), isEmpty); // yesterday's news
+  });
+
+  test("story arcs: Uncle Lim's story opens with hearts and is finished by playing, over several days", () async {
+    final (g, _, clock) = await newGame();
+    List<String> states() => [
+      for (final c in ((g.stallProfile('lim')['arc'] as Map)['chapters'] as List).cast<Map>()) '${c['state']}',
+    ];
+    expect(states(), ['locked', 'locked', 'locked']);
+    final notes = <String>[];
+    for (var day = 0; day < 14 && !states().every((x) => x == 'done'); day++) {
+      for (var i = 0; i < 3; i++) {
+        final r = await finishHaggle(g, 'lim', 'pomfret');
+        notes.addAll((r['notes'] as List).cast<String>().where((n) => n.startsWith('📖')));
+      }
+      clock.nextDay();
+    }
+    expect(states(), ['done', 'done', 'done']);
+    expect(notes, hasLength(3));
+    expect(notes.first, contains("Uncle Lim's last stall?, chapter 1"));
+    expect(g.stickers().firstWhere((s) => s['id'] == 'storyteller')['earned'], isNotNull);
+    // the done text replaces the task
+    final ch = ((g.stallProfile('lim')['arc'] as Map)['chapters'] as List).cast<Map>();
+    expect(ch.last['text'], contains('smiles properly'));
+    expect(g.stallProfile('rosnah')['arc'], isNull); // the newest stallholders have no story arc yet
+  });
+
+  test('story chapter checks', () {
+    final mei = arcs['mei']!, lim = arcs['lim']!, raj = arcs['raj']!, siti = arcs['siti']!;
+    Map deal(String st, String it, {int stars = 1, int qty = 1, String day = '2026-11-25', List tactics = const []}) =>
+        {'stall': st, 'item': it, 'result': 'deal', 'stars': stars, 'qty': qty, 'day': day, 'tactics': tactics};
+    expect(mei[1].check(deal('lim', 'prawns', stars: 2), null), isTrue); // Auntie Mei's story at Uncle Lim's
+    expect(mei[1].check(deal('lim', 'prawns', stars: 1), null), isFalse);
+    expect(lim[1].check(deal('lim', 'pomfret'), {'day': '2026-11-25'}), isFalse); // same day doesn't count
+    expect(lim[1].check(deal('lim', 'pomfret'), {'day': '2026-11-24'}), isTrue);
+    expect(raj[1].check(deal('raj', 'case', qty: 2), null), isTrue);
+    expect(siti[1].check(deal('siti', 'kueh', tactics: ['compliment']), null), isTrue);
+    expect(siti[1].check(deal('siti', 'kueh'), null), isFalse);
+    expect(mei[0].check({...deal('mei', 'mango'), 'result': 'walked'}, null), isFalse);
   });
 }

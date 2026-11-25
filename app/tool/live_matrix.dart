@@ -224,6 +224,9 @@ Future<void> main(List<String> args) async {
     ('boy', 'rccar', 'bro how long the battery last?', ['20', 'minute']),
     ('wong', 'radio', 'uncle how old is this radio?', ['1970', 'seventies', '70s']),
     ('kumar', 'saffron', 'is this real saffron?', ['kashmir', 'golden', 'real']),
+    ('rosnah', 'tray', 'makcik what comes in each packet?', ['chicken', 'egg', 'ikan bilis', 'sambal']),
+    ('faiz', 'sneakers', 'bro what size is this?', ['9', 'uk']),
+    ('tan', 'bicycle', 'ah ma what time must I return the bike?', ['6', 'six']),
   ]) {
     final g = await game.start(st, it, 'none');
     final r = await game.move(g['id'] as String, text: q);

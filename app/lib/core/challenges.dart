@@ -36,7 +36,7 @@ const milestones = <(int, String, String)>[
   (3, '🌱', 'Sticker: Three market days'),
   (7, '🏺', "Uncle Wong's antique stall opens"),
   (14, '🌶️', "Madam Kumar's spice shop opens"),
-  (21, '🏅', 'A golden name badge'),
+  (21, '🏅', "A golden name badge, and Ah Ma Tan's kampung shop opens"),
   (30, '👑', 'Sticker and title: Hawker of the Month'),
 ];
 

@@ -1427,7 +1427,7 @@ class _ResultState extends State<_Result> {
                   for (final u in unlocked) ...[
                     const SizedBox(height: 10),
                     Text(
-                      '🔓 A new stall opened: ${const {'lee': 'Madam Lee', 'boy': 'Ah Boy', 'wong': 'Uncle Wong', 'kumar': 'Madam Kumar'}[u] ?? u}!',
+                      '🔓 A new stall opened: ${widget.api.stallName(u)}!',
                       style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
                     ),
                   ],

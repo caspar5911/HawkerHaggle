@@ -131,3 +131,10 @@ above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of
 - **Gossip:** the same call lists friends' deals from the last two days (no prices). The stallholder's AI greeting
   may mention the friend by name (never what they paid); simple mode opens the ready-made greeting with
   "Eh, your friend … came by also!". Being rude at one stall today is heard at the others (AI only, no effect on prices).
+- **New places:** Auntie Rosnah (hawker centre catering: nasi lemak tray, ondeh-ondeh; 20 ⭐), Bro Faiz (Bedok night
+  market: pre-loved sneakers, football jersey; 26 ⭐), Ah Ma Tan (Pulau Ubin kampung shop: bicycle for the day,
+  kampung eggs; day 21 of the Market Month). Original characters, full lines, facts and stories; new beanie and
+  straw-hat drawings. In both content copies, so the Python reference covers them (fixtures regenerated).
+- **Story arcs** (`app/lib/core/arcs.dart`): three chapters each for Auntie Mei, Uncle Lim, Boss Raj and Kak Siti,
+  opening with hearts and finished by a haggle that does what the chapter asks (one of Auntie Mei's is at Uncle Lim's).
+  Shown in the stallholder's profile; a sticker for a whole story; no XP, so the month's pacing is unchanged.
