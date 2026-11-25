@@ -627,6 +627,32 @@ void main() {
     await settle(tester, 2000);
   });
 
+  testWidgets('a soft spot toast, a "convince me" banner, and how close you got on the result', (tester) async {
+    final fake = await openHaggle(tester, [
+      game('Fishing ah? Wah, I love it! \$16 for you.', event: 'counter', ask: 16)
+        ..addAll({'found': 'fishing trips', 'challenge': true}),
+      game('Wah, okay okay, you convinced me! \$12!', event: 'accept', result: 'deal', deal: 12, stars: 3, saved: 0.33)
+        ..addAll({'pitch_score': 2, 'closeness': "🎯 Right at Auntie Mei's limit!"}),
+    ]);
+    await tester.tap(find.textContaining('Say anything'));
+    await settle(tester, 600);
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), 'auntie you go fishing?');
+    await tester.tap(find.text('Send'));
+    await settle(tester, 800);
+    expect(find.textContaining("You found Auntie Mei's soft spot: fishing trips!"), findsOneWidget);
+    expect(find.text('💬 Auntie Mei wants convincing! Type your best pitch.'), findsOneWidget);
+    await settle(tester, 4000); // the toast goes
+    await tester.tap(find.textContaining('Say anything'));
+    await settle(tester, 600);
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), 'my grandma loves your mangoes!');
+    await tester.tap(find.text('Send'));
+    await settle(tester, 2500);
+    expect(fake.sent.last['text'], 'my grandma loves your mangoes!');
+    expect(find.textContaining('What a pitch!'), findsOneWidget);
+    expect(find.textContaining("Right at Auntie Mei's limit!"), findsOneWidget);
+    await settle(tester, 4000);
+  });
+
   testWidgets('a festival week shows on the market', (tester) async {
     final fake = Fake([])..festival = {'id': 'cny2027', 'name': 'Chinese New Year', 'emoji': '🧧', 'to': '2027-02-08'};
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
