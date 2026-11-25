@@ -720,7 +720,7 @@ class Game {
         final when = f['day'] == today ? 'earlier today' : 'a day or two ago';
         parts.add(
           'A friend of this customer (their name is "$name") bought the $item here $when. You may mention it in '
-          'passing, without saying what they paid.',
+          'passing, without saying what they paid, and without guessing whether they are a man or a woman.',
         );
       }
     }

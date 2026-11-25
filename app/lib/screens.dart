@@ -276,7 +276,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
                             SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                'Run your own stall: sell to tricky customers',
+                                'Your own stall: you sell!',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
