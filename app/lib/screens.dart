@@ -1652,8 +1652,11 @@ class _TypeBox extends StatefulWidget {
 }
 
 class _TypeBoxState extends State<_TypeBox> {
-  bool _listening = false;
+  bool _listening = false; // the 🎤 is on (from the tap until it ends)
+  bool _live = false; // ...and the phone is really listening: speak now
+  String _language = '';
   String _problem = '';
+  String _voiced = ''; // what the 🎤 last put in the box
 
   TextEditingController get text => widget.text;
   String get lastLine => widget.lastLine;
@@ -1664,12 +1667,13 @@ class _TypeBoxState extends State<_TypeBox> {
   @override
   void initState() {
     super.initState();
-    if (widget.listen) _talk();
+    // let the box finish opening first (so the tap isn't heard)
+    if (widget.listen) Timer(const Duration(milliseconds: 280), () => mounted ? _talk() : null);
   }
 
   @override
   void dispose() {
-    if (_listening) Voice.instance.stop();
+    Voice.instance.stop(); // never leave the microphone on
     super.dispose();
   }
 
@@ -1681,11 +1685,23 @@ class _TypeBoxState extends State<_TypeBox> {
     }
     setState(() {
       _listening = true;
+      _live = false;
       _problem = '';
     });
+    // talking again: says it again if the box only has what the 🎤 heard, else adds to what you typed
+    final before = text.text == _voiced ? '' : text.text.trim();
     final ok = await Voice.instance.listen(
-      hints: ['lah', 'leh', 'auntie', 'uncle', 'can or not', 'cheaper', 'so expensive', who],
-      onWords: (w) {
+      onReady: (language) {
+        if (mounted) {
+          setState(() {
+            _live = true;
+            _language = language;
+          });
+        }
+      },
+      onWords: (heard) {
+        final w = [before, heard].where((x) => x.isNotEmpty).join(' ');
+        _voiced = w;
         if (!mounted) return;
         text.text = w;
         text.selection = TextSelection.collapsed(offset: w.length);
@@ -1694,6 +1710,7 @@ class _TypeBoxState extends State<_TypeBox> {
         if (mounted) {
           setState(() {
             _listening = false;
+            _live = false;
             _problem = problem ?? '';
           });
         }
@@ -1759,12 +1776,17 @@ class _TypeBoxState extends State<_TypeBox> {
                       onSubmitted: (_) => done(),
                       style: const TextStyle(fontSize: 17, color: Palette.ink),
                       decoration: InputDecoration(
-                        hintText: _listening ? 'Listening… say it like you mean it' : 'Type your reply…',
+                        hintText: !_listening
+                            ? 'Type your reply…'
+                            : (_live ? 'Listening… say it like you mean it' : 'Getting ready…'),
                         helperText: _problem.isNotEmpty
                             ? _problem
-                            : (_listening
-                                  ? '🎤 Speak now. Tap 🎤 again when you\'re done.'
-                                  : 'Tip: tap 🎤 to say it, or hold a suggestion to edit it.'),
+                            : (!_listening
+                                  ? 'Tip: tap 🎤 to say it, or hold a suggestion to edit it.'
+                                  : (_live
+                                        ? '🎤 Speak now${_language.isEmpty ? '' : ' ($_language)'}. '
+                                              'Pauses are fine: tap ■ when you\'re done.'
+                                        : '🎤 Wait for "Speak now"…')),
                         helperMaxLines: 2,
                         counterText: '',
                         filled: true,

@@ -407,13 +407,13 @@ void main() {
     final fake = await openHaggle(tester, [game('Aiyo \$10 cannot lah, \$16.', event: 'counter', ask: 16)]);
     await tester.tap(find.byKey(const ValueKey('mic')));
     await settle(tester, 600);
-    expect(voice.hints, contains('can or not'));
     final field = tester.widget<TextField>(find.byKey(const ValueKey('reply_field')));
     expect(field.controller!.text, '\$10 can or not auntie');
     expect(fake.sent, isEmpty); // you check it first
     await tester.tap(find.text('Send'));
     await settle(tester, 2500);
     expect(fake.sent.last['text'], '\$10 can or not auntie');
+    expect(voice.stopped, isTrue); // closing the box always turns the microphone off
     await settle(tester, 3000);
   });
 
@@ -987,15 +987,15 @@ class _Voice implements Voice {
   _Voice(this.words, {this.works = true});
   final List<String> words;
   final bool works;
-  List<String> hints = const [];
+  bool stopped = false;
   @override
   Future<bool> listen({
     required void Function(String words) onWords,
     required void Function(String? problem) onEnd,
-    List<String> hints = const [],
+    void Function(String language)? onReady,
   }) async {
     if (!works) return false;
-    this.hints = hints;
+    onReady?.call('English (Singapore)');
     for (final w in words) {
       onWords(w);
     }
@@ -1004,5 +1004,5 @@ class _Voice implements Voice {
   }
 
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async => stopped = true;
 }
