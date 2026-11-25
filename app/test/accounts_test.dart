@@ -201,14 +201,14 @@ void main() {
     expect(api.ai.endpoint, 'https://glm.example/v1');
   });
 
-  test('the admin logs in without touching the AI settings, and can change the default password', () async {
+  test('the admin logs in (the AI goes through the market) and can change the default password', () async {
     final m = Market();
     final api = apiWith(m, accountServer: 'https://relay.example');
     await api.ensureDevice();
     final acc = await api.signIn(server: api.accountServer, username: 'admin', password: 'admin');
     expect(acc.admin, isTrue);
     expect(acc.defaultPassword, isTrue);
-    expect(api.ai.endpoint, 'https://glm.example/v1'); // still the GLM over Tailscale
+    expect(api.ai.endpoint, 'https://relay.example/ai/v1'); // through the market, with the admin's login
     await expectLater(api.changePassword('wrong', 'new-pass-1'), throwsA(isA<AccountError>()));
     await api.changePassword('admin', 'new-pass-1');
     expect(api.account!.defaultPassword, isFalse);
@@ -494,7 +494,7 @@ void main() {
           password: 'admin',
           bringProgress: (_) async => fail('nothing to bring'),
         );
-        expect(incognito.ai.endpoint, 'https://glm.example/v1'); // the admin's AI doesn't change
+        expect(incognito.ai.endpoint, 'https://relay.example/ai/v1'); // through the market, like a player's
         // then on their own phone, with real progress: the empty admin copy doesn't count, so it asks
         final mine = phone(m);
         await mine.setName('Caspar');
@@ -580,12 +580,9 @@ void main() {
     await settle(tester, 3000);
   });
 
-  test('the admin through a public address: the AI goes through it; over Tailscale it stays built in', () async {
+  test("the admin's AI goes through the market it logged in to, like a player's; logging out goes back", () async {
     final m = Market();
     final a = apiWith(m, accountServer: 'https://relay.example');
-    await a.signIn(server: 'https://relay.example', username: 'admin', password: 'admin');
-    expect(a.ai.endpoint, 'https://glm.example/v1');
-    await a.signOut();
     final acc = await a.signIn(server: 'ai.labhost.example', username: 'admin', password: 'admin');
     expect(acc.admin, isTrue);
     expect(a.ai.endpoint, 'https://ai.labhost.example/ai/v1');

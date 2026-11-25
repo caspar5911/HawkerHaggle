@@ -193,8 +193,8 @@ class Api {
 
   /// Sign up or log in: the game shows that account's progress (kept on the server, so any phone that logs in sees
   /// the same). An account with no haggles yet starts fresh, or takes this phone's progress if [bringProgress] says
-  /// so (asked only when this phone has some). The login also becomes the AI key for that server's relay, except the
-  /// admin's on this build's own (Tailscale) market, which keeps the built-in AI.
+  /// so (asked only when this phone has some). The login also becomes the AI key for that server's relay (the admin's
+  /// too), so the AI works wherever that server can be reached.
   Future<Account> signIn({
     required String server,
     required String username,
@@ -230,9 +230,9 @@ class Api {
     await _saveAccount(acc);
     await _writeSync(acc);
     await _quietly(() => _game!.useProfile(key));
-    // The admin over Tailscale (this build's own market) keeps the built-in AI; anywhere else (a public address),
-    // the AI goes through that market with the login, like a player's.
-    if (!acc.admin || serverAddress(acc.server) != serverAddress(accountServer)) {
+    // Everyone's AI (the admin's too) goes through the market they logged in to, with their login: it works on or off
+    // Tailscale. Logging out goes back to the built-in AI.
+    {
       await _applyAi(
         endpoint: relayFor(acc.server),
         model: _ai.model.isEmpty ? (builtInModel.isEmpty ? 'gx10-current' : builtInModel) : _ai.model,
