@@ -10,6 +10,7 @@ import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/extras.dart';
 import 'package:hawker_haggle/main.dart';
 import 'package:hawker_haggle/sfx.dart';
+import 'package:hawker_haggle/voice.dart';
 
 const look = {'skin': '#F5D0B5', 'hair': '#4A3B35', 'shirt': '#F28FA3', 'apron': '#FFF2C7', 'accessory': 'perm'};
 
@@ -397,6 +398,35 @@ void main() {
     expect(fake.sent.last['text'], 'my wife will scold me lah');
     expect(find.text('my wife will scold me lah', skipOffstage: false), findsOneWidget);
     expect(find.text('Aiyo your wife so fierce ah? Still \$18.', skipOffstage: false), findsOneWidget);
+    await settle(tester, 3000);
+  });
+
+  testWidgets('🎤 talking: what you say goes into the box to check, then you send it', (tester) async {
+    final voice = _Voice(['\$10', '\$10 can or not auntie']);
+    Voice.instance = voice;
+    final fake = await openHaggle(tester, [game('Aiyo \$10 cannot lah, \$16.', event: 'counter', ask: 16)]);
+    await tester.tap(find.byKey(const ValueKey('mic')));
+    await settle(tester, 600);
+    expect(voice.hints, contains('can or not'));
+    final field = tester.widget<TextField>(find.byKey(const ValueKey('reply_field')));
+    expect(field.controller!.text, '\$10 can or not auntie');
+    expect(fake.sent, isEmpty); // you check it first
+    await tester.tap(find.text('Send'));
+    await settle(tester, 2500);
+    expect(fake.sent.last['text'], '\$10 can or not auntie');
+    await settle(tester, 3000);
+  });
+
+  testWidgets("🎤 on a phone that can't listen: says so, and you can still type", (tester) async {
+    Voice.instance = _Voice(const [], works: false);
+    final fake = await openHaggle(tester, [game('OK lah \$17.', event: 'counter', ask: 17)]);
+    await tester.tap(find.byKey(const ValueKey('mic')));
+    await settle(tester, 600);
+    expect(find.textContaining("Voice typing isn't available"), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), 'cheaper can?');
+    await tester.tap(find.text('Send'));
+    await settle(tester, 2500);
+    expect(fake.sent.last['text'], 'cheaper can?');
     await settle(tester, 3000);
   });
 
@@ -950,4 +980,29 @@ void main() {
     expect(faceFor('pity', 0), Face.sad);
     expect(faceFor('pity_tired', 0), Face.annoyed);
   });
+}
+
+/// Pretend voice typing: "hears" [words] one after another, then stops.
+class _Voice implements Voice {
+  _Voice(this.words, {this.works = true});
+  final List<String> words;
+  final bool works;
+  List<String> hints = const [];
+  @override
+  Future<bool> listen({
+    required void Function(String words) onWords,
+    required void Function(String? problem) onEnd,
+    List<String> hints = const [],
+  }) async {
+    if (!works) return false;
+    this.hints = hints;
+    for (final w in words) {
+      onWords(w);
+    }
+    onEnd(null);
+    return true;
+  }
+
+  @override
+  Future<void> stop() async {}
 }

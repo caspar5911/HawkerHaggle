@@ -10,6 +10,7 @@ import 'character.dart';
 import 'extras.dart';
 import 'juice.dart';
 import 'sfx.dart';
+import 'voice.dart';
 import 'shop_screen.dart';
 import 'web_update.dart';
 import 'widgets.dart';
@@ -1513,24 +1514,42 @@ class _Controls extends StatelessWidget {
           ],
           Row(
             children: [
-              // Typing opens a box in the middle of the screen, above the keyboard, so nothing gets hidden.
+              // Typing opens a box in the middle of the screen, above the keyboard, so nothing gets hidden. The 🎤 in it
+              // opens the same box listening: what you say goes in, to check before sending.
               Expanded(
                 child: Bouncy(
                   enabled: !busy,
                   onTap: () => _openTypeBox(context),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    padding: const EdgeInsets.fromLTRB(14, 7, 7, 7),
                     decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(20)),
-                    child: const Row(
+                    child: Row(
                       children: [
-                        Text('✍️', style: TextStyle(fontSize: 18)),
-                        SizedBox(width: 8),
-                        Expanded(
+                        const Expanded(
                           child: Text(
                             'Say anything…',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(color: Palette.soft, fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                        Semantics(
+                          label: 'Say it out loud',
+                          button: true,
+                          child: Bouncy(
+                            key: const ValueKey('mic'),
+                            enabled: !busy,
+                            onTap: () {
+                              text.clear();
+                              _openTypeBox(context, listen: true);
+                            },
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                              child: const Text('🎤', style: TextStyle(fontSize: 18)),
+                            ),
                           ),
                         ),
                       ],
@@ -1576,7 +1595,7 @@ class _Controls extends StatelessWidget {
     );
   }
 
-  Future<void> _openTypeBox(BuildContext context, {String? prefill}) async {
+  Future<void> _openTypeBox(BuildContext context, {String? prefill, bool listen = false}) async {
     if (prefill != null) {
       text.text = prefill;
       text.selection = TextSelection.collapsed(offset: prefill.length);
@@ -1587,8 +1606,14 @@ class _Controls extends StatelessWidget {
       barrierLabel: 'Close',
       barrierColor: Colors.black.withValues(alpha: 0.35),
       transitionDuration: const Duration(milliseconds: 260),
-      pageBuilder: (_, _, _) =>
-          _TypeBox(text: text, lastLine: lastLine, who: who, ask: g['ask'] as num, pending: g['pending'] as num?),
+      pageBuilder: (_, _, _) => _TypeBox(
+        text: text,
+        lastLine: lastLine,
+        who: who,
+        ask: g['ask'] as num,
+        pending: g['pending'] as num?,
+        listen: listen,
+      ),
       transitionBuilder: (_, a, _, child) => FadeTransition(
         opacity: a,
         child: ScaleTransition(
@@ -1606,19 +1631,81 @@ class _Controls extends StatelessWidget {
 
 /// The typing box: floats in the middle of the screen, above the keyboard, with the stallholder's last line
 /// so you can see what you're answering.
-class _TypeBox extends StatelessWidget {
+class _TypeBox extends StatefulWidget {
   const _TypeBox({
     required this.text,
     required this.lastLine,
     required this.who,
     required this.ask,
     required this.pending,
+    this.listen = false,
   });
   final TextEditingController text;
   final String lastLine;
   final String who;
   final num ask;
   final num? pending;
+  final bool listen; // opened with 🎤: start listening straight away
+
+  @override
+  State<_TypeBox> createState() => _TypeBoxState();
+}
+
+class _TypeBoxState extends State<_TypeBox> {
+  bool _listening = false;
+  String _problem = '';
+
+  TextEditingController get text => widget.text;
+  String get lastLine => widget.lastLine;
+  String get who => widget.who;
+  num get ask => widget.ask;
+  num? get pending => widget.pending;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.listen) _talk();
+  }
+
+  @override
+  void dispose() {
+    if (_listening) Voice.instance.stop();
+    super.dispose();
+  }
+
+  /// 🎤: what you say goes into the box (you can still fix it before sending).
+  Future<void> _talk() async {
+    if (_listening) {
+      await Voice.instance.stop();
+      return;
+    }
+    setState(() {
+      _listening = true;
+      _problem = '';
+    });
+    final ok = await Voice.instance.listen(
+      hints: ['lah', 'leh', 'auntie', 'uncle', 'can or not', 'cheaper', 'so expensive', who],
+      onWords: (w) {
+        if (!mounted) return;
+        text.text = w;
+        text.selection = TextSelection.collapsed(offset: w.length);
+      },
+      onEnd: (problem) {
+        if (mounted) {
+          setState(() {
+            _listening = false;
+            _problem = problem ?? '';
+          });
+        }
+      },
+    );
+    if (!ok && mounted) {
+      setState(() {
+        _listening = false;
+        _problem = "Voice typing isn't available here. Allow the microphone, or type instead.";
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1663,7 +1750,7 @@ class _TypeBox extends StatelessWidget {
                     TextField(
                       key: const ValueKey('reply_field'),
                       controller: text,
-                      autofocus: true,
+                      autofocus: !widget.listen, // talking: no keyboard in the way
                       maxLength: 300,
                       minLines: 1,
                       maxLines: 4,
@@ -1672,8 +1759,13 @@ class _TypeBox extends StatelessWidget {
                       onSubmitted: (_) => done(),
                       style: const TextStyle(fontSize: 17, color: Palette.ink),
                       decoration: InputDecoration(
-                        hintText: 'Type your reply…',
-                        helperText: 'Tip: hold a suggestion to bring it here and edit it.',
+                        hintText: _listening ? 'Listening… say it like you mean it' : 'Type your reply…',
+                        helperText: _problem.isNotEmpty
+                            ? _problem
+                            : (_listening
+                                  ? '🎤 Speak now. Tap 🎤 again when you\'re done.'
+                                  : 'Tip: tap 🎤 to say it, or hold a suggestion to edit it.'),
+                        helperMaxLines: 2,
                         counterText: '',
                         filled: true,
                         fillColor: Palette.cream,
@@ -1713,6 +1805,16 @@ class _TypeBox extends StatelessWidget {
                           child: Bouncy(
                             onTap: () => Navigator.of(context).pop(),
                             child: const Pill(text: 'Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Bouncy(
+                          key: const ValueKey('mic_box'),
+                          onTap: _talk,
+                          child: Pill(
+                            text: _listening ? '■' : '🎤',
+                            color: _listening ? Palette.red : Palette.cream,
+                            textColor: _listening ? Colors.white : Palette.ink,
                           ),
                         ),
                         const SizedBox(width: 10),
