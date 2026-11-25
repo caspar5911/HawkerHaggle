@@ -252,6 +252,12 @@ void main() {
     clock.t = DateTime(2026, 12, 21, 10);
     expect(g.festivalWeek?.name, 'Christmas');
     await finishHaggle(g, 'mei', 'mango');
+    // your own stall: sell at the usual price (some customers pay it)
+    for (var i = 0; i < 30 && !g.stickers().any((s) => s['id'] == 'shopkeeper' && s['earned'] != null); i++) {
+      final r = await g.shopStart();
+      final x = await g.shopMove(r['id'] as String, ask: ((r['product'] as Map)['fair'] as num).toDouble());
+      if (x['done'] != true) await g.shopMove(r['id'] as String, take: true);
+    }
     // hard mode
     await g.setHard(true);
     await finishHaggle(g, 'siti', 'scarf');

@@ -168,6 +168,31 @@ Future<void> main(List<String> args) async {
     if (!wished) fails.add('the ${fg.festivalWeek?.name} greeting did not mention the festival');
   }
 
+  // your own stall: AI customers, only with the prices the code gives them
+  {
+    final sg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg));
+    await sg.load();
+    var aiLines = 0, lines = 0;
+    for (var i = 0; i < 4; i++) {
+      var r = await sg.shopStart();
+      final id = r['id'] as String;
+      final fair = ((r['product'] as Map)['fair'] as num).toDouble();
+      stdout.writeln('SHOP  ${(r['customer'] as Map)['name']} ${r['ai_line'] == true ? '✨' : '  '} ${r['line']}');
+      lines++;
+      if (r['ai_line'] == true) aiLines++;
+      for (final ask in [fair * 1.4, fair * 1.1]) {
+        if (r['done'] == true) break;
+        r = await sg.shopMove(id, ask: ask);
+        lines++;
+        if (r['ai_line'] == true) aiLines++;
+        stdout.writeln(
+          'SHOP    ask ${ask.toStringAsFixed(2)} -> ${r['event']} ${r['ai_line'] == true ? '✨' : '  '} ${r['line']}',
+        );
+      }
+    }
+    if (aiLines < lines ~/ 2) fails.add('AI customers wrote only $aiLines of $lines lines');
+  }
+
   // gossip: a friend came by (named, never priced); rude next door today
   {
     final gg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), surprises: false, unlockAll: true);

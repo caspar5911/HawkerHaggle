@@ -40,6 +40,7 @@ const stickerDefs = <(String, String, String, String)>[
   ('sharp_eye', '🧐', 'Sharp eye', 'Guess the fair price within 10%, 5 times'),
   ('festive', '🏮', 'Festival week shopper', 'Close a deal during a festival week'),
   ('storyteller', '📖', 'Part of the story', "Finish a stallholder's story"),
+  ('shopkeeper', '🧺', 'Shopkeeper', 'Sell at your own stall for the usual price or more'),
 ];
 
 String dayKey(DateTime d) =>

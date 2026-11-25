@@ -138,3 +138,10 @@ above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of
 - **Story arcs** (`app/lib/core/arcs.dart`): three chapters each for Auntie Mei, Uncle Lim, Boss Raj and Kak Siti,
   opening with hearts and finished by a haggle that does what the chapter asks (one of Auntie Mei's is at Uncle Lim's).
   Shown in the stallholder's profile; a sticker for a whole story; no XP, so the month's pacing is unchanged.
+- **Run your own stall** (`app/lib/core/shop.dart`, its own engine; `engine.dart` and the Python reference are
+  untouched): you sell a box of mangoes, a phone case or a batik scarf (each with a cost and a usual price) to four
+  made-up customers (a kiasu uncle, a tourist, a broke student, a busy tai tai), each with a secret most they'll pay,
+  an opening offer, patience and how far they move. Ask a price (tap or type), sell at their offer, or be friendly
+  (once helps, more costs patience). Stars by the price against the usual one; profit and sales are counted. The AI
+  writes the customer's words with only the code's prices (the same price check); otherwise ready-made lines.
+  Selling isn't haggling: no XP, challenges or Market Month; a sticker for a sale at the usual price or more.

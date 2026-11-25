@@ -1,0 +1,313 @@
+// Run your own stall: you sell, customers bargain you down. Tap a price, take their offer, chat, or type a price.
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'api.dart';
+import 'character.dart';
+import 'sfx.dart';
+import 'widgets.dart';
+
+class ShopScreen extends StatefulWidget {
+  const ShopScreen({super.key, required this.api});
+  final Api api;
+  @override
+  State<ShopScreen> createState() => _ShopScreenState();
+}
+
+class _ShopScreenState extends State<ShopScreen> {
+  Map<String, dynamic>? _s;
+  final _msgs = <({String text, bool mine, bool sparkle})>[];
+  final _scroll = ScrollController();
+  final _price = TextEditingController();
+  bool _busy = false;
+  int _react = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _next();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _price.dispose();
+    super.dispose();
+  }
+
+  void _toast(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  Future<void> _next() async {
+    setState(() {
+      _busy = true;
+      _msgs.clear();
+      _s = null;
+    });
+    try {
+      _apply(await widget.api.shopStart());
+    } on ApiError catch (e) {
+      _toast(e.message);
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _apply(Map<String, dynamic> s) {
+    if (!mounted) return;
+    setState(() {
+      _s = s;
+      _busy = false;
+      _msgs.add((text: '${s['line']}', mine: false, sparkle: s['ai_line'] == true));
+      _react++;
+    });
+    if (s['done'] == true) {
+      if (s['result'] == 'sold') {
+        Sfx.play('deal');
+        HapticFeedback.heavyImpact();
+      } else {
+        Sfx.play('aww');
+      }
+    } else {
+      Sfx.forEvent(s['event'] == 'annoyed' ? 'insulted' : 'counter');
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent + 120,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _move({double? ask, bool take = false, bool chat = false, required String mine}) async {
+    final s = _s;
+    if (s == null || _busy || s['done'] == true) return;
+    setState(() {
+      _busy = true;
+      _msgs.add((text: mine, mine: true, sparkle: false));
+    });
+    try {
+      _apply(await widget.api.shopMove(s['id'] as String, ask: ask, take: take, chat: chat));
+    } on ApiError catch (e) {
+      _toast(e.message);
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _typed() {
+    final v = double.tryParse(_price.text.replaceAll(RegExp(r'[^0-9.]'), ''));
+    if (v == null || v <= 0) return;
+    _price.clear();
+    FocusManager.instance.primaryFocus?.unfocus();
+    _move(ask: v, mine: '${money(v)}, can?');
+  }
+
+  Face get _face => switch (_s?['event']) {
+    'annoyed' || 'impatient' => Face.annoyed,
+    'walk' => Face.sad,
+    'accept' || 'thanks' || 'happy' => Face.happy,
+    _ => Face.neutral,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _s;
+    final product = s?['product'] as Map?;
+    final customer = s?['customer'] as Map?;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('🧺 Your own stall'),
+        backgroundColor: Palette.cream,
+        actions: [
+          if (s?['totals'] case final Map t)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Center(
+                child: Text(
+                  '${t['sales']} sold · ${money(t['profit'] as num)} profit',
+                  style: const TextStyle(color: Palette.soft, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+        ],
+      ),
+      backgroundColor: Palette.cream,
+      body: TileBackground(
+        child: Column(
+          children: [
+            // the customer in front of your counter
+            Container(
+              height: 210,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFDDF1EC), Color(0xFFFFF6E5)],
+                ),
+              ),
+              child: customer == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : Column(
+                      children: [
+                        const SizedBox(height: 6),
+                        Stallholder(
+                          look: Map<String, dynamic>.from(customer['look'] as Map),
+                          face: _face,
+                          reactKey: _react,
+                          size: 120,
+                        ),
+                        Text(
+                          '${customer['name']} wants your ${product!['emoji']} ${product['name']}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                        ),
+                        Text(
+                          'You paid ${money(product['cost'] as num)} · usually sells for ${money(product['fair'] as num)}',
+                          style: const TextStyle(color: Palette.soft, fontSize: 13),
+                        ),
+                      ],
+                    ),
+            ),
+            Expanded(
+              child: ListView(
+                controller: _scroll,
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                children: [
+                  for (final m in _msgs) Bubble(text: m.text, mine: m.mine, sparkle: m.sparkle),
+                  if (_busy) const Typing(),
+                  if (s != null && s['done'] == true) _result(s),
+                ],
+              ),
+            ),
+            if (s != null && s['done'] != true) _controls(s),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _controls(Map<String, dynamic> s) {
+    final offer = (s['offer'] as num).toDouble();
+    final asks = (s['suggestions'] as List).cast<num>();
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        color: Colors.white,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                for (final a in asks)
+                  Bouncy(
+                    key: ValueKey('ask_$a'),
+                    enabled: !_busy,
+                    onTap: () => _move(ask: a.toDouble(), mine: '${money(a)}, can?'),
+                    child: Pill(text: 'Ask ${money(a)}', icon: '🏷️'),
+                  ),
+                Bouncy(
+                  key: const ValueKey('shop_take'),
+                  enabled: !_busy,
+                  onTap: () => _move(take: true, mine: 'Okay, ${money(offer)}. Deal!'),
+                  child: Pill(text: 'Sell for ${money(offer)}', icon: '🤝', color: Palette.gold),
+                ),
+                Bouncy(
+                  key: const ValueKey('shop_chat'),
+                  enabled: !_busy,
+                  onTap: () => _move(chat: true, mine: 'You have good taste! 😊'),
+                  child: const Pill(text: 'Be friendly', icon: '😊'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    key: const ValueKey('shop_price'),
+                    controller: _price,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onSubmitted: (_) => _typed(),
+                    decoration: InputDecoration(
+                      hintText: 'Or type your price',
+                      prefixText: '\$ ',
+                      isDense: true,
+                      filled: true,
+                      fillColor: Palette.cream,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(key: const ValueKey('shop_ask'), onPressed: _busy ? null : _typed, child: const Text('Ask')),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _result(Map<String, dynamic> s) {
+    final sold = s['result'] == 'sold';
+    final stars = (s['stars'] as num).toInt();
+    return Container(
+      key: const ValueKey('shop_result'),
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      child: Column(
+        children: [
+          Text(
+            sold ? 'Sold for ${money(s['price'] as num)}!' : '${(s['customer'] as Map)['name']} walked away',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Palette.ink),
+          ),
+          if (sold) ...[
+            Text(
+              (s['profit'] as num) >= 0
+                  ? 'Profit: ${money(s['profit'] as num)}'
+                  : 'A loss of ${money(-(s['profit'] as num))}',
+              style: const TextStyle(color: Palette.ink),
+            ),
+            Text(List.generate(3, (i) => i < stars ? '⭐' : '☆').join(' '), style: const TextStyle(fontSize: 22)),
+          ] else
+            const Text('Ask a little less next time, or be friendly first.', style: TextStyle(color: Palette.soft)),
+          for (final n in (s['notes'] as List? ?? const []).cast<String>())
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                n,
+                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
+              ),
+            ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: Bouncy(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Pill(text: 'Back to market', icon: '🏮'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Bouncy(
+                  key: const ValueKey('shop_next'),
+                  onTap: _next,
+                  child: const Pill(text: 'Next customer', icon: '🧺', color: Palette.gold),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}

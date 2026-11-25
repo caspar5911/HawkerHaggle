@@ -606,6 +606,27 @@ void main() {
     await settle(tester, 3000);
   });
 
+  testWidgets('your own stall: a customer offers, you sell, then the next customer', (tester) async {
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('shop_open')));
+    await settle(tester, 1500);
+    expect(find.textContaining('wants your'), findsOneWidget);
+    expect(find.textContaining('You paid'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('shop_take')));
+    await settle(tester, 1500);
+    expect(find.textContaining('Sold for'), findsOneWidget);
+    expect(find.textContaining('sold ·'), findsOneWidget); // the running total
+    await tester.tap(find.byKey(const ValueKey('shop_next')));
+    await settle(tester, 1500);
+    expect(find.byKey(const ValueKey('shop_result')), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('shop_price')), '500');
+    await tester.tap(find.byKey(const ValueKey('shop_ask')));
+    await settle(tester, 1500);
+    expect(find.text('\$500, can?'), findsOneWidget);
+    await settle(tester, 2000);
+  });
+
   testWidgets('a festival week shows on the market', (tester) async {
     final fake = Fake([])..festival = {'id': 'cny2027', 'name': 'Chinese New Year', 'emoji': '🧧', 'to': '2027-02-08'};
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));

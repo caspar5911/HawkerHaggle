@@ -12,6 +12,7 @@ import 'engine.dart';
 import 'festivals.dart';
 import 'progress.dart';
 import 'reader.dart';
+import 'shop.dart';
 import 'voice.dart';
 
 class GameError implements Exception {
@@ -742,6 +743,101 @@ class Game {
     final f = (gossip[stallId] ?? const []).firstOrNull;
     final name = f == null ? '' : (cleanName('${f['name']}') ?? '').replaceAll(RegExp(r'\d+'), '').trim();
     return name.isEmpty ? null : 'Eh, your friend $name came by also!';
+  }
+
+  // ---------------------------------------------------------------- your own stall (roles reversed)
+  final _sales = <String, ({Sale sale, List<Map<String, Object?>> chat, int seed})>{};
+
+  /// A customer comes to your stall. [productId]: what you sell (default: the next one in turn).
+  Future<Map<String, Object?>> shopStart([String? productId]) async {
+    final shop = (_profile['shop'] ??= <String, Object?>{}) as Map;
+    final n = ((shop['served'] ?? 0) as num).toInt();
+    final product = products.firstWhere((p) => p.id == productId, orElse: () => products[n % products.length]);
+    final customer = customers[_rnd.nextInt(customers.length)];
+    final seed = _rnd.nextInt(1 << 31);
+    final sale = Sale(product, customer, seed: seed);
+    final id = 's${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
+    _sales[id] = (sale: sale, chat: <Map<String, Object?>>[], seed: seed);
+    return _shopSay(id, 'greet');
+  }
+
+  /// Your move: name a price, take their offer, or chat.
+  Future<Map<String, Object?>> shopMove(String id, {double? ask, bool take = false, bool chat = false}) async {
+    final s = _sales[id];
+    if (s == null) throw GameError(404, 'That customer has gone home');
+    if (s.sale.done) throw GameError(409, 'This sale is over');
+    String event;
+    if (take) {
+      s.chat.add({'who': 'you', 'text': 'Okay, ${money2(s.sale.offer)}. Deal!'});
+      event = s.sale.take();
+    } else if (ask != null) {
+      if (ask <= 0 || ask > 100000) throw GameError(400, 'Name a price in dollars.');
+      s.chat.add({'who': 'you', 'text': '${money2((ask * 2).round() / 2)}, can?'});
+      event = s.sale.askFor(ask);
+    } else if (chat) {
+      s.chat.add({
+        'who': 'you',
+        'text': const [
+          'Good choice! Very nice one.',
+          'For you, I throw in a free bag!',
+          'You have good taste!',
+        ][s.sale.chats % 3],
+      });
+      event = s.sale.chat();
+    } else {
+      throw GameError(400, 'Name a price, take their offer, or chat');
+    }
+    final out = await _shopSay(id, event);
+    if (s.sale.done) {
+      final shop = (_profile['shop'] ??= <String, Object?>{}) as Map;
+      shop['served'] = ((shop['served'] ?? 0) as num).toInt() + 1;
+      final notes = <String>[];
+      if (s.sale.result == 'sold') {
+        shop['sales'] = ((shop['sales'] ?? 0) as num).toInt() + 1;
+        shop['profit'] = ((shop['profit'] ?? 0) as num).toDouble() + s.sale.profit;
+        final fresh = <String>{};
+        if (s.sale.stars >= 2) progress.earn('shopkeeper', fresh);
+        for (final st in fresh) {
+          final d = stickerDefs.firstWhere((x) => x.$1 == st);
+          notes.add('New sticker! ${d.$2} ${d.$3}');
+        }
+      }
+      out['notes'] = notes;
+      out['totals'] = {'sales': shop['sales'] ?? 0, 'profit': shop['profit'] ?? 0};
+      await _save();
+    }
+    return out;
+  }
+
+  Future<Map<String, Object?>> _shopSay(String id, String event) async {
+    final s = _sales[id]!;
+    final sale = s.sale;
+    String? said = await customerSay(ai, sale, event, s.chat);
+    final aiLine = said != null;
+    said ??= customerLine(sale, event, s.seed + s.chat.length);
+    s.chat.add({'who': 'them', 'text': said, if (aiLine) 'ai': true});
+    return {
+      'id': id,
+      'event': event,
+      'line': said,
+      'ai_line': aiLine,
+      'customer': {'id': sale.customer.id, 'name': sale.customer.name, 'look': sale.customer.look},
+      'product': {
+        'id': sale.product.id,
+        'name': sale.product.name,
+        'emoji': sale.product.emoji,
+        'cost': sale.product.cost,
+        'fair': sale.product.fair,
+      },
+      'offer': sale.offer,
+      'ask': sale.ask,
+      'suggestions': sale.done ? <double>[] : sale.suggestions(),
+      'done': sale.done,
+      'result': sale.result,
+      'price': sale.price,
+      'profit': sale.done && sale.result == 'sold' ? sale.profit : null,
+      'stars': sale.stars,
+    };
   }
 
   /// The festival week today, if any (never in tests that turn surprises off).

@@ -8,6 +8,7 @@ import 'api.dart';
 import 'character.dart';
 import 'extras.dart';
 import 'sfx.dart';
+import 'shop_screen.dart';
 import 'web_update.dart';
 import 'widgets.dart';
 
@@ -253,6 +254,40 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
                 if (_me != null) _Hello(me: _me!, onName: _editName),
                 const SizedBox(height: 12),
                 if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
+                if (_me != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Bouncy(
+                      key: const ValueKey('shop_open'),
+                      onTap: () async {
+                        await Navigator.of(context)
+                            .push(MaterialPageRoute(builder: (_) => ShopScreen(api: widget.api)));
+                        _load();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFDE2D8),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Row(
+                          children: [
+                            Text('🧺', style: TextStyle(fontSize: 20)),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Run your own stall: sell to tricky customers',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: Palette.soft),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 if (_today != null) TodayCard(today: _today!, onItem: _openById),
                 if (_error != null) _Oops(message: _error!, retry: _load),
                 if (_me == null && _error == null)
