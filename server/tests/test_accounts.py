@@ -72,7 +72,7 @@ def test_public_requests_need_an_approved_account_for_the_ai(app, who):
     assert c.post("/ai/v1/chat/completions", json=CHAT, headers=bearer(tok, who)).status_code == 403
 
 
-@pytest.mark.parametrize("path", ["/download", "/v1/device", "/v1/stalls", "/delete", "/ai/admin/players", "/docs",
+@pytest.mark.parametrize("path", ["/download", "/v1/device", "/v1/stalls", "/delete", "/docs",
                                   "/openapi.json"])
 def test_the_public_side_sees_nothing_but_accounts_and_the_ai(app, path):
     c, _, _ = app
@@ -89,7 +89,7 @@ def test_admin_is_admin_admin_and_only_logs_in_over_tailscale(app):
     # an admin login can't be used from the public side either
     assert c.post("/ai/accounts/me", headers=bearer(adm, GATEWAY)).status_code == 401
     assert c.post("/ai/v1/chat/completions", json=CHAT, headers=bearer(adm, GATEWAY)).status_code == 401
-    assert c.post("/ai/admin/players", headers=bearer(adm, GATEWAY)).status_code == 404
+    assert c.post("/ai/admin/players", headers=bearer(adm, GATEWAY)).status_code == 403   # until the password changes
     # and players aren't admins
     tok = c.post("/ai/accounts/signup", json={"username": "ahboy", "password": "secret12"}, headers=ME).json()["token"]
     assert c.post("/ai/admin/players", headers=bearer(tok, ME)).status_code == 403
@@ -316,3 +316,31 @@ def test_the_board_needs_a_login(app):
     tok = signup(c, "Newbie")
     r = c.post("/ai/accounts/board", headers=bearer(tok, GATEWAY))       # pending: may look, isn't listed
     assert r.status_code == 200 and r.json()["items"] == []
+
+
+def test_admin_works_anywhere_only_once_its_password_is_changed(app):
+    c, _, model = app
+    for who in (GATEWAY, NOBODY, FRIEND):    # the default password: only the owner's own Tailscale login
+        r = c.post("/ai/accounts/login", json={"username": "admin", "password": "admin"}, headers=who)
+        assert r.status_code == 401
+    adm = admin_token(c)
+    assert c.post("/ai/accounts/password", json={"old": "admin", "new": "a-much-better-one"},
+                  headers=bearer(adm, ME)).status_code == 200
+    # now through the public domain (and a friend's device) too: log in, manage players, use the AI, keep progress
+    for who in (GATEWAY, FRIEND):
+        r = c.post("/ai/accounts/login", json={"username": "admin", "password": "a-much-better-one"}, headers=who)
+        assert r.status_code == 200 and r.json()["admin"] is True
+        tok = r.json()["token"]
+        assert c.post("/ai/accounts/me", headers=bearer(tok, who)).json()["admin"] is True
+        assert c.post("/ai/admin/players", headers=bearer(tok, who)).status_code == 200
+        assert c.post("/ai/v1/chat/completions", json=CHAT, headers=bearer(tok, who)).status_code == 200
+        assert c.post("/ai/accounts/progress", headers=bearer(tok, who)).status_code == 200
+    assert c.post("/ai/admin/players", headers=GATEWAY).status_code == 403     # still needs the admin's login
+    assert c.post("/ai/v1/chat/completions", json=CHAT, headers=GATEWAY).status_code == 401
+    # strangers guessing through the domain get locked out without locking the owner out
+    for _ in range(6):
+        c.post("/ai/accounts/login", json={"username": "admin", "password": "guess"}, headers=GATEWAY)
+    r = c.post("/ai/accounts/login", json={"username": "admin", "password": "a-much-better-one"}, headers=GATEWAY)
+    assert r.status_code == 429
+    r = c.post("/ai/accounts/login", json={"username": "admin", "password": "a-much-better-one"}, headers=ME)
+    assert r.status_code == 200

@@ -52,7 +52,7 @@ GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS",
 ADMIN_LOGINS = {x.strip().lower() for x in os.environ.get("HH_ADMIN_LOGINS", "").split(",") if x.strip()}
 PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
                 "/ai/accounts/logout", "/ai/accounts/password", "/ai/accounts/progress", "/ai/accounts/progress/save",
-                "/ai/accounts/progress/delete", "/ai/accounts/board"}
+                "/ai/accounts/progress/delete", "/ai/accounts/board", "/ai/admin/players", "/ai/admin/decide"}
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
 PUBLIC_AI_PER_DAY = 600        # per account (a haggle move is about 2 calls)
@@ -105,6 +105,12 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
             return False
         login = request.headers.get("tailscale-user-login", "").strip().lower()
         return not login or login in gateway_logins
+
+    def admin_anywhere(request: Request) -> bool:
+        """The admin account works from the owner's own Tailscale login; and from anywhere else (the public domain,
+        friends' devices) once its default password has been changed. Wrong guesses from elsewhere are rate-limited
+        and locked out separately from the owner's own login."""
+        return admin_ok(request) or accounts.admin_password_changed()
 
     def admin_ok(request: Request) -> bool:
         login = request.headers.get("tailscale-user-login", "").strip().lower()
@@ -407,12 +413,12 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     @app.post("/ai/accounts/login")
     def account_login(body: Login, request: Request):
         limit("acct:" + client_ip(request), ACCOUNT_PER_MINUTE)
-        return account_call(lambda: accounts.login(body.username, body.password, admin_allowed=admin_ok(request)))
+        return account_call(lambda: accounts.login(body.username, body.password, admin_allowed=admin_anywhere(request), owner=admin_ok(request)))
 
     @app.post("/ai/accounts/me")
     def account_me(request: Request, authorization: str = Header(default="")):
         out = account_call(lambda: accounts.me(bearer(authorization)))
-        if out["admin"] and not admin_ok(request):
+        if out["admin"] and not admin_anywhere(request):
             raise HTTPException(401, "Please log in again.")
         return out
 
@@ -425,7 +431,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     def account_password(body: NewPassword, request: Request, authorization: str = Header(default="")):
         limit("acct:" + client_ip(request), ACCOUNT_PER_MINUTE)
         row = accounts.who(bearer(authorization))
-        if row is not None and row["role"] == "admin" and not admin_ok(request):
+        if row is not None and row["role"] == "admin" and not admin_anywhere(request):
             raise HTTPException(401, "Please log in again.")
         account_call(lambda: accounts.change_password(bearer(authorization), body.old, body.new))
         return {"ok": True}
@@ -433,7 +439,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     # Game progress belongs to the account (any phone, Tailscale or not, that logs in sees the same progress).
     def saver(request: Request, authorization: str):
         row = accounts.who(bearer(authorization))
-        if row is not None and row["role"] == "admin" and not admin_ok(request):
+        if row is not None and row["role"] == "admin" and not admin_anywhere(request):
             row = None
         if row is None:
             raise HTTPException(401, "Please log in again.")
@@ -475,7 +481,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
 
     def admin_only(request: Request, authorization: str) -> None:
         row = accounts.who(bearer(authorization))
-        if not admin_ok(request) or row is None or row["role"] != "admin":
+        if not admin_anywhere(request) or row is None or row["role"] != "admin":
             raise HTTPException(403, "Admin only")
 
     @app.post("/ai/admin/players")
@@ -500,7 +506,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
             row = accounts.who(bearer(authorization))
             if row is None:
                 raise HTTPException(401, "Log in (Settings > Account) so the stallholders can chat with AI.")
-            if row["role"] == "admin":
+            if row["role"] == "admin" and not admin_anywhere(request):
                 raise HTTPException(401, "Please log in again.")
             if row["status"] == "pending":
                 raise HTTPException(403, "Your account is waiting for the admin to approve it.")

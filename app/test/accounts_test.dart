@@ -141,6 +141,7 @@ Api phone(Market m, [MemoryKeyValue? store]) {
     aiHttp: m.client,
     builtInEndpoint: 'https://glm.example/v1',
     builtInModel: 'gx10-current',
+    accountServer: 'https://relay.example', // this build's own (Tailscale) market
     syncDelay: const Duration(milliseconds: 1),
   );
 }
@@ -577,5 +578,19 @@ void main() {
     await settle(tester, 1500);
     expect(find.text("🏆 Beat Arella's \$11!"), findsOneWidget);
     await settle(tester, 3000);
+  });
+
+  test('the admin through a public address: the AI goes through it; over Tailscale it stays built in', () async {
+    final m = Market();
+    final a = apiWith(m, accountServer: 'https://relay.example');
+    await a.signIn(server: 'https://relay.example', username: 'admin', password: 'admin');
+    expect(a.ai.endpoint, 'https://glm.example/v1');
+    await a.signOut();
+    final acc = await a.signIn(server: 'ai.labhost.example', username: 'admin', password: 'admin');
+    expect(acc.admin, isTrue);
+    expect(a.ai.endpoint, 'https://ai.labhost.example/ai/v1');
+    expect(a.ai.apiKey, acc.token);
+    await a.signOut();
+    expect(a.ai.endpoint, 'https://glm.example/v1');
   });
 }

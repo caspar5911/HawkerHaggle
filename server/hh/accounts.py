@@ -126,11 +126,19 @@ class Accounts:
                 raise AccountError(409, "That username is taken. Try another one.")
             return self._new_login(db, cur.lastrowid)
 
-    def login(self, username: str, pw: str, *, admin_allowed: bool) -> dict:
-        """admin_allowed is True only for the owner's own Tailscale login: for anyone else the admin account simply
-        doesn't exist (same answer as a wrong password)."""
+    def admin_password_changed(self) -> bool:
+        """The admin account may be used from anywhere only once its default password has been changed."""
+        with self._db() as db:
+            r = db.execute("SELECT default_pw FROM accounts WHERE role='admin'").fetchone()
+        return r is not None and not r["default_pw"]
+
+    def login(self, username: str, pw: str, *, admin_allowed: bool, owner: bool | None = None) -> dict:
+        """admin_allowed: the admin account may log in from here (the owner's own Tailscale login; anywhere once its
+        password has been changed). Otherwise it simply doesn't exist (same answer as a wrong password). owner: the
+        owner's own login, whose wrong guesses are counted apart, so others' guessing can't lock the owner out."""
         name = (username or "").strip().lower()
-        key = ("owner:" if admin_allowed else "others:") + name   # others' guessing can't lock the owner out
+        owner = admin_allowed if owner is None else owner
+        key = ("owner:" if owner else "others:") + name
         t = self.clock()
         recent = [x for x in self.fails.get(key, []) if t - x < LOCK_SECONDS]
         self.fails[key] = recent
