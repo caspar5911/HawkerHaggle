@@ -562,6 +562,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
   bool _guessSkipped = false;
   int _jolt = 0; // the counter slam (insulted, rude, refused)
   bool _dilemmaDone = false;
+  Object? _twistAnswered; // the twist already answered (by its haggle state)
   final _savedLines = <String>{};
 
   @override
@@ -768,6 +769,23 @@ class _HaggleScreenState extends State<HaggleScreen> {
                                   await widget.api.saveQuote('${widget.stall['id']}', line);
                                   if (mounted) setState(() => _savedLines.add(line));
                                   _toast('⭐ Saved to your quote book');
+                                } on ApiError catch (e) {
+                                  _toast(e.message);
+                                }
+                              },
+                            ),
+                          // a silly twist: a quick choice (it only changes their mood)
+                          if (g != null && g['twist'] is Map && !identical(_twistAnswered, g) && g['done'] != true)
+                            TwistCard(
+                              t: g['twist'] as Map,
+                              onChoose: (i) async {
+                                setState(() => _twistAnswered = g);
+                                try {
+                                  final r = await widget.api.answerTwist(g['id'] as String, i);
+                                  if (mounted) {
+                                    setState(() => _msgs.add(_Msg('($r)', false)));
+                                    _scrollDown();
+                                  }
                                 } on ApiError catch (e) {
                                   _toast(e.message);
                                 }

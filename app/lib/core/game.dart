@@ -112,6 +112,9 @@ class _Session {
   bool pitched = false; // a persuasion moment happened this haggle (at most one)
   int? pitchScore;
   String? dilemma; // a stallholder's small trouble, offered at the start (help from your jar, or not)
+  Twist? twist; // a silly twist in the middle of the haggle, waiting for the player's choice
+  bool twisted = false; // at most one a haggle
+  String twistNote = ''; // what happened, for the AI's next reply
   Map<String, Object?> finish = const {}; // new stickers, Mum's note, unlocks (when it ends)
 }
 
@@ -461,6 +464,12 @@ class Game {
               'can': progress.jar >= dilemmas[ss.dilemma]!.$2,
             },
       'jar': progress.jar,
+      'twist': ss.twist == null
+          ? null
+          : {
+              'text': _fillTwist(ss.twist!.text, ss),
+              'options': [for (final o in ss.twist!.options) o.$1],
+            },
       'rival_left': h.s.rivalLeft,
       'hearts': progress.hearts('${ss.stall['id']}'),
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
@@ -597,6 +606,7 @@ class Game {
     String kind;
     double? price;
     String you;
+    ss.twist = null; // a twist left unanswered just passes
     final typed = text?.trim() ?? '';
     if (typed.isNotEmpty) {
       ss.typed++;
@@ -737,6 +747,7 @@ class Game {
                 'Their pitch really won you over: say so warmly.',
               ][ss.pitchScore!],
             if (challengeNow) 'End your reply by challenging them, in one short sentence, to convince you why you should give them a better price.',
+            if (ss.twistNote.isNotEmpty) '${ss.twistNote} React to it in character, briefly.',
           ].join(' '),
         ),
       );
@@ -745,6 +756,20 @@ class Game {
         ss.challenged = true; // only when the reply really contains the challenge
         ss.pitched = true;
       }
+    }
+    ss.twistNote = '';
+    // a silly twist now and then, a few moves in (never without surprises, with Auntie Rose, at low patience, or
+    // while a pitch is pending); decided from the haggle's own seed, never the game's dice
+    if (surprises &&
+        !ss.twisted &&
+        !h.s.done &&
+        h.s.rounds == 3 &&
+        h.s.event != 'rival' &&
+        h.s.patience > 40 &&
+        !ss.challenged &&
+        stableSeed('${ss.seed}-twist') % 100 < twistChance) {
+      ss.twisted = true;
+      ss.twist = twists[stableSeed('${ss.seed}-which') % twists.length];
     }
     said ??= _line(stall, item, event, h, offer: out?.offer, seed: ss.seed, chat: ss.chat);
     ss.chat.add({
@@ -818,6 +843,26 @@ class Game {
     }
     return _view(ss, said, event, out, you, aiLine);
   }
+
+  /// Twists: about one haggle in four (tests and tools can raise it). Never without surprises.
+  int twistChance = 25;
+
+  /// The player's choice in a twist: it changes only the stallholder's mood. Returns their reaction.
+  Future<String> answerTwist(String id, int choice) async {
+    final ss = _sessions[id];
+    if (ss == null) throw GameError(404, 'No such haggle');
+    final t = ss.twist;
+    if (t == null || choice < 0 || choice >= t.options.length) throw GameError(400, 'Nothing to choose');
+    ss.twist = null;
+    final o = t.options[choice];
+    ss.h.warm(o.$2);
+    if (o.$2 > 0.5) ss.nice++;
+    ss.twistNote = '${t.ai} ${o.$4}';
+    return _fillTwist(o.$3, ss);
+  }
+
+  String _fillTwist(String s, _Session ss) =>
+      s.replaceAll('{name}', '${ss.stall['name']}').replaceAll('{item}', '${ss.item['name']}');
 
   /// The stallholder's small trouble: help (from your jar, for friendship) or not. Returns what happened.
   Future<String> answerDilemma(String id, {required bool help}) async {

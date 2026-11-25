@@ -139,6 +139,7 @@ class Api {
   Future<void> flag(String id) => _run((g) => g.flag(id));
   Future<void> guess(String id, num price) => _run((g) => g.guess(id, price));
   Future<String> answerDilemma(String id, {required bool help}) => _run((g) => g.answerDilemma(id, help: help));
+  Future<String> answerTwist(String id, int choice) => _run((g) => g.answerTwist(id, choice));
   Future<Map<String, dynamic>> jar() => _run((g) => Map<String, dynamic>.from(g.jar()));
   Future<Map<String, dynamic>> buyGoal(String id) => _run((g) async => Map<String, dynamic>.from(await g.buyGoal(id)));
   Future<List<Map<String, dynamic>>> quotes() =>

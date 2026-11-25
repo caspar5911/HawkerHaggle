@@ -155,4 +155,63 @@ void main() {
     await g.removeQuote('${q.first['text']}');
     expect(g.quotes(), hasLength(quotesKept - 1));
   });
+
+  group('twists', () {
+    Future<(Game, Map, String)> toTwist(Game g) async {
+      for (var tries = 0; tries < 30; tries++) {
+        var r = await g.start('mei', 'durian', 'none');
+        final id = r['id'] as String;
+        for (var i = 0; i < 3 && r['done'] != true; i++) {
+          r = await g.move(id, text: 'hello auntie, nice day');
+        }
+        if (r['twist'] is Map) return (g, r, id);
+      }
+      throw StateError('no twist');
+    }
+
+    test('a few moves in, a twist with a choice; the choice changes only the mood', () async {
+      final g = await newGame(surprises: true)
+        ..twistChance = 100;
+      final (_, r, id) = await toTwist(g);
+      final t = r['twist'] as Map;
+      expect('${t['text']}', anyOf(contains('Auntie Mei'), contains('durian')));
+      expect(RegExp(r'\$|\d').hasMatch('${t['text']}'), isFalse);
+      final ask = r['ask'];
+      final mood = (r['mood'] as num).toDouble();
+      final reaction = await g.answerTwist(id, 0); // the kind choice
+      expect(reaction, isNotEmpty);
+      final after = await g.move(id, text: 'so how much now?');
+      expect((after['mood'] as num).toDouble(), greaterThan(mood - 0.5)); // warmer (the next move moves it too)
+      expect(after['twist'], isNull); // once a haggle
+      expect(after['ask'], lessThanOrEqualTo(ask as num)); // never a higher price
+      await expectLater(g.answerTwist(id, 0), throwsA(isA<GameError>()));
+    });
+
+    test('an unanswered twist passes with the next move; none without surprises', () async {
+      final g = await newGame(surprises: true)
+        ..twistChance = 100;
+      final (_, _, id) = await toTwist(g);
+      await g.move(id, text: 'ok what is your best price');
+      await expectLater(g.answerTwist(id, 0), throwsA(isA<GameError>()));
+      final quiet = await newGame()
+        ..twistChance = 100;
+      for (var i = 0; i < 10; i++) {
+        var r = await quiet.start('mei', 'durian', 'none');
+        for (var k = 0; k < 4 && r['done'] != true; k++) {
+          r = await quiet.move(r['id'] as String, text: 'hello auntie');
+          expect(r['twist'], isNull);
+        }
+      }
+    });
+
+    test('every twist has words for the stallholder and no numbers', () {
+      for (final t in twists) {
+        expect(t.options, isNotEmpty);
+        for (final o in t.options) {
+          expect(RegExp(r'\d|\$').hasMatch('${t.text}${t.ai}${o.$1}${o.$3}${o.$4}'), isFalse, reason: t.id);
+          expect(o.$2.abs(), lessThanOrEqualTo(1.5));
+        }
+      }
+    });
+  });
 }

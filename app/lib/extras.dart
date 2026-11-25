@@ -1072,7 +1072,8 @@ class _GuessCardState extends State<GuessCard> {
                   style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     SizedBox(
                       width: 110,
@@ -1347,8 +1348,8 @@ class DilemmaCard extends StatelessWidget {
             '💭 ${d['text']}',
             style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600, height: 1.3),
           ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+          Wrap(
+            alignment: WrapAlignment.end,
             children: [
               TextButton(
                 key: const ValueKey('dilemma_no'),
@@ -1610,6 +1611,49 @@ class _QuoteBookScreenState extends State<QuoteBookScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+/// A silly twist in the middle of a haggle: what happened, and a quick choice.
+class TwistCard extends StatelessWidget {
+  const TwistCard({super.key, required this.t, required this.onChoose});
+  final Map t;
+  final void Function(int choice) onChoose;
+  @override
+  Widget build(BuildContext context) {
+    final options = (t['options'] as List).cast<String>();
+    return Container(
+      key: const ValueKey('twist_card'),
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFE6E6),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFB3B3), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${t['text']}',
+            style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w700, height: 1.3),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final (i, o) in options.indexed)
+                Bouncy(
+                  key: ValueKey('twist_$i'),
+                  onTap: () => onChoose(i),
+                  child: Pill(text: o, icon: i == 0 ? '👉' : '🤷'),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

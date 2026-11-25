@@ -120,6 +120,26 @@ class Fake extends Game {
   @override
   Future<void> guess(String id, num price) async => guessed = price;
 
+  final answered = <String>[];
+  @override
+  Future<String> answerTwist(String id, int choice) async {
+    answered.add('twist $choice');
+    return 'Auntie Mei cheers you on: "Catch it!"';
+  }
+
+  @override
+  Future<String> answerDilemma(String id, {required bool help}) async {
+    answered.add('dilemma $help');
+    return help ? '💛 Auntie Mei is touched' : '';
+  }
+
+  final saved = <String>[];
+  @override
+  Future<bool> saveQuote(String stallId, String text) async {
+    saved.add(text);
+    return true;
+  }
+
   @override
   Map<String, Object?> today() => {
     'items': [
@@ -687,6 +707,54 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('reduce_motion')));
     await settle(tester, 400);
     expect(Motion.reduced, isFalse);
+  });
+
+  testWidgets('a twist, a dilemma, saving a line, and the savings jar', (tester) async {
+    final fake =
+        Fake([
+            game('Aiyo! \$17 lah.', event: 'counter', ask: 17)..addAll({
+              'twist': {
+                'text': "🐈 A cat darts off with one of Auntie Mei's mangoes!",
+                'options': ['Chase the cat', 'Laugh'],
+              },
+            }),
+          ])
+          ..first = (game('Morning my dear! \$18 only.')
+            ..addAll({
+              'dilemma': {
+                'text': "Auntie Mei's grandson needs new school shoes. Leave a little extra?",
+                'cost': 3,
+                'can': true,
+              },
+            }));
+    fake.progress.addToJar(12);
+    await tester.binding.setSurfaceSize(const Size(420, 1400)); // room for the chat and its cards
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.textContaining('Jar \$12'), findsOneWidget); // on the market
+    await tester.ensureVisible(find.text('box of mangoes'));
+    await tester.tap(find.text('box of mangoes'));
+    await settle(tester);
+    expect(find.byKey(const ValueKey('dilemma_card')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('dilemma_yes')));
+    await settle(tester, 600);
+    expect(fake.answered, ['dilemma true']);
+    expect(find.byKey(const ValueKey('dilemma_card')), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('save_line')));
+    await settle(tester, 600);
+    expect(fake.saved, ['Morning my dear! \$18 only.']);
+    expect(find.text('⭐ Saved'), findsOneWidget);
+    await settle(tester, 4000);
+    await tester.tap(find.text('\$11 can or not?'));
+    await settle(tester, 1500);
+    expect(find.byKey(const ValueKey('twist_card')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('twist_0')));
+    await settle(tester, 800);
+    expect(fake.answered.last, 'twist 0');
+    expect(find.textContaining('Catch it!'), findsOneWidget);
+    expect(find.byKey(const ValueKey('twist_card')), findsNothing);
+    await settle(tester, 3000);
   });
 
   testWidgets('a festival week shows on the market', (tester) async {

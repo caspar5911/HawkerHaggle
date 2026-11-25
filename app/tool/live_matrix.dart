@@ -191,6 +191,30 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  // a twist: after the player's choice, the next reply reacts to it (and names no price the game didn't give)
+  {
+    final tg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), unlockAll: true)..twistChance = 100;
+    await tg.load();
+    Map r = const {};
+    String id = '';
+    for (var tries = 0; tries < 6 && r['twist'] is! Map; tries++) {
+      r = await tg.start('mei', 'mango', 'none');
+      id = r['id'] as String;
+      for (var i = 0; i < 3 && r['done'] != true; i++) {
+        r = await tg.move(id, text: 'auntie how is business today?');
+      }
+    }
+    if (r['twist'] is! Map) {
+      fails.add('no twist appeared');
+    } else {
+      final reaction = await tg.answerTwist(id, 0);
+      final next = await tg.move(id, text: 'phew! so how much for the mangoes now?');
+      stdout.writeln('TWIST ${(r['twist'] as Map)['text']} -> $reaction');
+      stdout.writeln('TWIST   ${next['ai_line'] == true ? '✨' : '  '} ${next['line']}');
+      if (next['ai_line'] != true) fails.add('no AI reply after a twist');
+    }
+  }
+
   // a soft spot: the reply warms up, and it's found for the profile
   {
     final sg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), surprises: false, unlockAll: true);
