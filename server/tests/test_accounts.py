@@ -344,3 +344,26 @@ def test_admin_works_anywhere_only_once_its_password_is_changed(app):
     assert r.status_code == 429
     r = c.post("/ai/accounts/login", json={"username": "admin", "password": "a-much-better-one"}, headers=ME)
     assert r.status_code == 200
+
+
+def test_the_admin_can_delete_an_account_for_good(app):
+    c, accounts, _ = app
+    tok = signup(c, "Arella")
+    h = bearer(tok, GATEWAY)
+    c.post("/ai/accounts/progress/save", json={"data": '{"name": "A"}', "rev": 0}, headers=h)
+    ids = {p["username"]: p["id"] for p in accounts.list()}
+    adm = admin_token(c)
+    assert c.post("/ai/admin/decide", json={"id": ids["Arella"], "action": "delete"},
+                  headers=bearer(adm, ME)).json() == {"status": "deleted"}
+    assert "Arella" not in {p["username"] for p in accounts.list()}
+    assert c.post("/ai/accounts/me", headers=h).status_code == 401          # logged out everywhere
+    with accounts._db() as db:
+        assert db.execute("SELECT COUNT(*) FROM saves").fetchone()[0] == 0   # nothing kept
+    assert c.post("/ai/accounts/signup", json={"username": "arella", "password": "kopi-o-kosong"},
+                  headers=GATEWAY).status_code == 200                       # the name is free again
+    admin_id = 1
+    assert c.post("/ai/admin/decide", json={"id": admin_id, "action": "delete"},
+                  headers=bearer(adm, ME)).status_code == 404              # never the admin
+    assert c.post("/ai/admin/decide", json={"id": ids["Arella"], "action": "delete"},
+                  headers=bearer(tok, GATEWAY)).status_code == 403          # only the admin
+

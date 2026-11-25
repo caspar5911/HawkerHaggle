@@ -450,6 +450,27 @@ class _PlayersScreenState extends State<PlayersScreen> {
   }
 
   Future<void> _do(Map p, String action) async {
+    if (action == 'delete') {
+      final sure = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: Text('Delete ${p['username']}?'),
+          content: const Text(
+            'Their account, saved progress and AI chats are erased for good, and the username becomes free again. '
+            'This cannot be undone.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep')),
+            TextButton(
+              key: const ValueKey('delete_confirm'),
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Delete', style: TextStyle(color: Palette.red)),
+            ),
+          ],
+        ),
+      );
+      if (sure != true) return;
+    }
     try {
       final r = await widget.api.decide(p['id'] as int, action);
       if (!mounted) return;
@@ -475,6 +496,8 @@ class _PlayersScreenState extends State<PlayersScreen> {
             ],
           ),
         );
+      } else if (action == 'delete') {
+        _toast('${p['username']} was deleted.');
       } else {
         _toast('${p['username']}: ${statusText('${r['status']}')}');
       }
@@ -561,6 +584,7 @@ class _PlayersScreenState extends State<PlayersScreen> {
                             onSelected: (a) => _do(p, a),
                             itemBuilder: (_) => const [
                               PopupMenuItem(value: 'reset', child: Text('Give a new password')),
+                              PopupMenuItem(value: 'delete', child: Text('Delete account')),
                             ],
                           ),
                         ],

@@ -110,6 +110,10 @@ class Market {
       case '/ai/admin/decide':
         if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
         final u = users.values.firstWhere((u) => u['id'] == body['id']);
+        if (body['action'] == 'delete') {
+          users.remove('${u['username']}'.toLowerCase());
+          return out(200, {'status': 'deleted'});
+        }
         if (body['action'] == 'reset') {
           u['pw'] = 'ab12-cd34-ef56';
           return out(200, {'password': 'ab12-cd34-ef56'});
@@ -307,6 +311,16 @@ void main() {
     expect(find.text('ab12-cd34-ef56'), findsOneWidget);
     await tester.tap(find.text('Copy'));
     await settle(tester, 600);
+    // delete for good, after a confirmation
+    await tester.tap(find.byKey(const ValueKey('more_ahboy')));
+    await settle(tester, 600);
+    await tester.tap(find.text('Delete account'));
+    await settle(tester, 600);
+    expect(find.text('Delete ahboy?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('delete_confirm')));
+    await settle(tester, 1000);
+    expect(m.users.containsKey('ahboy'), isFalse);
+    expect(find.byKey(const ValueKey('more_ahboy')), findsNothing);
     // change the default password from the warning
     await tester.tap(find.text('Change password'));
     await settle(tester, 600);

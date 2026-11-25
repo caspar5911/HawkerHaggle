@@ -317,11 +317,18 @@ class Accounts:
                  "last_used": r["last_used"], "ai_today": r["today"]} for r in rows]
 
     def decide(self, account_id: int, action: str) -> dict:
-        """approve / reject / remove (cuts off at once: logs the account out everywhere) / reset (new password)."""
+        """approve / reject / remove (cuts off at once: logs the account out everywhere) / reset (new password) /
+        delete (erases the account and everything kept for it). The admin account can't be changed here."""
         with self._db() as db:
             row = db.execute("SELECT * FROM accounts WHERE id=? AND role<>'admin'", (account_id,)).fetchone()
             if row is None:
                 raise AccountError(404, "No such player.")
+            if action == "delete":
+                # gone for good: the account, its logins, progress and AI counts; the username is free again
+                for table in ("logins", "saves", "ai_calls"):
+                    db.execute(f"DELETE FROM {table} WHERE account_id=?", (account_id,))
+                db.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+                return {"status": "deleted"}
             if action == "reset":
                 pw = "-".join(secrets.token_hex(2) for _ in range(3))
                 db.execute("UPDATE accounts SET pw=? WHERE id=?", (hash_pw(pw), account_id))
