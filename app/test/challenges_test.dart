@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'haggle_well.dart';
+
 import 'package:hawker_haggle/core/challenges.dart';
 import 'package:hawker_haggle/core/game.dart';
 
@@ -32,17 +35,9 @@ Future<Map> buy(Game g, String stall, String item, {String surprise = 'none', Li
   return r['pending'] != null ? g.move(id, move: 'confirm') : g.move(id, move: 'buy');
 }
 
-/// Her real lowest price via a firm budget, then yes: 3 stars, 30%+ off.
-Future<Map> bargain(Game g, String stall, String item, {String surprise = 'none'}) async {
-  final it = ((content['stalls'] as List).firstWhere((s) => s['id'] == stall)['items'] as List).firstWhere(
-    (i) => i['id'] == item,
-  );
-  final r = await g.start(stall, item, surprise);
-  final id = r['id'] as String;
-  var x = await g.move(id, text: 'I only have \$${((it['floor'] as num) * 0.8).floor()}');
-  x = await g.move(id, text: '\$${x['ask']} ok I take');
-  return x['pending'] != null ? g.move(id, move: 'confirm') : x;
-}
+/// A skilled haggle down to her real lowest price: 3 stars, 30%+ off.
+Future<Map> bargain(Game g, String stall, String item, {String surprise = 'none'}) =>
+    haggleWell(g, content, stall, item, surprise: surprise);
 
 Future<void> playKind(Game g, Daily d, String st, String item) async {
   switch (d.id) {
@@ -79,8 +74,11 @@ Future<void> playKind(Game g, Daily d, String st, String item) async {
       await buy(g, st, item, say: ['I come every week']);
     case 'competitor':
       await buy(g, st, item, say: ['next stall cheaper leh']);
-    case 'budget':
-      await bargain(g, st, item);
+    case 'budget': // a budget she can live with straight away
+      final ask = ((content['stalls'] as List).firstWhere((s) => s['id'] == st)['items'] as List).firstWhere(
+        (i) => i['id'] == item,
+      )['ask'];
+      await buy(g, st, item, say: ['I only have \$$ask']);
     case 'pity':
       await buy(g, st, item, say: ['no money lah']);
     case 'two_stalls':

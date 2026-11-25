@@ -12,6 +12,10 @@ const engineMoves = [
 ];
 const once = ['competitor', 'bulk', 'regular']; // tactics that only work once per haggle
 const maxRounds = 12;
+// A firm price gets their real lowest only when earned by both goodwill and bargaining (see Haggle.firmLine).
+const firmRoom = 0.35; // unearned, a firm price must be this share of the bargaining range above their lowest
+const firmCome = 0.7; // ...until they've come down this share of the range by real bargaining
+const firmMood = 3.0; // ...and their mood is this good (the most it can be)
 
 class Personality {
   const Personality({
@@ -142,6 +146,17 @@ class Haggle {
   double floorNow() {
     final f = item.floor * (1 - 0.02 * s.mood) * (s.qty > 1 ? 0.95 : 1.0);
     return math.max(f, item.floor * 0.9);
+  }
+
+  /// The lowest firm price ("this is my final", "I only have \$X", the same number twice) they'll say yes to.
+  /// Being firm only gets their real lowest price once it's earned: they're in a good mood AND they have already
+  /// come down a good way by real bargaining (either one alone isn't enough). Rushing to a firm number, or knowing
+  /// the number from last time, gets a higher "best price" (and that one is final).
+  double firmLine() {
+    final f = floorNow();
+    final come = clamp((item.ask - s.ask) / math.max(item.ask - item.floor, 0.01), 0, 1);
+    final m = firmRoom * math.max(clamp(1 - come / firmCome, 0, 1), clamp(1 - s.mood / firmMood, 0, 2));
+    return f + (item.ask - item.floor) * m;
   }
 
   void _tire(double amount) => s.patience -= amount * (0.5 + p.temper);
@@ -282,7 +297,7 @@ class Haggle {
       _tire(9);
       return _out('final', x);
     }
-    if (x >= f && (firm || x >= s.ask - give)) return _agree(x, x);
+    if (x >= f && ((firm && x >= firmLine()) || x >= s.ask - give)) return _agree(x, x);
     if (x < f * 0.7) {
       _tire(22);
       s.mood = clamp(s.mood - 1, -3, 3);
@@ -292,7 +307,7 @@ class Haggle {
       _tire(9);
       if (!s.bestGiven) {
         s.bestGiven = true;
-        final best = niceUp(f); // honest: this really is the lowest they'll go
+        final best = niceUp(firmLine()); // their best for this haggle (their real lowest only if earned)
         if (best < s.ask) {
           s.ask = best;
           return _out('budget_best', x);

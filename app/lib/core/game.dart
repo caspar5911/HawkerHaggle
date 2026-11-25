@@ -106,6 +106,7 @@ class _Session {
   final tactics = <String>{}; // compliment, regular, competitor, bulk, plead, pity, budget...
   bool rude = false;
   bool calledBack = false;
+  bool firmEarly = false; // went firm before earning their lowest price (so their "best price" was higher)
   bool softSpot = false; // their soft spot came up this haggle (warms them once)
   String found = ''; // the soft spot just found for the first time (shown once)
   bool challenged = false; // they challenged the customer to convince them (the next typed message is the pitch)
@@ -510,6 +511,7 @@ class Game {
                     ? '📏 There was still some room left.'
                     : '📏 There was lots of room left: try lower next time!'));
     if (r > 1.03 && h.floorNow() < floor * 0.97) t += ' In such a good mood, $who might have gone a little lower.';
+    if (ss.firmEarly && r > 1.06) t += ' You went firm early: warm $who up and bargain a bit first next time.';
     return t;
   }
 
@@ -700,6 +702,7 @@ class Game {
       out = h.move(kind, price, callBack);
       event = out.event;
       if (event == 'callback') ss.calledBack = true;
+      if (event == 'budget_best') ss.firmEarly = h.s.ask > h.item.floor * 1.06; // a firm price before it was earned
       if (const ['compliment', 'regular', 'competitor', 'bulk', 'plead', 'pity', 'budget'].contains(kind)) {
         ss.tactics.add(kind);
       }

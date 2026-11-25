@@ -41,10 +41,13 @@ def test_counter_offers_come_down_but_never_below_the_secret_floor():
 def test_a_patient_player_can_reach_three_stars():
     h = Haggle(FISH, SOFT, seed=3)
     h.move("compliment")
+    h.move("offer", 11)                             # real bargaining first: a bold offer, then up step by step
     h.move("regular")
+    h.move("compliment")
+    h.move("offer", 12)
     out = None
     for _ in range(10):
-        out = h.move("offer", nice(h.floor_now()))
+        out = h.move("offer", nice_up(h.floor_now()))
         if out.event == "confirm":
             out = h.move("confirm")
         if out.done:
@@ -173,14 +176,29 @@ GRUFF = Personality(stubborn=0.75, flattery=0.2, temper=0.6, callback=0.35, kind
 
 def test_a_budget_she_can_live_with_is_a_yes():
     h = Haggle(FISH, SOFT)
-    out = h.move("budget", 14)                      # floor is 13
-    assert out.event == "confirm" and out.pending == 14
+    out = h.move("budget", 17)                      # floor is 13; straight away, a firm 17 is fine
+    assert out.event == "confirm" and out.pending == 17
 
 
-def test_a_budget_a_bit_too_small_gets_her_real_best_price_once_then_no_more_dollar_steps():
+def test_being_firm_only_gets_her_real_lowest_price_once_it_is_earned():
+    rushed = Haggle(FISH, SOFT)
+    assert rushed.move("offer", 13).event == "counter"
+    out = rushed.move("offer", 13)                  # her lowest, twice, straight away: a higher "best price"
+    assert out.event == "budget_best" and rushed.s.ask > FISH.floor * 1.06 and rushed.s.best_given
+    assert rushed.move("offer", 13).event == "final"
+    earned = Haggle(FISH, SOFT)
+    for kind, price in (("compliment", None), ("offer", 11), ("regular", None), ("compliment", None),
+                        ("offer", 12), ("offer", 13)):
+        out = earned.move(kind, price)
+    assert earned.firm_line() <= 13 < rushed.firm_line()
+    assert out.event == "confirm" or earned.move("offer", 13).event == "confirm"
+    assert Haggle(FISH, SOFT).firm_line() > FISH.floor
+
+
+def test_a_budget_a_bit_too_small_gets_her_best_price_once_then_no_more_dollar_steps():
     h = Haggle(FISH, SOFT)
     first = h.move("budget", 11)                    # below the floor (13), not insulting
-    assert first.event == "budget_best" and h.s.ask == nice_up(h.floor_now()) and h.s.ask >= FISH.floor * 0.9
+    assert first.event == "budget_best" and h.s.ask == nice_up(h.firm_line()) and h.s.ask > FISH.floor
     best = h.s.ask
     for _ in range(3):                              # "I only have 11" again and again: she holds
         again = h.move("budget", 11)

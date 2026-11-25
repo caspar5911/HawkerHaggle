@@ -12,6 +12,10 @@ from dataclasses import asdict, dataclass, field
 MOVES = ("offer", "budget", "plead", "pity", "flirt", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
 ONCE = ("competitor", "bulk", "regular")    # tactics that only work once per haggle
 MAX_ROUNDS = 12
+# A firm price gets their real lowest only when earned by both goodwill and bargaining (see Haggle.firm_line).
+FIRM_ROOM = 0.35    # unearned, a firm price must be this share of the bargaining range above their lowest
+FIRM_COME = 0.7     # ...until they've come down this share of the range by real bargaining
+FIRM_MOOD = 3.0     # ...and their mood is this good (the most it can be)
 
 
 @dataclass(frozen=True)
@@ -96,6 +100,16 @@ class Haggle:
         """Their real lowest price right now: a good mood shaves a little off, buying two shaves more."""
         f = self.item.floor * (1 - 0.02 * self.s.mood) * (0.95 if self.s.qty > 1 else 1.0)
         return max(f, self.item.floor * 0.9)
+
+    def firm_line(self) -> float:
+        """The lowest firm price ("this is my final", "I only have $X", the same number twice) they'll say yes to.
+        Being firm only gets their real lowest price once it's earned: they're in a good mood AND they have already
+        come down a good way by real bargaining (either one alone isn't enough). Rushing to a firm number, or knowing the number from last time,
+        gets a higher "best price" (and that one is final)."""
+        f = self.floor_now()
+        come = clamp((self.item.ask - self.s.ask) / max(self.item.ask - self.item.floor, 0.01), 0.0, 1.0)
+        m = FIRM_ROOM * max(clamp(1 - come / FIRM_COME, 0.0, 1.0), clamp(1 - self.s.mood / FIRM_MOOD, 0.0, 2.0))
+        return f + (self.item.ask - self.item.floor) * m
 
     def _tire(self, amount: float) -> None:
         self.s.patience -= amount * (0.5 + self.p.temper)
@@ -211,18 +225,19 @@ class Haggle:
         if self.s.best_given and x < self.s.ask:
             self._tire(9)
             return self._out("final", x)            # they already said their real best price
-        if x >= f and (firm or x >= self.s.ask - give):
+        if x >= f and ((firm and x >= self.firm_line()) or x >= self.s.ask - give):
             return self._agree(x, x)                # a firm limit they can live with: yes
         if x < f * 0.7:
             self._tire(22)
             self.s.mood = clamp(self.s.mood - 1, -3, 3)
             return self._out("insulted", x)
         if firm:
-            # A real limit below what they can do: no more $1 steps. Once, they say their real best price.
+            # A real limit below what they'll do: no more $1 steps. Once, they say their best price (their real
+            # lowest only if the customer has earned it), and it's final for this haggle.
             self._tire(9)
             if not self.s.best_given:
                 self.s.best_given = True
-                best = nice_up(f)                   # honest: this really is the lowest they'll go
+                best = nice_up(self.firm_line())
                 if best < self.s.ask:
                     self.s.ask = best
                     return self._out("budget_best", x)

@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+
+import 'haggle_well.dart';
+
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/core/arcs.dart';
 import 'package:hawker_haggle/core/progress.dart';
@@ -178,12 +181,8 @@ void main() {
     expect(stalls.firstWhere((s) => s['id'] == 'mei')['locked'], isFalse);
     // stars come from the best result on each item: 3 stars needs a price near the secret lowest one
     Map? last;
-    for (final (st, it, price) in [('mei', 'durian', 18), ('mei', 'mango', 10), ('lim', 'pomfret', 13)]) {
-      final r = await g.start(st, it, 'none');
-      final id = r['id'] as String;
-      var x = await g.move(id, text: 'I only have \$${price - 2}'); // her real best price
-      x = await g.move(id, text: '\$${x['ask']} ok I take');
-      last = x['pending'] != null ? await g.move(id, move: 'confirm') : x;
+    for (final (st, it) in [('mei', 'durian'), ('mei', 'mango'), ('lim', 'pomfret')]) {
+      last = await haggleWell(g, content, st, it); // near her real lowest price
     }
     expect(g.progress.bestStars(), greaterThanOrEqualTo(8));
     expect(last!['unlocked'], contains('lee'));
@@ -208,12 +207,7 @@ void main() {
     }
     for (var d = 0; d < 3; d++) {
       for (final i in (g.today()['items'] as List).cast<Map>()) {
-        final r = await g.start(i['stall'] as String, i['item'] as String, 'none');
-        final id = r['id'] as String;
-        var x = await g.move(id, text: 'I only have \$1'); // insulted...
-        x = await g.move(id, text: 'I only have \$${((i['fair'] as num) * 0.7).floor()}'); // ...then her best price
-        x = await g.move(id, text: '\$${x['ask']} ok I take');
-        if (x['pending'] != null) await g.move(id, move: 'confirm');
+        await haggleWell(g, content, i['stall'] as String, i['item'] as String);
       }
       clock.nextDay();
     }
@@ -263,12 +257,8 @@ void main() {
     await finishHaggle(g, 'siti', 'scarf');
     // a stall unlocked (from a fresh, locked game)
     final (g2, _, _) = await newGame();
-    for (final (st, it, price) in [('mei', 'durian', 18), ('mei', 'mango', 10), ('lim', 'pomfret', 13)]) {
-      final r = await g2.start(st, it, 'none');
-      final id = r['id'] as String;
-      var x = await g2.move(id, text: 'I only have \$${price - 2}');
-      x = await g2.move(id, text: '\$${x['ask']} ok I take');
-      if (x['pending'] != null) await g2.move(id, move: 'confirm');
+    for (final (st, it) in [('mei', 'durian'), ('mei', 'mango'), ('lim', 'pomfret')]) {
+      await haggleWell(g2, content, st, it);
     }
     final earned = {
       for (final s in [...g.stickers(), ...g2.stickers()])

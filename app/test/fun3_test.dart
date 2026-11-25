@@ -156,6 +156,19 @@ void main() {
     expect(g.quotes(), hasLength(quotesKept - 1));
   });
 
+  test('going firm too early gets a higher "best price", and a hint afterwards', () async {
+    final g = await newGame();
+    var r = await g.start('mei', 'mango', 'none'); // her lowest is $10
+    final id = r['id'] as String;
+    r = await g.move(id, text: r'I only have $8');
+    expect(r['event'], 'budget_best');
+    expect(r['ask'] as num, greaterThan(10.6)); // not her real lowest: that has to be earned
+    r = await g.move(id, text: r'$10 can?');
+    expect(r['event'], 'final'); // and it's final
+    r = await g.move(id, move: 'buy');
+    expect('${r['closeness']}', contains('went firm early'));
+  });
+
   group('twists', () {
     Future<(Game, Map, String)> toTwist(Game g) async {
       for (var tries = 0; tries < 30; tries++) {
