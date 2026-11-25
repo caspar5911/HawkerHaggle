@@ -8,6 +8,7 @@ import 'api.dart';
 import 'character.dart';
 import 'extras.dart';
 import 'sfx.dart';
+import 'web_update.dart';
 import 'widgets.dart';
 
 // ======================================================================= market
@@ -18,8 +19,9 @@ class MarketScreen extends StatefulWidget {
   State<MarketScreen> createState() => _MarketScreenState();
 }
 
-class _MarketScreenState extends State<MarketScreen> {
+class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver {
   Map<String, dynamic>? _me;
+  bool _newVersion = false;
   Map<String, dynamic>? _today;
   Map<String, dynamic>? _challenges;
   List<dynamic> _stalls = [];
@@ -28,7 +30,27 @@ class _MarketScreenState extends State<MarketScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+    _checkVersion();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _checkVersion();
+  }
+
+  /// The web version: a newer one published since this tab opened? (build N from the label "test N")
+  Future<void> _checkVersion() async {
+    final mine = int.tryParse(RegExp(r'\d+').firstMatch(buildLabel)?.group(0) ?? '') ?? 0;
+    final newer = await newerWebVersion(mine);
+    if (mounted && newer != _newVersion) setState(() => _newVersion = newer);
   }
 
   Future<void> _load() async {
@@ -161,6 +183,15 @@ class _MarketScreenState extends State<MarketScreen> {
                     ),
                   ],
                 ),
+                if (_newVersion)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Bouncy(
+                      key: const ValueKey('new_version'),
+                      onTap: reloadPage,
+                      child: const Pill(text: 'A new version is out: tap to reload', icon: '🆕', color: Palette.gold),
+                    ),
+                  ),
                 if (_me != null) _Hello(me: _me!, onName: _editName),
                 const SizedBox(height: 12),
                 if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),

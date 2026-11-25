@@ -12,6 +12,13 @@ flutter build web --release --no-web-resources-cdn --pwa-strategy=none --base-hr
   --dart-define=ACCOUNT_SERVER="$account"
 out=$(mktemp -d)
 cp -r build/web/. "$out" && touch "$out/.nojekyll"
+# GitHub Pages lets browsers keep files for 10 minutes: give this version's scripts their own addresses, so a reload
+# (the game's "new version" banner) gets the new game at once.
+v=$(date +%s)
+sed -i "s|src=\"flutter_bootstrap.js\"|src=\"flutter_bootstrap.js?v=$v\"|" "$out/index.html"
+sed -i "s|\"mainJsPath\":\"main.dart.js\"|\"mainJsPath\":\"main.dart.js?v=$v\"|" "$out/flutter_bootstrap.js"
+grep -q "flutter_bootstrap.js?v=$v" "$out/index.html" && grep -q "main.dart.js?v=$v" "$out/flutter_bootstrap.js" \
+  || { echo "cache-busting edit failed" >&2; exit 1; }
 cd "$out" && git init -q -b gh-pages && git add -A
 git -c user.name=Caspar5911 -c user.email=Caspar95galaxy@gmail.com commit -qm "Web version ($label)"
 git push -q -f https://github.com/caspar5911/HawkerHaggle.git gh-pages
