@@ -215,6 +215,21 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  // live co-op: a friend's message, answered knowing two friends are bargaining (and naming the friend)
+  {
+    final cg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), surprises: false, unlockAll: true);
+    await cg.load();
+    final g = await cg.start('lim', 'pomfret', 'none');
+    final r = await cg.move(
+      g['id'] as String,
+      text: 'uncle, my friend here also wants one, good price for two of us?',
+      friend: 'Melody',
+    );
+    final named = '${r['line']}'.toLowerCase().contains('melody');
+    stdout.writeln('COOP  ${r['ai_line'] == true ? '✨' : '  '} named=$named ${r['line']}');
+    if (r['ai_line'] != true) fails.add('no AI reply to a co-op friend');
+  }
+
   // a soft spot: the reply warms up, and it's found for the profile
   {
     final sg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), surprises: false, unlockAll: true);
