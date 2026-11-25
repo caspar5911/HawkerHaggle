@@ -659,6 +659,26 @@ class _Oops extends StatelessWidget {
 }
 
 // ======================================================================= haggle
+/// A sign you can read in the stallholder's face ("😊 Auntie Mei is warming to you."): a quiet aside under the chat.
+class _Tell extends StatelessWidget {
+  const _Tell(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: Container(
+      key: ValueKey('tell:$text'),
+      margin: const EdgeInsets.only(left: 6, top: 2, bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.75), borderRadius: BorderRadius.circular(12)),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: Palette.soft),
+      ),
+    ),
+  );
+}
+
 class _Msg {
   _Msg(this.text, this.mine, {this.sparkle = false, this.typed = false});
   final String text;
@@ -840,7 +860,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
     final view = {
       for (final k in const [
         'line', 'event', 'ask', 'opening', 'patience', 'mood', 'qty', 'done', 'result', 'deal', 'pending', //
-        'stars', 'saved', 'surprise', 'surprise_note', 'accept_text', 'walk_text',
+        'stars', 'saved', 'surprise', 'surprise_note', 'accept_text', 'walk_text', 'tells',
       ])
         k: g[k],
       'suggestions': [
@@ -1042,6 +1062,9 @@ class _HaggleScreenState extends State<HaggleScreen> {
                         children: [
                           for (final m in _msgs)
                             Bubble(key: ObjectKey(m), text: m.text, mine: m.mine, sparkle: m.sparkle),
+                          // what you can read in their face after that move
+                          if (g != null && !_busy)
+                            for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
                           // before the first move: a guess at the fair price (checked when the haggle ends)
                           if (g != null && g['done'] != true && _msgs.length == 1 && !_busy && !_guessSkipped)
                             GuessCard(
@@ -2390,6 +2413,8 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                       ),
                     ),
                   for (final m in _chat) Bubble(text: '${m['t']}', mine: m['m'] == true, sparkle: m['s'] == true),
+                  if (g != null && !_busy)
+                    for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
                   if (_busy) const Typing(),
                   if (g != null && g['done'] == true)
                     Container(

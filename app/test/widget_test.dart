@@ -814,6 +814,20 @@ void main() {
     await settle(tester, 2000);
   });
 
+  testWidgets('what you can read in her face shows under her line, until the next move', (tester) async {
+    await openHaggle(tester, [
+      game('Aiyo, so sweet!', event: 'flattered', ask: 17)..['tells'] = ['😊 Auntie Mei is warming to you.'],
+      game('Hmm, \$16.', event: 'counter', ask: 16),
+    ]);
+    await tester.tap(find.text('Wah, looks so good!'));
+    await settle(tester, 1500);
+    expect(find.text('😊 Auntie Mei is warming to you.'), findsOneWidget);
+    await tester.tap(find.text('\$15 lah, OK?'));
+    await settle(tester, 1500);
+    expect(find.text('😊 Auntie Mei is warming to you.'), findsNothing);
+    await settle(tester, 3000);
+  });
+
   testWidgets('skipping the guess', (tester) async {
     final fake = await openHaggle(tester, [game('Hmm, \$16.', event: 'counter', ask: 16)]);
     await tester.tap(find.byKey(const ValueKey('guess_skip')));

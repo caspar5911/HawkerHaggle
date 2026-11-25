@@ -169,6 +169,64 @@ void main() {
     expect('${r['closeness']}', contains('went firm early'));
   });
 
+  group('reading the stallholder', () {
+    List<String> tells(Map r) => (r['tells'] as List).cast<String>();
+
+    test('a kind word warms them; a firm price too early gets their "best", which they hold', () async {
+      final g = await newGame();
+      var r = await g.start('mei', 'mango', 'none');
+      final id = r['id'] as String;
+      expect(tells(r), isEmpty);
+      r = await g.move(id, text: 'wah so nice');
+      expect(tells(r), contains('😊 Auntie Mei is warming to you.'));
+      r = await g.move(id, text: r'I only have $8');
+      expect(tells(r).first, "🧱 Auntie Mei won't go any lower this time.");
+      r = await g.move(id, text: 'you are so stupid');
+      expect(tells(r), contains('😠 That put Auntie Mei off.'));
+    });
+
+    test('bargaining well: they seem ready to settle, and then a firm price at their lowest is a yes', () async {
+      final g = await newGame();
+      var r = await g.start('mei', 'mango', 'none'); // her lowest is $10
+      final id = r['id'] as String;
+      final seen = <String>[];
+      for (final t in ['wah so nice', r'$8.50 can?', 'I come every week', 'so fresh, very good', r'$9 can?']) {
+        r = await g.move(id, text: t);
+        seen.addAll(tells(r));
+      }
+      expect(seen, contains('🤝 Auntie Mei seems ready to settle.'));
+      r = await g.move(id, text: r'$10 can?');
+      if (r['pending'] == null) r = await g.move(id, text: r'$10 can?');
+      expect(r['pending'], 10);
+      expect(tells(r), isEmpty); // nothing to read while a deal waits
+    });
+
+    test('tells never carry a number, and say little: at most two a move', () async {
+      final g = await newGame(surprises: true);
+      final rnd = math.Random(4);
+      const says = [
+        'hello',
+        'wah so nice',
+        'I come every week',
+        r'$5',
+        r'$9 can?',
+        r'$12 lah',
+        'cheaper can?',
+        'stupid',
+      ];
+      for (var i = 0; i < 60; i++) {
+        var r = await g.start('lim', 'pomfret', 'none');
+        for (var k = 0; k < 8 && r['done'] != true && r['pending'] == null; k++) {
+          r = await g.move(r['id'] as String, text: says[rnd.nextInt(says.length)]);
+          expect(tells(r).length, lessThanOrEqualTo(2));
+          for (final t in tells(r)) {
+            expect(RegExp(r'\d|\$').hasMatch(t), isFalse, reason: t);
+          }
+        }
+      }
+    });
+  });
+
   group('twists', () {
     Future<(Game, Map, String)> toTwist(Game g) async {
       for (var tries = 0; tries < 30; tries++) {

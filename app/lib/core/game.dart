@@ -90,6 +90,23 @@ int stableSeed(String s) {
   return h;
 }
 
+/// What can be read in a stallholder's face at one moment (for the tells).
+class _Read {
+  const _Read(this.mood, this.patience, this.best, this.settle, this.near);
+  factory _Read.of(Haggle h) {
+    final open = !h.s.bestGiven && !h.s.done;
+    return _Read(
+      h.s.mood,
+      h.s.patience,
+      h.s.bestGiven,
+      open && h.firmLine() <= h.item.floor * 1.06, // a firm price at their lowest would be a yes now
+      open && h.s.ask - h.floorNow() <= (h.item.ask - h.item.floor) * 0.12,
+    );
+  }
+  final double mood, patience;
+  final bool best, settle, near;
+}
+
 class _Session {
   _Session(this.id, this.stall, this.item, this.h, this.seed);
   final String id;
@@ -107,6 +124,7 @@ class _Session {
   bool rude = false;
   bool calledBack = false;
   bool firmEarly = false; // went firm before earning their lowest price (so their "best price" was higher)
+  List<String> tells = const []; // what you can read in their face after this move (never a number)
   bool softSpot = false; // their soft spot came up this haggle (warms them once)
   String found = ''; // the soft spot just found for the first time (shown once)
   bool challenged = false; // they challenged the customer to convince them (the next typed message is the pitch)
@@ -457,6 +475,7 @@ class Game {
       'challenge': ss.challenged, // "convince me!": the next typed message is a pitch
       'pitch_score': ss.pitchScore,
       'closeness': h.s.done && h.s.result == 'deal' && h.s.deal != null ? _closeness(ss) : null,
+      'tells': ss.tells,
       'dilemma': ss.dilemma == null
           ? null
           : {
@@ -511,7 +530,11 @@ class Game {
                     ? '📏 There was still some room left.'
                     : '📏 There was lots of room left: try lower next time!'));
     if (r > 1.03 && h.floorNow() < floor * 0.97) t += ' In such a good mood, $who might have gone a little lower.';
-    if (ss.firmEarly && r > 1.06) t += ' You went firm early: warm $who up and bargain a bit first next time.';
+    if (ss.firmEarly && r > 1.06) {
+      t += ' You went firm early: warm $who up and bargain a bit first next time.';
+    } else if (ss.nice == 0 && r > 1.06) {
+      t += ' A kind word first makes $who easier to bargain with.';
+    }
     return t;
   }
 
@@ -618,6 +641,7 @@ class Game {
     double? price;
     String you;
     ss.twist = null; // a twist left unanswered just passes
+    final before = _Read.of(h);
     final friendName = friend == null
         ? ''
         : (cleanName(friend) ?? '').replaceAll(RegExp(r'\d+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -860,7 +884,26 @@ class Game {
     } else if (ss.rude) {
       await _save();
     }
+    ss.tells = _tells(ss, before);
     return _view(ss, said, event, out, you, aiLine);
+  }
+
+  /// Reading the stallholder: what changed in their face after this move, in words (at most two, the most telling
+  /// first). The engine knows; the player only sees signs. No numbers, nothing while a deal waits or once it's over.
+  List<String> _tells(_Session ss, _Read before) {
+    final h = ss.h;
+    if (h.s.done || h.s.pending != null) return const [];
+    final now = _Read.of(h);
+    final who = '${ss.stall['name']}';
+    final out = <String>[];
+    if (now.best && !before.best) out.add("🧱 $who won't go any lower this time.");
+    final dm = now.mood - before.mood;
+    if (dm >= 0.5) out.add('😊 $who is warming to you.');
+    if (dm <= -0.5) out.add('😠 That put $who off.');
+    if (now.settle && !before.settle) out.add('🤝 $who seems ready to settle.');
+    if (now.near && !before.near) out.add("🤏 That's close to $who's limit.");
+    if (now.patience < 35 && before.patience >= 35) out.add('⏳ $who is losing patience.');
+    return out.take(2).toList();
   }
 
   /// Twists: about one haggle in four (tests and tools can raise it). Never without surprises.
