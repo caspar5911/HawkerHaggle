@@ -1668,6 +1668,7 @@
           "ask": 80,
           "floor": 52,
           "facts": [
+            "20 packets in one tray",
             "Coconut rice cooked with pandan leaves",
             "Each packet: fried chicken wing, egg, ikan bilis, peanuts, cucumber and her own sambal",
             "Wrapped in banana leaf",
@@ -1683,6 +1684,7 @@
           "ask": 22,
           "floor": 12,
           "facts": [
+            "30 pieces in one box",
             "Glutinous rice balls filled with gula melaka",
             "Rolled in fresh grated coconut",
             "Made this morning",
@@ -2084,6 +2086,7 @@
           "ask": 9,
           "floor": 5,
           "facts": [
+            "10 eggs in one tray",
             "From her own free-roaming chickens",
             "Laid yesterday and this morning",
             "Brown shells, orange yolks",
