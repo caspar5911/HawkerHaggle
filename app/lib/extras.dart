@@ -403,7 +403,18 @@ class HistoryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Past haggles'), backgroundColor: Palette.cream),
+      appBar: AppBar(
+        title: const Text('Past haggles'),
+        backgroundColor: Palette.cream,
+        actions: [
+          TextButton.icon(
+            key: const ValueKey('quote_book'),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => QuoteBookScreen(api: api))),
+            icon: const Text('⭐'),
+            label: const Text('Quote book'),
+          ),
+        ],
+      ),
       backgroundColor: Palette.cream,
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: api.history(),
@@ -595,7 +606,7 @@ class _HistoryChatScreenState extends State<HistoryChatScreen> {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
               children: [
                 const Text(
-                  'The whole chat goes in the picture. Tap lines to leave them out.',
+                  'The whole chat goes in the picture: tap lines to leave them out. Hold a line to save it to your quote book.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Palette.soft, fontSize: 13),
                 ),
@@ -619,6 +630,18 @@ class _HistoryChatScreenState extends State<HistoryChatScreen> {
                     key: ValueKey('line_$i'),
                     behavior: HitTestBehavior.opaque,
                     onTap: () => _toggle(i),
+                    onLongPress: m['who'] == 'you'
+                        ? null
+                        : () async {
+                            final added = await widget.api.saveQuote('${h['stall']}', '${m['text']}');
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(added ? '⭐ Saved to your quote book' : 'Already in your quote book'),
+                                ),
+                              );
+                            }
+                          },
                     child: Container(
                       decoration: BoxDecoration(
                         color: _picked.contains(i) ? Palette.gold.withValues(alpha: 0.25) : Colors.transparent,
@@ -1300,6 +1323,293 @@ class _BoardScreenState extends State<BoardScreen> {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// A stallholder's small trouble, at the start of a haggle: help from your savings jar (for friendship), or not.
+class DilemmaCard extends StatelessWidget {
+  const DilemmaCard({super.key, required this.d, required this.onAnswer});
+  final Map d;
+  final void Function(bool help) onAnswer;
+  @override
+  Widget build(BuildContext context) {
+    final can = d['can'] == true;
+    return Container(
+      key: const ValueKey('dilemma_card'),
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
+      decoration: BoxDecoration(color: const Color(0xFFFFF1C9), borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '💭 ${d['text']}',
+            style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600, height: 1.3),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                key: const ValueKey('dilemma_no'),
+                onPressed: () => onAnswer(false),
+                child: const Text('Not this time', style: TextStyle(color: Palette.soft)),
+              ),
+              TextButton(
+                key: const ValueKey('dilemma_yes'),
+                onPressed: can ? () => onAnswer(true) : null,
+                child: Text(can ? 'Help (${money(d['cost'] as num)} from my jar)' : 'Jar too empty'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The savings jar on the market: how much is saved, and the next thing to save for.
+class JarStrip extends StatelessWidget {
+  const JarStrip({super.key, required this.jar, required this.onTap});
+  final Map jar;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final next = (jar['goals'] as List).cast<Map>().where((g) => g['owned'] != true).firstOrNull;
+    final saved = (jar['jar'] as num).toDouble();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Bouncy(
+        key: const ValueKey('jar_open'),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: const Color(0xFFE8F0FF), borderRadius: BorderRadius.circular(16)),
+          child: Row(
+            children: [
+              const Text('🫙', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  next == null
+                      ? 'Savings jar: ${money(saved)}'
+                      : 'Jar ${money(saved)} · ${next['emoji']} ${money(next['cost'] as num)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                ),
+              ),
+              if (next != null)
+                SizedBox(
+                  width: 54,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: (saved / (next['cost'] as num)).clamp(0.0, 1.0),
+                      minHeight: 8,
+                      backgroundColor: Colors.white,
+                      color: Palette.teal,
+                    ),
+                  ),
+                ),
+              const Icon(Icons.chevron_right_rounded, color: Palette.soft),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// What you're saving for, and buying it.
+class JarScreen extends StatefulWidget {
+  const JarScreen({super.key, required this.api});
+  final Api api;
+  @override
+  State<JarScreen> createState() => _JarScreenState();
+}
+
+class _JarScreenState extends State<JarScreen> {
+  Map<String, dynamic>? _j;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final j = await widget.api.jar();
+    if (mounted) setState(() => _j = j);
+  }
+
+  Future<void> _buy(Map g) async {
+    try {
+      final r = await widget.api.buyGoal('${g['id']}');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${r['note']}')));
+      await _load();
+    } on ApiError catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final j = _j;
+    return Scaffold(
+      appBar: AppBar(title: const Text('🫙 Savings jar'), backgroundColor: Palette.cream),
+      backgroundColor: Palette.cream,
+      body: j == null
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Center(
+                  child: Text(
+                    money(j['jar'] as num),
+                    key: const ValueKey('jar_total'),
+                    style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Palette.ink),
+                  ),
+                ),
+                const Text(
+                  'Every dollar you bargain off an asking price goes in here, and so does the profit from your own '
+                  'stall. Paying more never stops you buying: you just save less.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Palette.soft, height: 1.35),
+                ),
+                const SizedBox(height: 16),
+                for (final g in (j['goals'] as List).cast<Map>())
+                  Container(
+                    key: ValueKey('goal_${g['id']}'),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+                    child: Row(
+                      children: [
+                        Text('${g['emoji']}', style: const TextStyle(fontSize: 34)),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${g['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                              Text('${g['what']}', style: const TextStyle(color: Palette.soft, fontSize: 13)),
+                            ],
+                          ),
+                        ),
+                        if (g['owned'] == true)
+                          const Text(
+                            '✅ Yours',
+                            style: TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
+                          )
+                        else
+                          Bouncy(
+                            key: ValueKey('buy_${g['id']}'),
+                            enabled: g['can'] == true,
+                            onTap: () => _buy(g),
+                            child: Pill(
+                              text: money(g['cost'] as num),
+                              icon: '🫙',
+                              color: g['can'] == true ? Palette.gold : Colors.white,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+/// Favourite lines, saved during haggles.
+class QuoteBookScreen extends StatefulWidget {
+  const QuoteBookScreen({super.key, required this.api});
+  final Api api;
+  @override
+  State<QuoteBookScreen> createState() => _QuoteBookScreenState();
+}
+
+class _QuoteBookScreenState extends State<QuoteBookScreen> {
+  List<Map<String, dynamic>>? _q;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final q = await widget.api.quotes();
+    if (mounted) setState(() => _q = q);
+  }
+
+  Future<void> _share() async {
+    final q = _q ?? const [];
+    await shareBrag(
+      [for (final x in q) '"${x['text']}" (${x['name']})', '🏮 Hawker Haggle quote book'].join('\n\n'),
+      null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final q = _q;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('⭐ Quote book'),
+        backgroundColor: Palette.cream,
+        actions: [
+          if (q != null && q.isNotEmpty)
+            IconButton(key: const ValueKey('quotes_share'), icon: const Icon(Icons.share_rounded), onPressed: _share),
+        ],
+      ),
+      backgroundColor: Palette.cream,
+      body: q == null
+          ? const Center(child: CircularProgressIndicator())
+          : q.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'No favourite lines yet. When a stallholder says something funny, tap "☆ Save this line".',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Palette.soft, height: 1.4),
+                ),
+              ),
+            )
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                for (final x in q)
+                  Dismissible(
+                    key: ValueKey('quote_${x['text']}'),
+                    onDismissed: (_) => widget.api.removeQuote('${x['text']}'),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '"${x['text']}"',
+                            style: const TextStyle(fontSize: 16, color: Palette.ink, height: 1.35),
+                          ),
+                          const SizedBox(height: 4),
+                          Text('${x['name']} · ${x['day']}', style: const TextStyle(color: Palette.soft, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ),
+                const Text(
+                  'Swipe a line away to remove it.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Palette.soft, fontSize: 12),
+                ),
+              ],
+            ),
     );
   }
 }

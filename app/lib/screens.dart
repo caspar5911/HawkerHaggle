@@ -66,6 +66,8 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         _challenges = r[3];
         _error = null;
       });
+      final jar = await widget.api.jar();
+      if (mounted) setState(() => _jar = jar);
       if (_me?['named'] != true && !_asking) await _editName(first: true);
       // friends: this week's board (also what the stallholders gossip about)
       final b = await widget.api.board();
@@ -77,6 +79,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
 
   bool _asking = false;
   Map<String, dynamic>? _board;
+  Map<String, dynamic>? _jar;
 
   String _boardLine() {
     final n = (_board?['items'] as List? ?? const []).length;
@@ -222,6 +225,14 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
                     ),
                   ),
                 if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
+                if (_jar != null)
+                  JarStrip(
+                    jar: _jar!,
+                    onTap: () async {
+                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => JarScreen(api: widget.api)));
+                      _load();
+                    },
+                  ),
                 if (widget.api.account != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -550,6 +561,8 @@ class _HaggleScreenState extends State<HaggleScreen> {
   Face _face = Face.happy;
   bool _guessSkipped = false;
   int _jolt = 0; // the counter slam (insulted, rude, refused)
+  bool _dilemmaDone = false;
+  final _savedLines = <String>{};
 
   @override
   void initState() {
@@ -569,6 +582,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
       _busy = true;
       _showResult = false;
       _guessSkipped = false;
+      _dilemmaDone = false;
       _msgs.clear();
     });
     try {
@@ -745,6 +759,34 @@ class _HaggleScreenState extends State<HaggleScreen> {
                               onSkip: () => setState(() => _guessSkipped = true),
                             ),
                           if (_canFlag) _FlagChip(flagged: _msgs.last.flagged, onTap: _flag),
+                          if (!_busy && _msgs.isNotEmpty && !_msgs.last.mine)
+                            _SaveLineChip(
+                              saved: _savedLines.contains(_msgs.last.text),
+                              onTap: () async {
+                                final line = _msgs.last.text;
+                                try {
+                                  await widget.api.saveQuote('${widget.stall['id']}', line);
+                                  if (mounted) setState(() => _savedLines.add(line));
+                                  _toast('⭐ Saved to your quote book');
+                                } on ApiError catch (e) {
+                                  _toast(e.message);
+                                }
+                              },
+                            ),
+                          // a friend's small trouble: help from your savings jar, or not
+                          if (g != null && g['dilemma'] is Map && !_dilemmaDone && g['done'] != true)
+                            DilemmaCard(
+                              d: g['dilemma'] as Map,
+                              onAnswer: (help) async {
+                                try {
+                                  final note = await widget.api.answerDilemma(g['id'] as String, help: help);
+                                  if (mounted) setState(() => _dilemmaDone = true);
+                                  if (note.isNotEmpty) _toast(note);
+                                } on ApiError catch (e) {
+                                  _toast(e.message);
+                                }
+                              },
+                            ),
                           if (_busy) const Typing(),
                         ],
                       ),
@@ -1213,6 +1255,29 @@ class _TypeBox extends StatelessWidget {
 }
 
 /// The small "she misunderstood me" link under her reply.
+/// "⭐ Save this line": her last line goes into your quote book.
+class _SaveLineChip extends StatelessWidget {
+  const _SaveLineChip({required this.saved, required this.onTap});
+  final bool saved;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: Padding(
+      padding: const EdgeInsets.only(left: 6, bottom: 6),
+      child: Bouncy(
+        key: const ValueKey('save_line'),
+        enabled: !saved,
+        onTap: onTap,
+        child: Text(
+          saved ? '⭐ Saved' : '☆ Save this line',
+          style: TextStyle(fontSize: 12, color: Palette.soft.withValues(alpha: 0.9), fontWeight: FontWeight.w600),
+        ),
+      ),
+    ),
+  );
+}
+
 class _FlagChip extends StatelessWidget {
   const _FlagChip({required this.flagged, required this.onTap});
   final bool flagged;

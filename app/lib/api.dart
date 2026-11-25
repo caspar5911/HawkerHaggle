@@ -138,6 +138,13 @@ class Api {
       _run((g) async => Map<String, dynamic>.from(await g.move(id, pick: pick, move: move, text: text)));
   Future<void> flag(String id) => _run((g) => g.flag(id));
   Future<void> guess(String id, num price) => _run((g) => g.guess(id, price));
+  Future<String> answerDilemma(String id, {required bool help}) => _run((g) => g.answerDilemma(id, help: help));
+  Future<Map<String, dynamic>> jar() => _run((g) => Map<String, dynamic>.from(g.jar()));
+  Future<Map<String, dynamic>> buyGoal(String id) => _run((g) async => Map<String, dynamic>.from(await g.buyGoal(id)));
+  Future<List<Map<String, dynamic>>> quotes() =>
+      _run((g) => [for (final q in g.quotes()) Map<String, dynamic>.from(q)]);
+  Future<bool> saveQuote(String stall, String text) => _run((g) => g.saveQuote(stall, text));
+  Future<void> removeQuote(String text) => _run((g) => g.removeQuote(text));
   Future<Map<String, dynamic>> shopStart([String? product]) =>
       _run((g) async => Map<String, dynamic>.from(await g.shopStart(product)));
   Future<Map<String, dynamic>> shopMove(String id, {double? ask, bool take = false, bool chat = false}) =>

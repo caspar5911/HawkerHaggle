@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'arcs.dart';
 import 'challenges.dart';
 import 'softspots.dart';
+import 'treats.dart';
 
 /// Base stalls: open from the start, and the only ones the daily list uses (so it's the same list for everyone).
 const baseStalls = ['mei', 'lim', 'raj', 'siti'];
@@ -42,6 +43,9 @@ const stickerDefs = <(String, String, String, String)>[
   ('festive', '🏮', 'Festival week shopper', 'Close a deal during a festival week'),
   ('storyteller', '📖', 'Part of the story', "Finish a stallholder's story"),
   ('shopkeeper', '🧺', 'Shopkeeper', 'Sell at your own stall for the usual price or more'),
+  ('saver', '🫙', 'Saved up', 'Buy something with your savings jar'),
+  ('lucky', '🎁', 'Lucky customer', 'Get a freebie from a stallholder'),
+  ('quotes5', '💬', 'Quote collector', 'Save 5 favourite lines'),
 ];
 
 String dayKey(DateTime d) =>
@@ -440,6 +444,86 @@ class Progress {
       'soft_spot': softSpotFound(stall) ? softSpots[stall]?.topic : null,
     };
   }
+
+  // ---------------------------------------------------------------- savings jar and goals
+  double get jar => ((p['jar'] ?? 0) as num).toDouble();
+  void addToJar(double v) => p['jar'] = ((jar + v) * 100).round() / 100;
+  bool owns(String goal) => _map('goals')[goal] != null;
+
+  List<Map<String, Object?>> goalsView() => [
+    for (final (id, emoji, name, cost, what) in goals)
+      {
+        'id': id,
+        'emoji': emoji,
+        'name': name,
+        'cost': cost,
+        'what': what,
+        'owned': owns(id),
+        'can': !owns(id) && jar >= cost,
+      },
+  ];
+
+  /// Spend from the jar on a goal. Returns what happens.
+  String buyGoal(String id, Set<String> fresh) {
+    final g = goals.where((x) => x.$1 == id).firstOrNull;
+    if (g == null) throw ArgumentError('no such goal');
+    if (owns(id)) throw StateError('You already have it!');
+    if (jar < g.$4) throw StateError('Not enough in your jar yet: keep bargaining!');
+    addToJar(-g.$4);
+    _map('goals')[id] = dayKey(now());
+    _earn('saver', fresh);
+    return '${g.$2} ${g.$3}! ${g.$5}';
+  }
+
+  // ---------------------------------------------------------------- freebies
+  /// A freebie into your stock (free). Every few good deals without one, one is guaranteed.
+  String? maybeFreebie(String stall, {required bool lucky, required bool good, required Set<String> fresh}) {
+    final f = freebies[stall];
+    if (f == null) return null;
+    final pity = ((p['free_pity'] ?? 0) as num).toInt();
+    if (!lucky && !(good && pity >= 3)) {
+      if (good) p['free_pity'] = pity + 1;
+      return null;
+    }
+    p['free_pity'] = 0;
+    final list = (p['stock'] ??= <Object>[]) as List;
+    list.add({
+      'key': 'free:$stall',
+      'name': f.$1,
+      'emoji': f.$2,
+      'cost': 0.0,
+      'fair': f.$3,
+      'from': _stalls[stall]?['name'],
+    });
+    if (list.length > stockMax) list.removeRange(0, list.length - stockMax);
+    _earn('lucky', fresh);
+    return '🎁 ${_stalls[stall]?['name']} threw in a ${f.$1} ${f.$2} for free! (Sell it at your own stall.)';
+  }
+
+  // ---------------------------------------------------------------- dilemmas
+  /// You helped a stallholder out: friendship grows (within the daily cap).
+  void helped(String stall) {
+    _addPoints(stall, 8);
+    final h = _map('helped');
+    h[stall] = ((h[stall] ?? 0) as num).toInt() + 1;
+  }
+
+  // ---------------------------------------------------------------- quote book
+  List<Map> get quotes => [for (final q in (p['quotes'] as List? ?? const [])) q as Map];
+
+  /// Keep a favourite line. False if it's already there.
+  bool saveQuote(String stall, String text, Set<String> fresh) {
+    final t = text.trim().length > quoteMaxChars ? text.trim().substring(0, quoteMaxChars) : text.trim();
+    if (t.isEmpty) return false;
+    final list = (p['quotes'] ??= <Object>[]) as List;
+    if (list.any((q) => (q as Map)['text'] == t)) return false;
+    list.add({'stall': stall, 'name': _stalls[stall]?['name'] ?? stall, 'text': t, 'day': dayKey(now())});
+    if (list.length > quotesKept) list.removeRange(0, list.length - quotesKept);
+    if (list.length >= 5) _earn('quotes5', fresh);
+    return true;
+  }
+
+  void removeQuote(String text) => (p['quotes'] as List?)?.removeWhere((q) => (q as Map)['text'] == text);
 
   // ---------------------------------------------------------------- soft spots
   /// Mark a stallholder's soft spot as found. True the first time.

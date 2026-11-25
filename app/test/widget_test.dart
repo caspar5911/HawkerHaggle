@@ -211,6 +211,8 @@ Future<Fake> openHaggle(WidgetTester tester, List<Map<String, dynamic>> replies,
   fake ??= Fake(replies);
   await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
   await settle(tester, 2000);
+  await tester.ensureVisible(find.text('box of mangoes'));
+  await settle(tester, 300);
   await tester.tap(find.text('box of mangoes'));
   await settle(tester);
   return fake;

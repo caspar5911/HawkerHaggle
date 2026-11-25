@@ -14,6 +14,7 @@ import 'progress.dart';
 import 'reader.dart';
 import 'shop.dart';
 import 'softspots.dart';
+import 'treats.dart';
 import 'voice.dart';
 
 class GameError implements Exception {
@@ -110,6 +111,7 @@ class _Session {
   bool challenged = false; // they challenged the customer to convince them (the next typed message is the pitch)
   bool pitched = false; // a persuasion moment happened this haggle (at most one)
   int? pitchScore;
+  String? dilemma; // a stallholder's small trouble, offered at the start (help from your jar, or not)
   Map<String, Object?> finish = const {}; // new stickers, Mum's note, unlocks (when it ends)
 }
 
@@ -451,6 +453,14 @@ class Game {
       'challenge': ss.challenged, // "convince me!": the next typed message is a pitch
       'pitch_score': ss.pitchScore,
       'closeness': h.s.done && h.s.result == 'deal' && h.s.deal != null ? _closeness(ss) : null,
+      'dilemma': ss.dilemma == null
+          ? null
+          : {
+              'text': dilemmas[ss.dilemma]!.$1,
+              'cost': dilemmas[ss.dilemma]!.$2,
+              'can': progress.jar >= dilemmas[ss.dilemma]!.$2,
+            },
+      'jar': progress.jar,
       'rival_left': h.s.rivalLeft,
       'hearts': progress.hearts('${ss.stall['id']}'),
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
@@ -543,6 +553,14 @@ class Game {
       seed,
     );
     ss.festival = fest;
+    // now and then a friend has a small trouble (a choice with a cost); never in tests without surprises
+    if (surprises &&
+        surprise != 'rival' &&
+        progress.hearts(stallId) >= 1 &&
+        dilemmas[stallId] != null &&
+        stableSeed('$seed-dilemma') % 6 == 0) {
+      ss.dilemma = stallId;
+    }
     _sessions[id] = ss;
     String? said;
     final heard = gossipNote(stallId);
@@ -767,12 +785,86 @@ class Game {
         flags: {'nice': ss.nice, 'called_back': ss.calledBack, 'hard': hard},
         chat: ss.chat,
       );
-      ss.finish = {'stickers': r.stickers, 'mum': r.mum, 'unlocked': r.unlocked, 'notes': r.notes};
+      final extra = <String>[];
+      final fresh = <String>{...r.stickers};
+      if (h.s.result == 'deal' && h.s.deal != null) {
+        // every dollar knocked off the first asking price goes into the savings jar
+        final kept = ((h.s.opening - h.s.deal!) * h.s.qty * 100).round() / 100;
+        if (kept > 0) {
+          progress.addToJar(kept);
+          extra.add('🫙 ${money(kept)} into your savings jar (${money(progress.jar)} saved).');
+        }
+        // a stallholder who likes you might throw something in (never in tests without surprises)
+        if (surprises) {
+          final chance = math.min(50, 12 + 10 * ss.nice + 5 * progress.hearts('${stall['id']}'));
+          final free = progress.maybeFreebie(
+            '${stall['id']}',
+            lucky: stableSeed('${ss.seed}-free') % 100 < chance,
+            good: (out?.stars ?? 0) >= 2 || ss.nice > 0,
+            fresh: fresh,
+          );
+          if (free != null) extra.add(free);
+        }
+      }
+      ss.finish = {
+        'stickers': fresh.toList(),
+        'mum': r.mum,
+        'unlocked': r.unlocked,
+        'notes': [...r.notes, ...extra],
+      };
       await _save();
     } else if (ss.rude) {
       await _save();
     }
     return _view(ss, said, event, out, you, aiLine);
+  }
+
+  /// The stallholder's small trouble: help (from your jar, for friendship) or not. Returns what happened.
+  Future<String> answerDilemma(String id, {required bool help}) async {
+    final ss = _sessions[id];
+    if (ss == null) throw GameError(404, 'No such haggle');
+    final st = ss.dilemma;
+    if (st == null) throw GameError(400, 'Nothing to answer');
+    ss.dilemma = null;
+    if (!help) return '';
+    final cost = dilemmas[st]!.$2;
+    if (progress.jar < cost) throw GameError(400, 'Not enough in your savings jar.');
+    progress.addToJar(-cost);
+    progress.helped(st);
+    await _save();
+    return '💛 ${ss.stall['name']} is touched: "You\'re a good one."';
+  }
+
+  /// The savings jar and what you can save up for.
+  Map<String, Object?> jar() => {'jar': progress.jar, 'goals': progress.goalsView()};
+
+  Future<Map<String, Object?>> buyGoal(String id) async {
+    final fresh = <String>{};
+    try {
+      final note = progress.buyGoal(id, fresh);
+      await _save();
+      return {'note': note, 'jar': progress.jar, 'new_stickers': fresh.toList()};
+    } on StateError catch (e) {
+      throw GameError(400, e.message);
+    } on ArgumentError {
+      throw GameError(404, 'No such goal');
+    }
+  }
+
+  /// The book of favourite lines.
+  List<Map> quotes() => progress.quotes.reversed.toList();
+
+  Future<bool> saveQuote(String stallId, String text) async {
+    if (_stalls[stallId] == null) throw GameError(404, 'No such stall');
+    final fresh = <String>{};
+    final added = progress.saveQuote(stallId, text, fresh);
+    if (added) await _save();
+    return added;
+  }
+
+  Future<void> removeQuote(String text) async {
+    progress.removeQuote(text);
+    await _save();
   }
 
   /// Before haggling: the player guesses the fair price (it's shown against the real one when the haggle ends).
@@ -857,6 +949,7 @@ class Game {
     final customer = customers[_rnd.nextInt(customers.length)];
     final seed = _rnd.nextInt(1 << 31);
     final sale = Sale(product, customer, seed: seed);
+    if (progress.owns('awning')) sale.most = (sale.most * 1.05 * 2).round() / 2; // a nicer stall: they pay a bit more
     final id = 's${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
     _sales[id] = (sale: sale, chat: <Map<String, Object?>>[], seed: seed);
     return _shopSay(id, 'greet');
@@ -898,6 +991,10 @@ class Game {
           progress.takeStock(s.sale.product.id.substring(6), s.sale.product.cost);
         }
         shop['sales'] = ((shop['sales'] ?? 0) as num).toInt() + 1;
+        if (s.sale.profit > 0) {
+          progress.addToJar(s.sale.profit);
+          notes.add('🫙 ${money2(s.sale.profit)} profit into your savings jar (${money2(progress.jar)} saved).');
+        }
         shop['profit'] = ((shop['profit'] ?? 0) as num).toDouble() + s.sale.profit;
         final fresh = <String>{};
         if (s.sale.stars >= 2) progress.earn('shopkeeper', fresh);
