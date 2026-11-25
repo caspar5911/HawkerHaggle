@@ -133,6 +133,7 @@ class Api {
   Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text}) =>
       _run((g) async => Map<String, dynamic>.from(await g.move(id, pick: pick, move: move, text: text)));
   Future<void> flag(String id) => _run((g) => g.flag(id));
+  Future<void> guess(String id, num price) => _run((g) => g.guess(id, price));
 
   /// Delete my data: this phone's progress, and the account's copy too when logged in.
   Future<void> deleteMe() => _run((g) async {

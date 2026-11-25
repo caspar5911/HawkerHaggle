@@ -28,6 +28,7 @@ const ranks = <(int, String)>[
 
 /// XP for each source.
 const xpDailyChallenge = 60, xpList = 40, xpListUnder = 20, xpQuest = 60, xpAllQuests = 100, xpDayPlayed = 20;
+const xpGuessSpotOn = 4, xpGuessClose = 2; // guessing the fair price before a haggle (inside the haggle cap)
 const xpHaggleCapPerDay = 60; // XP from haggles themselves is capped per day, so grinding can't rush the month
 
 /// Market Month milestones: days played -> what it gives.
@@ -74,6 +75,16 @@ class Challenges {
   String get today => dayKey(now);
   Map<String, Map> get _stalls => {for (final s in progress.content['stalls'] as List) (s as Map)['id'] as String: s};
   List<Map> get _records => [for (final h in (p['haggles'] as List? ?? const [])) h as Map];
+
+  /// An item's fair price (per piece), for the guess.
+  double? _fairPrice(Map r) {
+    for (final i in (_stalls['${r['stall']}']?['items'] as List? ?? const [])) {
+      if ((i as Map)['id'] == r['item'] && i['fair'] != null) return (i['fair'] as num).toDouble();
+    }
+    return null;
+  }
+
+  static String _price(num v) => v == v.roundToDouble() ? '\$${v.toInt()}' : '\$${v.toStringAsFixed(2)}';
   Map<String, Object?> _map(String k) => (p[k] ??= <String, Object?>{}) as Map<String, Object?>;
 
   String _name(String stall) => '${_stalls[stall]?['name'] ?? stall}';
@@ -344,7 +355,24 @@ class Challenges {
         ..['day'] = day
         ..['haggles'] = 0;
     }
-    final gain = _deal(record) ? 5 + 3 * _n(record['stars']).toInt() : 2;
+    var gain = _deal(record) ? 5 + 3 * _n(record['stars']).toInt() : 2;
+    // the fair-price guess (inside the same daily cap, so it can't rush the month)
+    final fair = _fairPrice(record);
+    if (record['guess'] != null && fair != null) {
+      final off = (_n(record['guess']) - fair).abs() / fair;
+      final bonus = off <= 0.05 ? xpGuessSpotOn : (off <= 0.15 ? xpGuessClose : 0);
+      gain += bonus;
+      notes.add(
+        '🤔 You guessed ${_price(_n(record['guess']))}; the fair price is ${_price(fair)}. '
+        '${off <= 0.05 ? 'Spot on!' : (off <= 0.15 ? 'Close!' : (_n(record['guess']) > fair ? 'A bit high.' : 'A bit low.'))}'
+        '${bonus > 0 ? ' +$bonus XP' : ''}',
+      );
+      final sharp = _records.where((r) {
+        final f = _fairPrice(r);
+        return r['guess'] != null && f != null && (_n(r['guess']) - f).abs() / f <= 0.10;
+      }).length;
+      if (sharp >= 5) progress.earn('sharp_eye', stickers);
+    }
     final room = xpHaggleCapPerDay - _n(xpDay['haggles']).toInt();
     final got = math.max(0, math.min(gain, room));
     xpDay['haggles'] = _n(xpDay['haggles']).toInt() + got;

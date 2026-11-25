@@ -7,8 +7,9 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'ai_client.dart';
-import 'engine.dart';
 import 'challenges.dart';
+import 'engine.dart';
+import 'festivals.dart';
 import 'progress.dart';
 import 'reader.dart';
 import 'voice.dart';
@@ -95,6 +96,8 @@ class _Session {
   final chat = <Map<String, Object?>>[];
   List<Map<String, Object?>> shown = []; // the suggestions on screen right now
   bool recorded = false;
+  num? guess; // the player's guess at the fair price, before haggling (shown against it at the end)
+  Festival? festival; // a festival week (real dates)
   int nice = 0; // friendly moves (compliments, "I'm a regular"): a little extra friendship
   int typed = 0, tapped = 0; // how the player played (for challenges)
   final tactics = <String>{}; // compliment, regular, competitor, bulk, plead, pity, budget...
@@ -239,6 +242,7 @@ class Game {
     return {
       'name': _profile['name'],
       'named': _profile['named'] == true,
+      'festival': festivalWeek?.toJson(),
       'haggles': done.length,
       'deals': done.where((h) => h['result'] == 'deal').length,
       'stars': done.fold<int>(0, (a, h) => a + ((h['stars'] ?? 0) as num).toInt()),
@@ -329,6 +333,7 @@ class Game {
 
   /// What the AI should know beyond the chat: the market surprise and how well she knows this customer.
   String _notes(_Session ss, [String extra = '']) => [
+    ss.festival?.wish ?? '',
     surpriseForAi(ss.h.s.event, ss.h.s.rivalLeft),
     progress.memoryNote('${ss.stall['id']}', '${_profile['name']}'),
     extra,
@@ -431,7 +436,10 @@ class Game {
       'saved': out?.saved ?? 0.0,
       'suggestions': hard ? const <Object>[] : ss.shown, // hard mode: no suggestions, just you
       'surprise': h.s.event,
-      'surprise_note': surpriseNote(h.s.event, '${ss.stall['name']}', h.s.rivalLeft),
+      'surprise_note': h.s.event == 'festival' && ss.festival != null
+          ? '${ss.festival!.emoji} ${ss.festival!.name}: prices are up, everyone is cheerful!'
+          : surpriseNote(h.s.event, '${ss.stall['name']}', h.s.rivalLeft),
+      'guess': ss.guess,
       'rival_left': h.s.rivalLeft,
       'hearts': progress.hearts('${ss.stall['id']}'),
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
@@ -455,15 +463,24 @@ class Game {
             : 'Unlock ${stall['name']} with ${progress.unlockAt(stallId)} ⭐ (best on each item).',
       );
     }
-    // About 1 haggle in 3 has a market surprise.
+    // About 1 haggle in 3 has a market surprise; in a festival week, festival days are much more common.
+    final fest = festivalWeek;
     if (!surprises) surprise ??= '';
-    surprise ??= switch (_rnd.nextInt(100)) {
-      < 9 => 'rain',
-      < 18 => 'closing',
-      < 26 => 'festival',
-      < 34 => 'rival',
-      _ => '',
-    };
+    surprise ??= fest == null
+        ? switch (_rnd.nextInt(100)) {
+            < 9 => 'rain',
+            < 18 => 'closing',
+            < 26 => 'festival',
+            < 34 => 'rival',
+            _ => '',
+          }
+        : switch (_rnd.nextInt(100)) {
+            < 5 => 'rain',
+            < 10 => 'closing',
+            < 40 => 'festival',
+            < 46 => 'rival',
+            _ => '',
+          };
     if (surprise == 'none') surprise = ''; // tests: no surprise on purpose
     final items = stall['items'] as List;
     final item = (items.firstWhere((i) => (i as Map)['id'] == itemId, orElse: () => items.first)) as Map;
@@ -482,10 +499,11 @@ class Game {
       ),
       seed,
     );
+    ss.festival = fest;
     _sessions[id] = ss;
     String? said;
-    if (ai.enabled && (surprise.isNotEmpty || progress.hearts(stallId) > 0)) {
-      // A friend, or a surprise: worth a fresh greeting from the AI.
+    if (ai.enabled && (surprise.isNotEmpty || fest != null || progress.hearts(stallId) > 0)) {
+      // A friend, a surprise or a festival week: worth a fresh greeting from the AI.
       said = await ai.say(stall: stall, item: item, event: 'greet', numbers: {'ask': ss.h.s.ask}, note: _notes(ss));
     }
     final aiLine = said != null;
@@ -643,6 +661,8 @@ class Game {
           'called_back': ss.calledBack,
           'hard': hard,
           'rude': ss.rude,
+          if (ss.guess != null) 'guess': ss.guess,
+          if (ss.festival != null) 'festival_week': ss.festival!.id,
         },
         qty: h.s.qty,
         flags: {'nice': ss.nice, 'called_back': ss.calledBack, 'hard': hard},
@@ -655,6 +675,18 @@ class Game {
     }
     return _view(ss, said, event, out, you, aiLine);
   }
+
+  /// Before haggling: the player guesses the fair price (it's shown against the real one when the haggle ends).
+  Future<void> guess(String id, num price) async {
+    final ss = _sessions[id];
+    if (ss == null) throw GameError(404, 'No such haggle');
+    if (ss.h.s.done) throw GameError(400, 'This haggle is over');
+    if (price <= 0 || price > 100000) throw GameError(400, 'Guess a price in dollars.');
+    ss.guess = (price * 100).round() / 100;
+  }
+
+  /// The festival week today, if any (never in tests that turn surprises off).
+  Festival? get festivalWeek => surprises ? festivalOn(dayKey(now())) : null;
 
   /// How the last typed message in a haggle was read (for tests and the live check tool).
   Map? lastYou(String id) {

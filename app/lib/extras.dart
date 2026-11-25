@@ -421,44 +421,141 @@ class HistoryScreen extends StatelessWidget {
 }
 
 /// One past haggle's chat, read-only.
-class HistoryChatScreen extends StatelessWidget {
+class HistoryChatScreen extends StatefulWidget {
   const HistoryChatScreen({super.key, required this.api, required this.id});
   final Api api;
   final String id;
   @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<Map<String, dynamic>>(
-      future: api.historyItem(id),
-      builder: (c, snap) {
-        final h = snap.data;
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(h == null ? 'Past haggle' : '${h['item_name']} · ${h['stall_name']}'),
-            backgroundColor: Palette.cream,
+  State<HistoryChatScreen> createState() => _HistoryChatScreenState();
+}
+
+/// A past haggle's chat. Tap lines to pick them (the last four to start with), then share them as a picture.
+class _HistoryChatScreenState extends State<HistoryChatScreen> {
+  static const maxLines = 6;
+  Map<String, dynamic>? _h;
+  final _picked = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    widget.api.historyItem(widget.id).then((h) {
+      if (!mounted) return;
+      final n = (h['chat'] as List).length;
+      setState(() {
+        _h = h;
+        _picked.addAll([
+          for (var i = n - 4; i < n; i++)
+            if (i >= 0) i,
+        ]);
+      });
+    });
+  }
+
+  void _toggle(int i) => setState(() {
+    if (!_picked.remove(i)) {
+      if (_picked.length >= maxLines) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Up to 6 lines fit on the picture.')));
+        return;
+      }
+      _picked.add(i);
+    }
+  });
+
+  Future<void> _share() async {
+    final h = _h!;
+    final chat = (h['chat'] as List).cast<Map>();
+    final lines = [for (final i in (_picked.toList()..sort())) chat[i]];
+    final key = GlobalKey();
+    await showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        backgroundColor: Palette.cream,
+        contentPadding: const EdgeInsets.all(12),
+        content: SingleChildScrollView(
+          child: FittedBox(
+            child: RepaintBoundary(
+              key: key,
+              child: ChatCard(h: h, lines: lines, look: Map<String, dynamic>.from(h['look'] as Map? ?? const {})),
+            ),
           ),
-          backgroundColor: Palette.cream,
-          body: h == null
-              ? const Center(child: CircularProgressIndicator())
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
-                  children: [
-                    for (final m in (h['chat'] as List).cast<Map>())
-                      Bubble(text: '${m['text']}', mine: m['who'] == 'you', sparkle: m['ai'] == true),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
-                        child: Text(
-                          HistoryScreen.resultText(h),
-                          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
-                        ),
-                      ),
-                    ),
-                  ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          TextButton(
+            key: const ValueKey('chat_share_go'),
+            onPressed: () async {
+              final png = await capturePng(key);
+              if (c.mounted) Navigator.pop(c);
+              final text = [
+                '${h['stall_name']} · ${h['item_name']}',
+                for (final m in lines) '${m['who'] == 'you' ? 'Me' : h['stall_name']}: ${m['text']}',
+                '🏮 Hawker Haggle',
+              ].join('\n');
+              await shareBrag(text, png);
+            },
+            child: const Text('Share'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final h = _h;
+    final chat = h == null ? const <Map>[] : (h['chat'] as List).cast<Map>();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(h == null ? 'Past haggle' : '${h['item_name']} · ${h['stall_name']}'),
+        backgroundColor: Palette.cream,
+      ),
+      backgroundColor: Palette.cream,
+      body: h == null
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
+              children: [
+                const Text(
+                  'Tap lines to pick them for a picture to share.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Palette.soft, fontSize: 13),
                 ),
-        );
-      },
+                const SizedBox(height: 6),
+                for (final (i, m) in chat.indexed)
+                  GestureDetector(
+                    key: ValueKey('line_$i'),
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _toggle(i),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _picked.contains(i) ? Palette.gold.withValues(alpha: 0.25) : Colors.transparent,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Bubble(text: '${m['text']}', mine: m['who'] == 'you', sparkle: m['ai'] == true),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+                    child: Text(
+                      HistoryScreen.resultText(h),
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Center(
+                  child: Bouncy(
+                    key: const ValueKey('chat_share'),
+                    enabled: _picked.isNotEmpty,
+                    onTap: _share,
+                    child: Pill(text: 'Share as a picture (${_picked.length})', icon: '📸', color: Palette.gold),
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -808,4 +905,181 @@ class _NameDialogState extends State<_NameDialog> {
       ],
     );
   }
+}
+
+/// Before the first move: "what's a fair price?" The answer comes when the haggle ends.
+class GuessCard extends StatefulWidget {
+  const GuessCard({super.key, required this.item, required this.guess, required this.onGuess, required this.onSkip});
+  final String item;
+  final num? guess;
+  final Future<void> Function(num) onGuess;
+  final VoidCallback onSkip;
+  @override
+  State<GuessCard> createState() => _GuessCardState();
+}
+
+class _GuessCardState extends State<GuessCard> {
+  final _text = TextEditingController();
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _go() {
+    final v = num.tryParse(_text.text.replaceAll(RegExp(r'[^0-9.]'), ''));
+    if (v == null || v <= 0) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    widget.onGuess(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = widget.guess;
+    return Container(
+      key: const ValueKey('guess_card'),
+      margin: const EdgeInsets.only(top: 6, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
+      decoration: BoxDecoration(color: const Color(0xFFE6F4F1), borderRadius: BorderRadius.circular(16)),
+      child: g != null
+          ? Text(
+              '🤔 Your guess: ${money(g)}. Let\'s see when the haggle ends!',
+              key: const ValueKey('guess_done'),
+              style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '🤔 Before you start: what\'s a fair price for the ${widget.item}?',
+                  style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 110,
+                      child: TextField(
+                        key: const ValueKey('guess_field'),
+                        controller: _text,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onSubmitted: (_) => _go(),
+                        decoration: InputDecoration(
+                          prefixText: '\$ ',
+                          isDense: true,
+                          filled: true,
+                          fillColor: Colors.white,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    TextButton(key: const ValueKey('guess_go'), onPressed: _go, child: const Text('Guess')),
+                    TextButton(
+                      key: const ValueKey('guess_skip'),
+                      onPressed: widget.onSkip,
+                      child: const Text('Skip', style: TextStyle(color: Palette.soft)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// On the market during a festival week (real dates).
+class FestivalBanner extends StatelessWidget {
+  const FestivalBanner({super.key, required this.f});
+  final Map f;
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('festival_banner'),
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(
+      gradient: const LinearGradient(colors: [Color(0xFFFFD6D6), Color(0xFFFFF1C9)]),
+      borderRadius: BorderRadius.circular(16),
+    ),
+    child: Text(
+      '${f['emoji']} ${f['name']} week at the market! Festival days are more common, and there\'s a '
+      'sticker for a deal this week.',
+      style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600, height: 1.3),
+    ),
+  );
+}
+
+/// A picture of a few lines from a haggle, to share.
+class ChatCard extends StatelessWidget {
+  const ChatCard({super.key, required this.h, required this.lines, required this.look});
+  final Map h;
+  final List<Map> lines;
+  final Map<String, dynamic> look;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 340,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFE3B3), Color(0xFFFFF6E5)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Stallholder(look: look, face: Face.happy, size: 54),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${h['stall_name']}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink, fontSize: 17),
+                    ),
+                    Text('${h['emoji'] ?? ''} ${h['item_name']}', style: const TextStyle(color: Palette.soft)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final m in lines) _CardBubble(text: '${m['text']}', mine: m['who'] == 'you'),
+          const SizedBox(height: 8),
+          Text(
+            '${HistoryScreen.resultText(h)} · 🏮 Hawker Haggle',
+            style: const TextStyle(color: Palette.soft, fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A plain chat bubble for the picture (no animation, so the picture is always complete).
+class _CardBubble extends StatelessWidget {
+  const _CardBubble({required this.text, required this.mine});
+  final String text;
+  final bool mine;
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+    child: Container(
+      constraints: const BoxConstraints(maxWidth: 250),
+      margin: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: mine ? Palette.teal : Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: Text(text, style: TextStyle(color: mine ? Colors.white : Palette.ink, height: 1.3)),
+    ),
+  );
 }

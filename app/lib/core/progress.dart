@@ -36,6 +36,8 @@ const stickerDefs = <(String, String, String, String)>[
   ('dailies7', '🎯', 'Challenge seeker', 'Finish 7 daily challenges'),
   ('week_done', '🏆', 'Quest week', "Finish all of a week's quests"),
   ('month', '👑', 'Hawker of the Month', 'Play on 30 different days'),
+  ('sharp_eye', '🧐', 'Sharp eye', 'Guess the fair price within 10%, 5 times'),
+  ('festive', '🏮', 'Festival week shopper', 'Close a deal during a festival week'),
 ];
 
 String dayKey(DateTime d) =>
@@ -281,6 +283,7 @@ class Progress {
     if (deal && ev == 'rain') _earn('rain_deal', out);
     if (deal && ev == 'closing') _earn('closing_deal', out);
     if (deal && ev == 'festival') _earn('festival_deal', out);
+    if (deal && h['festival_week'] != null) _earn('festive', out);
     if (deal && flags['hard'] == true) _earn('hard_deal', out);
     final visited = {for (final x in _haggles) x['stall']};
     if (baseStalls.every(visited.contains)) _earn('all_stalls', out);

@@ -64,13 +64,14 @@ class Fake extends Game {
   bool down = false;
   String name = 'Shiok Otter 123';
   bool named = true; // false: a first launch, which asks for a name
+  Map<String, Object?>? festival;
 
   @override
   Future<void> load() async {}
   @override
   Map<String, Object?> me() {
     if (down) throw GameError(0, "Can't reach the market. Check your internet.");
-    return {'name': name, 'named': named, 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0};
+    return {'name': name, 'named': named, 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0, 'festival': festival};
   }
 
   @override
@@ -111,6 +112,10 @@ class Fake extends Game {
 
   @override
   Future<void> flag(String id) async => flags++;
+
+  num? guessed;
+  @override
+  Future<void> guess(String id, num price) async => guessed = price;
 
   @override
   Map<String, Object?> today() => {
@@ -356,7 +361,7 @@ void main() {
     await settle(tester, 600);
     expect(find.text('Type your reply…'), findsOneWidget);
     expect(find.text('Morning my dear! \$18 only.'), findsNWidgets(2)); // in the chat and in the box
-    await tester.enterText(find.byType(TextField), 'my wife will scold me lah');
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), 'my wife will scold me lah');
     await tester.tap(find.text('Send'));
     await settle(tester, 2500);
     expect(fake.sent.last['text'], 'my wife will scold me lah');
@@ -370,10 +375,10 @@ void main() {
     await tester.longPress(find.text('\$15 lah, OK?'));
     await settle(tester, 600);
     expect(find.text('Type your reply…'), findsOneWidget);
-    final field = tester.widget<TextField>(find.byType(TextField));
+    final field = tester.widget<TextField>(find.byKey(const ValueKey('reply_field')));
     expect(field.controller!.text, '\$15 lah, OK?');
     expect(fake.sent, isEmpty); // nothing sent by holding
-    await tester.enterText(find.byType(TextField), '\$15 lah, OK? I come every week one!');
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), '\$15 lah, OK? I come every week one!');
     await tester.tap(find.text('Send'));
     await settle(tester, 2000);
     expect(fake.sent.last['text'], '\$15 lah, OK? I come every week one!');
@@ -384,7 +389,7 @@ void main() {
     final fake = await openHaggle(tester, []);
     await tester.tap(find.textContaining('Say anything'));
     await settle(tester, 600);
-    await tester.enterText(find.byType(TextField), 'half a thought');
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), 'half a thought');
     await tester.tap(find.text('Cancel'));
     await settle(tester, 600);
     expect(fake.sent, isEmpty);
@@ -452,7 +457,7 @@ void main() {
 
     await tester.tap(find.textContaining('Say anything'));
     await settle(tester, 600);
-    await tester.enterText(find.byType(TextField), 'I want the one on the left');
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), 'I want the one on the left');
     await tester.tap(find.text('Send'));
     await settle(tester, 1500);
     final chip = find.text('🤔 She misunderstood me', skipOffstage: false);
@@ -584,6 +589,60 @@ void main() {
     expect(find.text('\$15 lah, OK?'), findsOneWidget);
     expect(find.textContaining('OK lah, \$15 for you!'), findsOneWidget);
     expect(find.text('Bought for \$15'), findsOneWidget);
+    await settle(tester, 2000);
+  });
+
+  testWidgets('guess the fair price before the first move; Skip hides it; a move hides it too', (tester) async {
+    final fake = await openHaggle(tester, [game('Every week ah? OK lah, \$15!', event: 'counter', ask: 15)]);
+    expect(find.byKey(const ValueKey('guess_card')), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('guess_field')), '13');
+    await tester.tap(find.byKey(const ValueKey('guess_go')));
+    await settle(tester, 600);
+    expect(fake.guessed, 13);
+    expect(find.text("🤔 Your guess: \$13. Let's see when the haggle ends!"), findsOneWidget);
+    await tester.tap(find.text('\$11 can or not?'));
+    await settle(tester, 2000);
+    expect(find.byKey(const ValueKey('guess_card')), findsNothing);
+    await settle(tester, 3000);
+  });
+
+  testWidgets('a festival week shows on the market', (tester) async {
+    final fake = Fake([])..festival = {'id': 'cny2027', 'name': 'Chinese New Year', 'emoji': '🧧', 'to': '2027-02-08'};
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.textContaining('🧧 Chinese New Year week at the market!'), findsOneWidget);
+    await settle(tester, 2000);
+  });
+
+  testWidgets('skipping the guess', (tester) async {
+    final fake = await openHaggle(tester, [game('Hmm, \$16.', event: 'counter', ask: 16)]);
+    await tester.tap(find.byKey(const ValueKey('guess_skip')));
+    await settle(tester, 400);
+    expect(find.byKey(const ValueKey('guess_card')), findsNothing);
+    expect(fake.guessed, isNull);
+    await settle(tester, 3000);
+  });
+
+  testWidgets('a past chat: pick lines and share them as a picture', (tester) async {
+    final shared = <String>[];
+    shareBrag = (text, png) async => shared.add(text);
+    capturePng = (_) async => null;
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('history')));
+    await settle(tester);
+    await tester.tap(find.text('box of mangoes · Auntie Mei'));
+    await settle(tester);
+    expect(find.textContaining('Share as a picture ('), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('line_0'))); // toggle the first line
+    await settle(tester, 300);
+    await tester.ensureVisible(find.byKey(const ValueKey('chat_share')));
+    await tester.tap(find.byKey(const ValueKey('chat_share')));
+    await settle(tester, 800);
+    await tester.tap(find.byKey(const ValueKey('chat_share_go')));
+    await settle(tester, 800);
+    expect(shared.single, contains('Auntie Mei · box of mangoes'));
+    expect(shared.single, contains('🏮 Hawker Haggle'));
     await settle(tester, 2000);
   });
 

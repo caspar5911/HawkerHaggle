@@ -114,3 +114,13 @@ above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of
 - **Market Month:** days played (never resets): day 3 sticker, day 7 Uncle Wong (antiques), day 14 Madam Kumar
   (spices), day 21 golden badge, day 30 Hawker of the Month. Dailies and quests keep going after day 30.
 - All checks read the per-haggle summary recorded in `Progress.finish` (`app/lib/core/challenges.dart`).
+
+## More fun (from test 25)
+- **Chat picture:** in a past haggle, tap up to 6 lines and share them as a picture (also from the result card).
+- **Guess the fair price:** before the first move, an optional guess; when the haggle ends it's shown against the
+  item's fair price (revealed only then). Spot on (within 5%) +4 XP, close (15%) +2, inside the daily haggle-XP cap.
+  Sticker: 5 guesses within 10%.
+- **Festival weeks** (`app/lib/core/festivals.dart`, Singapore public holidays from MOM's gazetted list): festival
+  days become about 30% of haggles instead of 8%, the market shows a banner, the AI is told to wish the customer
+  (no numbers), and a deal that week earns a sticker. Off whenever surprises are off (tests, the reference check),
+  and read from the game's clock. Add the next year's dates to the list.

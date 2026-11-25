@@ -192,6 +192,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
                       child: const Pill(text: 'A new version is out: tap to reload', icon: '🆕', color: Palette.gold),
                     ),
                   ),
+                if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
                 if (_me != null) _Hello(me: _me!, onName: _editName),
                 const SizedBox(height: 12),
                 if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
@@ -446,6 +447,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
   bool _showResult = false;
   int _react = 0;
   Face _face = Face.happy;
+  bool _guessSkipped = false;
 
   @override
   void initState() {
@@ -464,6 +466,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
     setState(() {
       _busy = true;
       _showResult = false;
+      _guessSkipped = false;
       _msgs.clear();
     });
     try {
@@ -584,6 +587,21 @@ class _HaggleScreenState extends State<HaggleScreen> {
                         children: [
                           for (final m in _msgs)
                             Bubble(key: ObjectKey(m), text: m.text, mine: m.mine, sparkle: m.sparkle),
+                          // before the first move: a guess at the fair price (checked when the haggle ends)
+                          if (g != null && g['done'] != true && _msgs.length == 1 && !_busy && !_guessSkipped)
+                            GuessCard(
+                              item: '${widget.item['name']}',
+                              guess: g['guess'] as num?,
+                              onGuess: (v) async {
+                                try {
+                                  await widget.api.guess(g['id'] as String, v);
+                                  if (mounted) setState(() => _g = {...g, 'guess': v});
+                                } on ApiError catch (e) {
+                                  _toast(e.message);
+                                }
+                              },
+                              onSkip: () => setState(() => _guessSkipped = true),
+                            ),
                           if (_canFlag) _FlagChip(flagged: _msgs.last.flagged, onTap: _flag),
                           if (_busy) const Typing(),
                         ],
@@ -968,6 +986,7 @@ class _TypeBox extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     TextField(
+                      key: const ValueKey('reply_field'),
                       controller: text,
                       autofocus: true,
                       maxLength: 300,
@@ -1337,6 +1356,20 @@ class _ResultState extends State<_Result> {
                       child: const Pill(text: 'Share', icon: '📤'),
                     ),
                   ],
+                  const SizedBox(height: 8),
+                  Bouncy(
+                    key: const ValueKey('share_chat'),
+                    onTap: () async {
+                      final past = await widget.api.history();
+                      if (past.isEmpty || !context.mounted) return;
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => HistoryChatScreen(api: widget.api, id: '${past.first['id']}'),
+                        ),
+                      );
+                    },
+                    child: const Pill(text: 'Share the chat as a picture', icon: '📸'),
+                  ),
                   const SizedBox(height: 14),
                   Row(
                     children: [

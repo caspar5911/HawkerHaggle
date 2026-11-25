@@ -152,6 +152,21 @@ Future<void> main(List<String> args) async {
   stdout.writeln('TAP   ${rt['you_said']} -> ${rt['event']} ${rt['ai_line'] == true ? '✨' : '  '} ${rt['line']}');
   if (rt['ai_line'] != true) fails.add('a tapped suggestion did not get an AI reply');
 
+  // festival weeks (real dates): the greeting wishes the customer, and still names no price the game didn't give
+  for (final (day, words) in [
+    (DateTime(2027, 2, 4, 9), ['new year', 'gong xi', 'huat', 'cny', 'prosper']),
+    (DateTime(2026, 12, 23, 9), ['christmas', 'xmas']),
+  ]) {
+    final fg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), now: () => day, unlockAll: true);
+    await fg.load();
+    final g = await fg.start('mei', 'mango', 'festival');
+    final said = '${g['line']}'.toLowerCase();
+    final wished = words.any(said.contains);
+    stdout.writeln('FEST  ${fg.festivalWeek?.name} ${g['ai_line'] == true ? '✨' : '  '} wished=$wished ${g['line']}');
+    if (g['ai_line'] != true) fails.add('no AI greeting in ${fg.festivalWeek?.name} week');
+    if (!wished) fails.add('the ${fg.festivalWeek?.name} greeting did not mention the festival');
+  }
+
   // market surprises: the greeting reflects them; Auntie Rose can win
   for (final ev in ['rain', 'closing', 'festival', 'rival']) {
     final g = await game.start('mei', 'mango', ev);

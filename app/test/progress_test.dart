@@ -241,6 +241,16 @@ void main() {
       x = await g.move(id, text: '\$${x['ask']} ok I take');
       if (x['pending'] != null) await g.move(id, move: 'confirm');
     }
+    // five good guesses at the fair price
+    for (var i = 0; i < 5; i++) {
+      final r = await g.start('mei', 'mango', 'none');
+      await g.guess(r['id'] as String, 13); // fair is $12: within 10%
+      await g.move(r['id'] as String, move: 'buy');
+    }
+    // a deal in a festival week (real dates)
+    clock.t = DateTime(2026, 12, 21, 10);
+    expect(g.festivalWeek?.name, 'Christmas');
+    await finishHaggle(g, 'mei', 'mango');
     // hard mode
     await g.setHard(true);
     await finishHaggle(g, 'siti', 'scarf');
@@ -328,4 +338,61 @@ void main() {
     await g.deleteAll();
     expect(g.history(), isEmpty);
   });
+
+  test('guess the fair price: shown against the real one at the end, a little XP inside the daily cap', () async {
+    final (g, _, _) = await newGame();
+    var r = await g.start('mei', 'mango', 'none');
+    await g.guess(r['id'] as String, 12);
+    r = await g.move(r['id'] as String, move: 'buy');
+    final notes = (r['notes'] as List).cast<String>();
+    expect(notes.where((n) => n.contains('fair price is \$12') && n.contains('Spot on!')), hasLength(1));
+    r = await g.start('mei', 'mango', 'none');
+    await g.guess(r['id'] as String, 30);
+    r = await g.move(r['id'] as String, move: 'buy');
+    expect((r['notes'] as List).cast<String>().any((n) => n.contains('A bit high.') && !n.contains('XP')), isTrue);
+    // no guess, no note
+    final plain = await finishHaggle(g, 'mei', 'mango');
+    expect((plain['notes'] as List).cast<String>().any((n) => n.contains('guessed')), isFalse);
+    await expectLater(g.guess('nope', 10), throwsA(isA<GameError>()));
+    // the guess never pushes haggle XP past the daily cap
+    for (var i = 0; i < 12; i++) {
+      final x = await g.start('mei', 'mango', 'none');
+      await g.guess(x['id'] as String, 12);
+      await g.move(x['id'] as String, move: 'buy');
+    }
+    expect((g.progress.p['xp_day'] as Map)['haggles'], 60);
+  });
+
+  test(
+    'festival weeks follow real dates, make festival days common, and stay out of tests without surprises',
+    () async {
+      final (g, _, clock) = await newGame();
+      expect(g.festivalWeek, isNull); // late November
+      expect(g.me()['festival'], isNull);
+      clock.t = DateTime(2027, 2, 5, 9);
+      expect(g.festivalWeek?.name, 'Chinese New Year');
+      expect((g.me()['festival'] as Map)['emoji'], '🧧');
+      var festive = 0;
+      for (var i = 0; i < 200; i++) {
+        final r = await g.start('mei', 'mango');
+        if (r['surprise'] == 'festival') {
+          festive++;
+          expect('${r['surprise_note']}', contains('Chinese New Year'));
+        }
+      }
+      expect(festive, inInclusiveRange(35, 90)); // about 30%, not every haggle
+      clock.t = DateTime(2027, 2, 9, 9);
+      expect(g.festivalWeek, isNull);
+      // tests and the reference check: no festival weeks at all
+      final quiet = Game(
+        content: content,
+        store: MemoryKeyValue(),
+        now: () => DateTime(2026, 12, 25),
+        surprises: false,
+      );
+      await quiet.load();
+      expect(quiet.festivalWeek, isNull);
+      expect((await quiet.start('mei', 'mango'))['surprise'], anyOf('', null));
+    },
+  );
 }
