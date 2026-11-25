@@ -27,6 +27,7 @@ class Market {
   final tokens = <String, String>{};
   final seen = <String>[];
   final saves = <String, Map<String, Object?>>{}; // username: {data, rev}
+  final rooms = <String, Map<String, Object?>>{}; // live co-op rooms
   Map<String, Object?> board = {'week': '2026-11-23', 'items': <Object>[], 'gossip': <Object>[]};
   var n = 1;
 
@@ -88,6 +89,49 @@ class Market {
         if (had == null) return out(200, {'rev': 0});
         saves[tokens[tok]!] = {'data': '', 'rev': (had['rev'] as int) + 1};
         return out(200, {'rev': (had['rev'] as int) + 1});
+      case '/ai/coop/create' || '/ai/coop/join' || '/ai/coop/send' || '/ai/coop/pull' || '/ai/coop/leave':
+        if (who == null) return out(401, {'detail': 'Log in (Settings > Account) to play together.'});
+        final me = tokens[tok]!;
+        if (path == '/ai/coop/create') {
+          final code = 'AB${rooms.length + 1}CD'.substring(0, 5);
+          rooms[code] = {'host': me, 'guest': null, 'stall': body['stall'], 'item': body['item'], 'messages': <Map>[]};
+          return out(200, {'code': code});
+        }
+        final code = '${body['code']}'.toUpperCase();
+        final room = rooms[code];
+        if (room == null) return out(404, {'detail': 'No room with that code.'});
+        final msgs = room['messages'] as List<Map>;
+        void add(String from, Map m) => msgs.add({'seq': msgs.length + 1, 'from': from, ...m});
+        Map info() => {
+          'code': code,
+          'host_name': room['host'],
+          'guest_name': room['guest'] ?? '',
+          'joined': room['guest'] != null,
+          'stall': room['stall'],
+          'item': room['item'],
+        };
+        switch (path) {
+          case '/ai/coop/join':
+            room['guest'] = me;
+            add('server', {'type': 'joined', 'name': me});
+            return out(200, info());
+          case '/ai/coop/send':
+            add(room['host'] == me ? 'host' : 'guest', Map<String, Object?>.from(body['msg'] as Map));
+            return out(200, {'seq': msgs.length});
+          case '/ai/coop/pull':
+            final after = (body['after'] ?? 0) as int;
+            return out(200, {
+              ...info(),
+              'you': room['host'] == me ? 'host' : 'guest',
+              'messages': [
+                for (final m in msgs)
+                  if ((m['seq'] as int) > after) m,
+              ],
+            });
+          default:
+            if (room['host'] == me) rooms.remove(code);
+            return out(200, {'ok': true});
+        }
       case '/ai/accounts/board':
         if (who == null) return out(401, {'detail': 'Please log in again.'});
         return out(200, board);
@@ -603,5 +647,108 @@ void main() {
     expect(a.ai.apiKey, acc.token);
     await a.signOut();
     expect(a.ai.endpoint, 'https://glm.example/v1');
+  });
+
+  group('live co-op', () {
+    test('two phones: create, join, a move from the friend, the state back', () async {
+      final m = Market();
+      final host = apiWith(m), friend = apiWith(m);
+      await expectLater(host.coopCreate('mei', 'mango'), throwsA(isA<AccountError>())); // log in first
+      await host.signIn(server: 'market.example.com', username: 'Arella', password: 'kopi1234', signUp: true);
+      await friend.signIn(server: 'market.example.com', username: 'Melody', password: 'kopi1234', signUp: true);
+      final code = await host.coopCreate('mei', 'mango');
+      final room = await friend.coopJoin(code.toLowerCase());
+      expect(room['host_name'], 'arella');
+      await friend.coopSend(code, {'type': 'move', 'text': '12 can?'});
+      final got = await host.coopPull(code, 0);
+      expect([for (final x in (got['messages'] as List).cast<Map>()) x['type']], ['joined', 'move']);
+      await host.coopSend(code, {
+        'type': 'state',
+        'view': {'line': 'Aiyo, 16 lah'},
+      });
+      final seen = await friend.coopPull(code, 2);
+      expect(((seen['messages'] as List).single as Map)['view'], {'line': 'Aiyo, 16 lah'});
+      await host.coopLeave(code);
+      await expectLater(friend.coopPull(code, 0), throwsA(isA<AccountError>()));
+    });
+
+    testWidgets("the host's phone plays the friend's move, says who it was, and sends the state back", (tester) async {
+      final m = Market();
+      final fake = Fake([
+        {
+          ...{
+            'id': 'g1',
+            'stall': 'mei',
+            'item': 'mango',
+            'event': 'counter',
+            'line': 'Your friend so cute! \$16 lah.',
+            'ai_line': false,
+            'ask': 16,
+            'opening': 18,
+            'patience': 70,
+            'mood': 0,
+            'qty': 1,
+            'done': false,
+            'result': '',
+            'deal': null,
+            'pending': null,
+            'stars': 0,
+            'saved': 0.0,
+            'suggestions': [
+              {'move': 'offer', 'price': 12.0, 'text': '\$12 can?'},
+            ],
+            'surprise': '',
+            'surprise_note': '',
+            'hearts': 0,
+            'new_stickers': <Object>[],
+            'notes': <Object>[],
+            'accept_text': 'OK lah, \$16',
+            'walk_text': 'Bye',
+          },
+        },
+      ]);
+      final api = Api(
+        game: fake,
+        content: const {},
+        store: MemoryKeyValue(),
+        aiHttp: m.client,
+        builtInEndpoint: 'https://glm.example/v1',
+        builtInModel: 'gx10-current',
+        accountServer: 'https://market.example.com',
+      );
+      await api.signIn(server: api.accountServer, username: 'Arella', password: 'kopi1234', signUp: true);
+      await tester.binding.setSurfaceSize(const Size(420, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(HawkerHaggleApp(api: api));
+      await settle(tester, 2000);
+      await tester.ensureVisible(find.text('box of mangoes'));
+      await tester.tap(find.text('box of mangoes'));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('coop_invite')));
+      await settle(tester, 800);
+      final code = m.rooms.keys.single;
+      expect(find.text(code), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await settle(tester, 400);
+      // the friend joins (on their phone) and types a message
+      final friend = apiWith(m);
+      await friend.signIn(server: 'market.example.com', username: 'Melody', password: 'kopi1234', signUp: true);
+      await friend.coopJoin(code);
+      await friend.coopSend(code, {'type': 'move', 'text': 'auntie my friend very poor one'});
+      await tester.pump(const Duration(milliseconds: 1600)); // the host checks the room
+      await settle(tester, 2500);
+      expect(fake.sent.last, {'text': 'auntie my friend very poor one', 'friend': 'melody'});
+      expect(find.text('👥 melody: auntie my friend very poor one'), findsOneWidget);
+      final states = [
+        for (final x in (m.rooms[code]!['messages'] as List<Map>))
+          if (x['type'] == 'state') x,
+      ];
+      expect(states, isNotEmpty);
+      expect((states.last['view'] as Map)['line'], 'Your friend so cute! \$16 lah.');
+      expect(states.last['chat'], isA<List>());
+      await tester.pumpWidget(const SizedBox()); // leave: timers stop, the room closes
+      await settle(tester, 300);
+      expect(m.rooms, isEmpty);
+    });
   });
 }

@@ -133,6 +133,17 @@ class AccountClient {
   // friends: this week's best prices, and who bought what lately
   Future<Map<String, dynamic>> board(String token) => _post('accounts/board', token: token);
 
+  // live co-op rooms (the host's phone runs the haggle; the server only passes messages)
+  Future<Map<String, dynamic>> coopCreate(String token, String stall, String item) =>
+      _post('coop/create', token: token, body: {'stall': stall, 'item': item});
+  Future<Map<String, dynamic>> coopJoin(String token, String code) =>
+      _post('coop/join', token: token, body: {'code': code});
+  Future<Map<String, dynamic>> coopSend(String token, String code, Map<String, Object?> msg) =>
+      _post('coop/send', token: token, body: {'code': code, 'msg': msg});
+  Future<Map<String, dynamic>> coopPull(String token, String code, int after) =>
+      _post('coop/pull', token: token, body: {'code': code, 'after': after});
+  Future<void> coopLeave(String token, String code) => _post('coop/leave', token: token, body: {'code': code});
+
   // admin
   Future<Map<String, dynamic>> players(String token) => _post('admin/players', token: token);
   Future<Map<String, dynamic>> decide(String token, int id, String action) =>

@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .accounts import SAVE_MAX, AccountError, Accounts
+from .coop import CoopError, Rooms
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
 from .engine import Haggle, Item, Personality, State
 from .store import Store
@@ -52,11 +53,13 @@ GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS",
 ADMIN_LOGINS = {x.strip().lower() for x in os.environ.get("HH_ADMIN_LOGINS", "").split(",") if x.strip()}
 PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
                 "/ai/accounts/logout", "/ai/accounts/password", "/ai/accounts/progress", "/ai/accounts/progress/save",
-                "/ai/accounts/progress/delete", "/ai/accounts/board", "/ai/admin/players", "/ai/admin/decide"}
+                "/ai/accounts/progress/delete", "/ai/accounts/board", "/ai/admin/players", "/ai/admin/decide",
+                "/ai/coop/create", "/ai/coop/join", "/ai/coop/send", "/ai/coop/pull", "/ai/coop/leave"}
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
 PUBLIC_AI_PER_DAY = 600        # per account (a haggle move is about 2 calls)
 PUBLIC_AI_DAY_CAP = 5000       # all public players together
+COOP_PER_MINUTE = 150         # per account (a co-op phone checks the room about every 1.5 seconds)
 SAVES_PER_MINUTE = 30          # per account (the game saves after each haggle)
 RELAY_AT_ONCE = 2              # AI calls through the relay at the same time (the GX10 is shared with other work)
 RELAY_WAIT = 60                # seconds a call may wait for its turn
@@ -98,6 +101,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     gateway_logins = GATEWAY_LOGINS if gateway_logins is None else {x.lower() for x in gateway_logins}
     admin_logins = ADMIN_LOGINS if admin_logins is None else {x.lower() for x in admin_logins}
     relay_turns = asyncio.Semaphore(RELAY_AT_ONCE)
+    rooms = Rooms()
     app = FastAPI(title="Hawker Haggle", version="1")
 
     def from_public(request: Request) -> bool:
@@ -478,6 +482,71 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         row = saver(request, authorization)
         today = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()     # the market's week: Singapore time
         return account_call(lambda: accounts.board(row, STALLS, today))
+
+    # Live co-op: a mailbox between two logged-in phones (the host's phone runs the haggle and its AI).
+    def coop_player(request: Request, authorization: str):
+        row = accounts.who(bearer(authorization))
+        if row is not None and row["role"] == "admin" and not admin_anywhere(request):
+            row = None
+        if row is None:
+            raise HTTPException(401, "Log in (Settings > Account) to play together.")
+        if row["status"] not in ("pending", "approved"):
+            raise HTTPException(403, "This account can't play together.")
+        limit(f"coop:{row['id']}", COOP_PER_MINUTE)
+        return row
+
+    def coop_call(f):
+        try:
+            return f()
+        except CoopError as e:
+            raise HTTPException(e.code, e.message)
+
+    @app.post("/ai/coop/create")
+    async def coop_create(request: Request, authorization: str = Header(default="")):
+        row = coop_player(request, authorization)
+        body = await _small_json(request)
+        stall, item = str(body.get("stall", ""))[:20], str(body.get("item", ""))[:20]
+        if stall not in STALLS or not any(i["id"] == item for i in STALLS[stall]["items"]):
+            raise HTTPException(400, "No such stall or item.")
+        return coop_call(lambda: rooms.create(row["id"], row["username"], stall, item))
+
+    @app.post("/ai/coop/join")
+    async def coop_join(request: Request, authorization: str = Header(default="")):
+        row = coop_player(request, authorization)
+        body = await _small_json(request)
+        return coop_call(lambda: rooms.join(row["id"], row["username"], str(body.get("code", ""))[:10]))
+
+    @app.post("/ai/coop/send")
+    async def coop_send(request: Request, authorization: str = Header(default="")):
+        row = coop_player(request, authorization)
+        body = await _small_json(request)
+        return coop_call(lambda: rooms.send(row["id"], str(body.get("code", ""))[:10], body.get("msg")))
+
+    @app.post("/ai/coop/pull")
+    async def coop_pull(request: Request, authorization: str = Header(default="")):
+        row = coop_player(request, authorization)
+        body = await _small_json(request)
+        after = body.get("after", 0)
+        return coop_call(lambda: rooms.pull(row["id"], str(body.get("code", ""))[:10],
+                                            after if isinstance(after, int) else 0))
+
+    @app.post("/ai/coop/leave")
+    async def coop_leave(request: Request, authorization: str = Header(default="")):
+        row = coop_player(request, authorization)
+        body = await _small_json(request)
+        return coop_call(lambda: rooms.leave(row["id"], str(body.get("code", ""))[:10]))
+
+    async def _small_json(request: Request) -> dict:
+        raw = await request.body()
+        if len(raw) > 12 * 1024:
+            raise HTTPException(413, "Too big.")
+        try:
+            body = json.loads(raw or b"{}")
+        except ValueError:
+            raise HTTPException(400, "Bad request.")
+        if not isinstance(body, dict):
+            raise HTTPException(400, "Bad request.")
+        return body
 
     def admin_only(request: Request, authorization: str) -> None:
         row = accounts.who(bearer(authorization))

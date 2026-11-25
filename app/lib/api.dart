@@ -134,8 +134,9 @@ class Api {
   Future<Map<String, dynamic>> stalls() => _run((g) => Map<String, dynamic>.from(g.stalls()));
   Future<Map<String, dynamic>> start(String stall, String item, [String? surprise]) =>
       _run((g) async => Map<String, dynamic>.from(await g.start(stall, item, surprise)));
-  Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text}) =>
-      _run((g) async => Map<String, dynamic>.from(await g.move(id, pick: pick, move: move, text: text)));
+  Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text, String? friend}) => _run(
+    (g) async => Map<String, dynamic>.from(await g.move(id, pick: pick, move: move, text: text, friend: friend)),
+  );
   Future<void> flag(String id) => _run((g) => g.flag(id));
   Future<void> guess(String id, num price) => _run((g) => g.guess(id, price));
   Future<String> answerDilemma(String id, {required bool help}) => _run((g) => g.answerDilemma(id, help: help));
@@ -433,6 +434,46 @@ class Api {
       return null;
     }
   }
+
+  // ---------------------------------------------------------------- live co-op (tag-team haggles)
+  Account _coopAccount() {
+    final a = _account;
+    if (a == null) throw AccountError('Log in (Settings > Account) to play together.');
+    return a;
+  }
+
+  Future<String> coopCreate(String stall, String item) async {
+    final a = _coopAccount();
+    return '${(await _accounts(a.server).coopCreate(a.token, stall, item))['code']}';
+  }
+
+  Future<Map<String, dynamic>> coopJoin(String code) async {
+    final a = _coopAccount();
+    return _accounts(a.server).coopJoin(a.token, code.trim().toUpperCase());
+  }
+
+  Future<void> coopSend(String code, Map<String, Object?> msg) async {
+    final a = _coopAccount();
+    await _accounts(a.server).coopSend(a.token, code, msg);
+  }
+
+  Future<Map<String, dynamic>> coopPull(String code, int after) async {
+    final a = _coopAccount();
+    return _accounts(a.server).coopPull(a.token, code, after);
+  }
+
+  Future<void> coopLeave(String code) async {
+    final a = _account;
+    if (a == null) return;
+    try {
+      await _accounts(a.server).coopLeave(a.token, code);
+    } on AccountError {
+      // gone already
+    }
+  }
+
+  /// A haggle closed together: both players get the Teamwork sticker.
+  Future<List<String>> coopTeamwork() => _run((g) => g.teamwork());
 
   Future<Map<String, dynamic>> players() async {
     final a = _account;

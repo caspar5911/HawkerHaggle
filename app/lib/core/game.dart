@@ -593,7 +593,16 @@ class Game {
     return _view(ss, said, 'greet', null, null, aiLine);
   }
 
-  Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text}) async {
+  /// A haggle closed together with a friend (live co-op): the Teamwork sticker. Returns new stickers.
+  Future<List<String>> teamwork() async {
+    final fresh = <String>{};
+    progress.earn('teamwork', fresh);
+    if (fresh.isNotEmpty) await _save();
+    return fresh.toList();
+  }
+
+  /// [friend]: in a live co-op haggle, the friend who made this move (the host's game plays it).
+  Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text, String? friend}) async {
     final ss = _sessions[id];
     if (ss == null) throw GameError(404, 'No such haggle');
     final h = ss.h;
@@ -607,6 +616,9 @@ class Game {
     double? price;
     String you;
     ss.twist = null; // a twist left unanswered just passes
+    final friendName = friend == null
+        ? ''
+        : (cleanName(friend) ?? '').replaceAll(RegExp(r'\d+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     final typed = text?.trim() ?? '';
     if (typed.isNotEmpty) {
       ss.typed++;
@@ -748,6 +760,9 @@ class Game {
               ][ss.pitchScore!],
             if (challengeNow) 'End your reply by challenging them, in one short sentence, to convince you why you should give them a better price.',
             if (ss.twistNote.isNotEmpty) '${ss.twistNote} React to it in character, briefly.',
+            if (friendName.isNotEmpty)
+              'Two friends are bargaining with you together. This message came from the customer\'s friend '
+                  '(their name is "$friendName"); you may answer them by name.',
           ].join(' '),
         ),
       );
@@ -779,6 +794,7 @@ class Game {
       if (heard.reading.isNotEmpty || heard.also.isNotEmpty) ...{'reading': heard.reading, 'also': heard.also},
       if (ss.softSpot && ss.chat.where((m) => m['soft_spot'] == true).isEmpty) 'soft_spot': true,
       if (ss.pitchScore != null && ss.chat.where((m) => m['pitch'] == true).isEmpty) 'pitch': true,
+      if (friendName.isNotEmpty) 'friend': friendName,
     });
     ss.chat.add({'who': 'them', 'text': said, 'ask': h.s.ask, if (aiLine) 'ai': true});
     if (h.s.done && !ss.recorded) {

@@ -108,8 +108,8 @@ class Fake extends Game {
   }
 
   @override
-  Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text}) async {
-    sent.add({'pick': ?pick, 'move': ?move, 'text': ?text});
+  Future<Map<String, Object?>> move(String id, {int? pick, String? move, String? text, String? friend}) async {
+    sent.add({'pick': ?pick, 'move': ?move, 'text': ?text, 'friend': ?friend});
     return replies.removeAt(0);
   }
 

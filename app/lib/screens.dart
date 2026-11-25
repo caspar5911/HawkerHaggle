@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'account_screens.dart';
+import 'accounts.dart' show AccountError;
 import 'api.dart';
 import 'character.dart';
 import 'extras.dart';
@@ -225,6 +226,34 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
                     ),
                   ),
                 if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
+                if (widget.api.account != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Bouncy(
+                      key: const ValueKey('coop_join'),
+                      onTap: () => joinFriend(context, widget.api, _stalls.cast<Map>()),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE7F6),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Row(
+                          children: [
+                            Text('👥', style: TextStyle(fontSize: 20)),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                "Join a friend's haggle",
+                                style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                              ),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: Palette.soft),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 if (_jar != null)
                   JarStrip(
                     jar: _jar!,
@@ -561,6 +590,13 @@ class _HaggleScreenState extends State<HaggleScreen> {
   Face _face = Face.happy;
   bool _guessSkipped = false;
   int _jolt = 0; // the counter slam (insulted, rude, refused)
+  // live co-op, as the host: a friend plays along from their phone; this phone runs the haggle
+  String? _room;
+  String _friend = '';
+  int _seq = 0;
+  Timer? _poll;
+  bool _pulling = false;
+  final _friendMoves = <Map>[];
   bool _dilemmaDone = false;
   Object? _twistAnswered; // the twist already answered (by its haggle state)
   final _savedLines = <String>{};
@@ -573,9 +609,144 @@ class _HaggleScreenState extends State<HaggleScreen> {
 
   @override
   void dispose() {
+    _poll?.cancel();
+    final room = _room;
+    if (room != null) widget.api.coopLeave(room);
     _scroll.dispose();
     _text.dispose();
     super.dispose();
+  }
+
+  Future<void> _invite() async {
+    if (_room != null) return _showCode();
+    try {
+      final code = await widget.api.coopCreate('${widget.stall['id']}', '${widget.item['id']}');
+      if (!mounted) return;
+      setState(() => _room = code);
+      _poll = Timer.periodic(const Duration(milliseconds: 1500), (_) => _pull());
+      await _showCode();
+    } on AccountError catch (e) {
+      _toast(e.message);
+    }
+  }
+
+  Future<void> _showCode() => showDialog<void>(
+    context: context,
+    builder: (c) => AlertDialog(
+      backgroundColor: Palette.cream,
+      title: const Text('👥 Play together'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Your friend opens Hawker Haggle, taps "Join a friend" on the market, and types this code:'),
+          const SizedBox(height: 12),
+          SelectableText(
+            _room ?? '',
+            key: const ValueKey('coop_code'),
+            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, letterSpacing: 6),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _friend.isEmpty ? 'Waiting for your friend…' : '$_friend is here!',
+            style: const TextStyle(color: Palette.soft),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: _room ?? ''));
+            Navigator.pop(c);
+          },
+          child: const Text('Copy code'),
+        ),
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
+      ],
+    ),
+  );
+
+  /// Check the room: a friend joining or leaving, and their moves (played here, one at a time).
+  Future<void> _pull() async {
+    final room = _room;
+    if (room == null || _pulling) return;
+    _pulling = true;
+    try {
+      final r = await widget.api.coopPull(room, _seq);
+      for (final m in (r['messages'] as List).cast<Map>()) {
+        _seq = (m['seq'] as num).toInt();
+        if (m['type'] == 'joined') {
+          setState(() => _friend = '${m['name']}');
+          _toast('👥 $_friend joined your haggle!');
+          _sendState();
+        } else if (m['type'] == 'left') {
+          _toast('👥 $_friend left.');
+          setState(() => _friend = '');
+        } else if (m['type'] == 'move' && m['from'] == 'guest') {
+          _friendMoves.add(m);
+        }
+      }
+      await _playFriendMoves();
+    } on AccountError catch (e) {
+      if (e.code == 404) {
+        _poll?.cancel();
+        if (mounted) setState(() => _room = null);
+      }
+    } finally {
+      _pulling = false;
+    }
+  }
+
+  Future<void> _playFriendMoves() async {
+    while (_friendMoves.isNotEmpty && mounted && !_busy && _g?['done'] != true) {
+      final m = _friendMoves.removeAt(0);
+      final g = _g!;
+      final pick = (m['pick'] as num?)?.toInt();
+      final sug = (g['suggestions'] as List? ?? const []).cast<Map>();
+      final said = m['text'] != null
+          ? '${m['text']}'
+          : pick != null && pick < sug.length
+          ? '${sug[pick]['text']}'
+          : switch (m['move']) {
+              'walk' => '(walks away)',
+              'buy' || 'confirm' => 'Deal!',
+              'cancel' => 'Wait, let me think first.',
+              _ => 'OK lah.',
+            };
+      await _send(
+        pick: pick,
+        move: m['move'] as String?,
+        text: m['text'] as String?,
+        mine: '👥 $_friend: $said',
+        friend: _friend,
+      );
+    }
+  }
+
+  /// What the friend's phone shows: the haggle as it is now, and the last part of the chat.
+  void _sendState() {
+    final room = _room, g = _g;
+    if (room == null || g == null || _friend.isEmpty) return;
+    final chat = [
+      for (final m in _msgs.length > 14 ? _msgs.sublist(_msgs.length - 14) : _msgs)
+        {'t': m.text.length > 220 ? m.text.substring(0, 220) : m.text, 'm': m.mine, 's': m.sparkle},
+    ];
+    final view = {
+      for (final k in const [
+        'line', 'event', 'ask', 'opening', 'patience', 'mood', 'qty', 'done', 'result', 'deal', 'pending', //
+        'stars', 'saved', 'surprise', 'surprise_note', 'accept_text', 'walk_text',
+      ])
+        k: g[k],
+      'suggestions': [
+        for (final s in (g['suggestions'] as List? ?? const []).cast<Map>())
+          {'text': s['text'], 'move': s['move'], 'price': s['price']},
+      ],
+    };
+    widget.api.coopSend(room, {
+      'type': 'state',
+      'view': view,
+      'chat': chat,
+      'host': '${widget.api.account?.username}',
+    }).ignore();
   }
 
   Future<void> _start() async {
@@ -611,6 +782,17 @@ class _HaggleScreenState extends State<HaggleScreen> {
       Sfx.play('coin', volume: 0.45);
     }
     if (g['found'] != null) _toast('💡 You found ${widget.stall['name']}\'s soft spot: ${g['found']}!');
+    if (_room != null && _friend.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _sendState();
+        if (g['done'] == true && g['result'] == 'deal') {
+          widget.api.coopTeamwork().then((s) {
+            if (s.isNotEmpty) _toast('New sticker! 👥 Teamwork');
+          }).ignore();
+        }
+        _playFriendMoves();
+      });
+    }
     if (g['pitch_score'] != null && _g?['pitch_score'] == null) {
       _toast(
         const ['😅 That pitch didn\'t work.', '👍 Not a bad pitch!', '🌟 What a pitch!'][(g['pitch_score'] as num)
@@ -649,7 +831,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
     }
   }
 
-  Future<void> _send({int? pick, String? move, String? text, required String mine}) async {
+  Future<void> _send({int? pick, String? move, String? text, required String mine, String? friend}) async {
     final g = _g;
     if (g == null || _busy || g['done'] == true) return;
     setState(() {
@@ -658,7 +840,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
     });
     _scrollDown();
     try {
-      _apply(await widget.api.move(g['id'] as String, pick: pick, move: move, text: text));
+      _apply(await widget.api.move(g['id'] as String, pick: pick, move: move, text: text, friend: friend));
     } on ApiError catch (e) {
       _toast(e.message);
       if (mounted) setState(() => _busy = false);
@@ -732,7 +914,16 @@ class _HaggleScreenState extends State<HaggleScreen> {
               children: [
                 Jolt(
                   trigger: _jolt,
-                  child: _Scene(stall: widget.stall, item: widget.item, look: look, g: g, face: _face, react: _react),
+                  child: _Scene(
+                    stall: widget.stall,
+                    item: widget.item,
+                    look: look,
+                    g: g,
+                    face: _face,
+                    react: _react,
+                    coop: _friend.isEmpty ? (_room == null ? '' : 'Code $_room') : _friend,
+                    onInvite: g == null || g['done'] == true ? null : _invite,
+                  ),
                 ),
                 Expanded(
                   child: Stack(
@@ -879,7 +1070,11 @@ class _Scene extends StatelessWidget {
     required this.g,
     required this.face,
     required this.react,
+    this.coop = '',
+    this.onInvite,
   });
+  final String coop; // "👥 Melody" while a friend plays along
+  final VoidCallback? onInvite;
   final Map stall;
   final Map item;
   final Map<String, dynamic> look;
@@ -950,6 +1145,16 @@ class _Scene extends StatelessWidget {
               onPressed: () => Navigator.of(context).pop(),
             ),
           ),
+          if (onInvite != null || coop.isNotEmpty)
+            Positioned(
+              top: top + 10,
+              right: 12,
+              child: Bouncy(
+                key: const ValueKey('coop_invite'),
+                onTap: onInvite ?? () {},
+                child: Pill(text: coop.isEmpty ? 'Play together' : coop, icon: '👥'),
+              ),
+            ),
           if (g != null) ...[
             Positioned(
               top: top + 64,
@@ -1928,5 +2133,237 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Live co-op, as the friend: the host's haggle on your phone. Your taps and messages go to the host's phone, which
+/// plays them; you see the stallholder answer you both.
+class CoopGuestScreen extends StatefulWidget {
+  const CoopGuestScreen({super.key, required this.api, required this.code, required this.room, required this.stall});
+  final Api api;
+  final String code;
+  final Map room; // host_name, stall, item
+  final Map stall;
+  @override
+  State<CoopGuestScreen> createState() => _CoopGuestScreenState();
+}
+
+class _CoopGuestScreenState extends State<CoopGuestScreen> {
+  Map<String, dynamic>? _g;
+  List<Map> _chat = const [];
+  final _text = TextEditingController();
+  final _scroll = ScrollController();
+  Timer? _poll;
+  Timer? _wait;
+  int _seq = 0;
+  bool _busy = false;
+  bool _pulling = false;
+  bool _ended = false;
+  int _react = 0;
+
+  Map get _item =>
+      (widget.stall['items'] as List).cast<Map>().firstWhere((i) => i['id'] == widget.room['item'], orElse: () => {});
+
+  @override
+  void initState() {
+    super.initState();
+    _poll = Timer.periodic(const Duration(milliseconds: 1500), (_) => _pull());
+    _pull();
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _wait?.cancel();
+    widget.api.coopLeave(widget.code);
+    _text.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _toast(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  Future<void> _pull() async {
+    if (_pulling || _ended) return;
+    _pulling = true;
+    try {
+      final r = await widget.api.coopPull(widget.code, _seq);
+      for (final m in (r['messages'] as List).cast<Map>()) {
+        _seq = (m['seq'] as num).toInt();
+        if (m['type'] == 'state' && m['from'] == 'host') _applyState(m);
+      }
+    } on AccountError catch (e) {
+      if (e.code == 404 || e.code == 403) {
+        _ended = true;
+        _poll?.cancel();
+        _toast('👥 ${widget.room['host_name']} closed the haggle.');
+      }
+    } finally {
+      _pulling = false;
+    }
+  }
+
+  void _applyState(Map m) {
+    if (!mounted) return;
+    final view = Map<String, dynamic>.from(m['view'] as Map);
+    final wasDone = _g?['done'] == true;
+    setState(() {
+      _g = view;
+      _chat = (m['chat'] as List? ?? const []).cast<Map>();
+      _busy = false;
+      _react++;
+    });
+    Sfx.forEvent('${view['event']}');
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
+    if (!wasDone && view['done'] == true && view['result'] == 'deal') {
+      HapticFeedback.heavyImpact();
+      Sfx.play('deal');
+      widget.api.coopTeamwork().then((s) {
+        if (s.isNotEmpty) _toast('New sticker! 👥 Teamwork');
+      }).ignore();
+    }
+  }
+
+  Future<void> _send({int? pick, String? move, String? text, required String mine}) async {
+    if (_busy || _g == null || _g!['done'] == true) return;
+    setState(() {
+      _busy = true;
+      _chat = [
+        ..._chat,
+        {'t': mine, 'm': true, 's': false},
+      ];
+    });
+    try {
+      await widget.api.coopSend(widget.code, {'type': 'move', 'pick': ?pick, 'move': ?move, 'text': ?text});
+      // the host's phone plays it; the answer comes with the next state (or the busy flag clears after a while)
+      _wait?.cancel();
+      _wait = Timer(const Duration(seconds: 25), () {
+        if (mounted && _busy) setState(() => _busy = false);
+      });
+    } on AccountError catch (e) {
+      _toast(e.message);
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final g = _g;
+    final look = Map<String, dynamic>.from(widget.stall['look'] as Map);
+    return Scaffold(
+      resizeToAvoidBottomInset: false,
+      body: TileBackground(
+        child: Column(
+          children: [
+            _Scene(
+              stall: widget.stall,
+              item: _item,
+              look: look,
+              g: g,
+              face: g == null ? Face.happy : faceFor('${g['event']}', ((g['mood'] ?? 0) as num).toDouble()),
+              react: _react,
+              coop: 'with ${widget.room['host_name']}',
+            ),
+            Expanded(
+              child: ListView(
+                controller: _scroll,
+                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+                children: [
+                  if (g == null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 30),
+                      child: Text(
+                        'Joined ${widget.room['host_name']}\'s haggle. Waiting for their phone…',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Palette.soft),
+                      ),
+                    ),
+                  for (final m in _chat) Bubble(text: '${m['t']}', mine: m['m'] == true, sparkle: m['s'] == true),
+                  if (_busy) const Typing(),
+                  if (g != null && g['done'] == true)
+                    Container(
+                      key: const ValueKey('coop_result'),
+                      margin: const EdgeInsets.only(top: 12),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                      child: Column(
+                        children: [
+                          Text(
+                            g['result'] == 'deal'
+                                ? '🤝 Deal at ${money(g['deal'] as num)} together!'
+                                : 'No deal this time.',
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Palette.ink),
+                          ),
+                          const SizedBox(height: 10),
+                          Bouncy(
+                            onTap: () => Navigator.of(context).pop(),
+                            child: const Pill(text: 'Back to market', icon: '🏮'),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            if (g != null && g['done'] != true)
+              _Controls(
+                g: g,
+                busy: _busy,
+                text: _text,
+                send: _send,
+                lastLine: '${g['line']}',
+                who: '${widget.stall['name']}',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// "Join a friend": type the code from your friend's phone.
+Future<void> joinFriend(BuildContext context, Api api, List<Map> stalls) async {
+  final code = TextEditingController();
+  final entered = await showDialog<String>(
+    context: context,
+    builder: (c) => AlertDialog(
+      backgroundColor: Palette.cream,
+      title: const Text('👥 Join a friend'),
+      content: TextField(
+        key: const ValueKey('coop_code_field'),
+        controller: code,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        maxLength: 5,
+        decoration: const InputDecoration(hintText: 'The code on their screen'),
+        onSubmitted: (v) => Navigator.pop(c, v),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+        TextButton(
+          key: const ValueKey('coop_join_go'),
+          onPressed: () => Navigator.pop(c, code.text),
+          child: const Text('Join'),
+        ),
+      ],
+    ),
+  );
+  code.dispose();
+  if (entered == null || entered.trim().isEmpty || !context.mounted) return;
+  try {
+    final room = await api.coopJoin(entered);
+    final stall = stalls.where((s) => s['id'] == room['stall']).firstOrNull;
+    if (stall == null || !context.mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CoopGuestScreen(api: api, code: '${room['code']}', room: room, stall: stall),
+      ),
+    );
+  } on AccountError catch (e) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
   }
 }

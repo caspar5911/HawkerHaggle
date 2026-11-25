@@ -298,4 +298,17 @@ void main() {
       expect(await judge(null), isNull);
     });
   });
+
+  test("live co-op: a friend's move is answered knowing two friends are bargaining", () async {
+    final ai = FakeAi();
+    final g = await newGame(ai: ai);
+    final r = await g.start('mei', 'mango', 'none');
+    await g.move(r['id'] as String, text: 'auntie give my friend a good price', friend: 'Melody 99');
+    expect(ai.notes.last, contains('Two friends are bargaining'));
+    expect(ai.notes.last, contains('"Melody"')); // cleaned, no numbers
+    await g.move(r['id'] as String, text: 'and me also lah');
+    expect(ai.notes.last, isNot(contains('Two friends')));
+    expect(await g.teamwork(), ['teamwork']);
+    expect(await g.teamwork(), isEmpty); // once
+  });
 }

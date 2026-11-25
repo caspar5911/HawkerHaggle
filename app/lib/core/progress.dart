@@ -46,6 +46,7 @@ const stickerDefs = <(String, String, String, String)>[
   ('saver', '🫙', 'Saved up', 'Buy something with your savings jar'),
   ('lucky', '🎁', 'Lucky customer', 'Get a freebie from a stallholder'),
   ('quotes5', '💬', 'Quote collector', 'Save 5 favourite lines'),
+  ('teamwork', '👥', 'Teamwork', 'Close a deal together with a friend (live co-op)'),
 ];
 
 String dayKey(DateTime d) =>
