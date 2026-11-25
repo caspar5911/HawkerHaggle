@@ -395,4 +395,33 @@ void main() {
       expect((await quiet.start('mei', 'mango'))['surprise'], anyOf('', null));
     },
   );
+
+  test('gossip: a friend who came by (named, never priced), and rudeness next door today', () async {
+    final (g, _, clock) = await newGame();
+    expect(g.gossipNote('mei'), isEmpty);
+    g.gossip = {
+      'mei': [
+        {'name': 'Arella 99', 'item': 'durian', 'day': dayKey(clock.t)},
+      ],
+    };
+    final note = g.gossipNote('mei');
+    expect(note, contains('"Arella"'));
+    expect(note, contains('durian (1 kg)'));
+    expect(note, contains('earlier today'));
+    expect(RegExp(r'\d').hasMatch(note.replaceAll('(1 kg)', '')), isFalse); // no numbers for the AI
+    expect(g.gossipNote('lim'), isEmpty);
+    // simple mode (no AI): the ready-made greeting opens with it
+    final r = await g.start('mei', 'mango', 'none');
+    expect('${r['line']}', startsWith('Eh, your friend Arella came by also!'));
+    // rude at Uncle Lim today: Auntie Mei has heard
+    final x = await g.start('lim', 'pomfret', 'none');
+    var y = await g.move(x['id'] as String, text: 'stupid');
+    for (var i = 0; i < 10 && y['done'] != true; i++) {
+      y = await g.move(x['id'] as String, move: 'walk');
+    }
+    expect(g.gossipNote('mei'), contains('rude to Uncle Lim'));
+    expect(g.gossipNote('lim'), isNot(contains('rude to Uncle Lim')));
+    clock.nextDay();
+    expect(g.gossipNote('siti'), isEmpty); // yesterday's news
+  });
 }

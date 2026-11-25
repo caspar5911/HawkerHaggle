@@ -11,6 +11,7 @@ import contextlib
 import datetime as dt
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import sqlite3
@@ -65,6 +66,14 @@ def check_pw(pw: str, stored: str) -> bool:
 
 
 _DUMMY = hash_pw("not a real password")      # wrong usernames take as long as wrong passwords
+
+
+def clean_name(raw) -> str:
+    """A player's chosen name, safe to show and to put in a stallholder's notes: letters, spaces and . ' - only."""
+    if not isinstance(raw, str):
+        return ""
+    name = " ".join(re.sub(r"[^\w .'-]|[\d_]", " ", raw).split())[:20].strip()
+    return name if re.search(r"[^\W\d_]", name) else ""
 
 
 def _tok(token: str) -> str:
@@ -234,6 +243,59 @@ class Accounts:
                 return {"rev": 0}
             db.execute("UPDATE saves SET data='', rev=rev+1, updated_at=? WHERE account_id=?", (now(), row["id"]))
             return {"rev": r["rev"] + 1}
+
+    # ------------------------------------------------------------------ friends: this week's board and gossip
+    def board(self, viewer, stalls: dict, today: dt.date) -> dict:
+        """Everyone's best deal on each item this week (Monday to Sunday), from the progress the accounts keep here,
+        plus who bought what lately (for the stallholders' gossip). Only approved accounts and the admin are shown;
+        prices outside what the game allows are ignored."""
+        self._can_save(viewer)
+        week = (today - dt.timedelta(days=today.weekday())).isoformat()
+        recent = (today - dt.timedelta(days=2)).isoformat()
+        with self._db() as db:
+            rows = db.execute("SELECT a.id, a.username, s.data FROM saves s JOIN accounts a ON a.id=s.account_id "
+                              "WHERE (a.status='approved' OR a.role='admin') AND s.data<>''").fetchall()
+        best: dict[tuple[str, str], dict[int, dict]] = {}
+        gossip: list[dict] = []
+        for r in rows:
+            try:
+                prof = json.loads(r["data"])
+                haggles = prof.get("haggles") or []
+            except (ValueError, AttributeError):
+                continue
+            name = clean_name(prof.get("name")) or r["username"]
+            for h in haggles[-500:]:
+                if not isinstance(h, dict) or h.get("result") != "deal":
+                    continue
+                st, it, day = str(h.get("stall")), str(h.get("item")), str(h.get("day") or "")[:10]
+                item = next((i for i in stalls.get(st, {}).get("items", []) if i["id"] == it), None)
+                price = h.get("deal")
+                if item is None or not isinstance(price, (int, float)) or not day:
+                    continue
+                if not item["floor"] * 0.9 - 0.01 <= price <= item["ask"] * 1.3:
+                    continue
+                if day >= week:
+                    mine = best.setdefault((st, it), {})
+                    if r["id"] not in mine or price < mine[r["id"]]["price"]:
+                        mine[r["id"]] = {"name": name, "price": price, "you": r["id"] == viewer["id"]}
+                if day >= recent and r["id"] != viewer["id"]:
+                    gossip.append({"stall": st, "item": it, "name": name, "day": day})
+        items = []
+        for s in stalls.values():
+            for i in s["items"]:
+                ranked = sorted(best.get((s["id"], i["id"]), {}).values(), key=lambda x: x["price"])
+                if ranked:
+                    you = next((x for x in ranked if x["you"]), None)
+                    items.append({"stall": s["id"], "item": i["id"], "top": ranked[:3], "you": you,
+                                  "players": len(ranked)})
+        # the latest few per stall, newest first, one per friend
+        gossip.sort(key=lambda g: g["day"], reverse=True)
+        seen, latest = set(), []
+        for g in gossip:
+            if (g["stall"], g["name"]) not in seen and sum(x["stall"] == g["stall"] for x in latest) < 2:
+                seen.add((g["stall"], g["name"]))
+                latest.append(g)
+        return {"week": week, "items": items, "gossip": latest}
 
     # ------------------------------------------------------------------ admin
     def list(self) -> list[dict]:

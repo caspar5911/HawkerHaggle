@@ -27,6 +27,7 @@ class Market {
   final tokens = <String, String>{};
   final seen = <String>[];
   final saves = <String, Map<String, Object?>>{}; // username: {data, rev}
+  Map<String, Object?> board = {'week': '2026-11-23', 'items': <Object>[], 'gossip': <Object>[]};
   var n = 1;
 
   Map<String, Object?> pub(Map u) => {
@@ -85,6 +86,9 @@ class Market {
         if (had == null) return out(200, {'rev': 0});
         saves[tokens[tok]!] = {'data': '', 'rev': (had['rev'] as int) + 1};
         return out(200, {'rev': (had['rev'] as int) + 1});
+      case '/ai/accounts/board':
+        if (who == null) return out(401, {'detail': 'Please log in again.'});
+        return out(200, board);
       case '/ai/admin/players':
         if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
         return out(200, {
@@ -512,5 +516,64 @@ void main() {
         expect((await me(incognito))['haggles'], 1);
       },
     );
+  });
+
+  test('the board feeds the stallholders\' gossip', () async {
+    final m = Market()
+      ..board = {
+        'week': '2026-11-23',
+        'items': [
+          {
+            'stall': 'mei',
+            'item': 'durian',
+            'players': 1,
+            'top': [
+              {'name': 'Arella', 'price': 19, 'you': false},
+            ],
+            'you': null,
+          },
+        ],
+        'gossip': [
+          {'stall': 'mei', 'item': 'durian', 'name': 'Arella', 'day': '2026-11-25'},
+        ],
+      };
+    final a = phone(m);
+    expect(await a.board(), isNull); // not logged in
+    await a.signIn(server: 'market.example.com', username: 'jingqi', password: 'kopi1234', signUp: true);
+    final b = await a.board();
+    expect((b!['items'] as List).single['top'][0]['name'], 'Arella');
+    final r = await a.start('mei', 'mango', 'none');
+    expect('${r['line']}', startsWith('Eh, your friend Arella came by also!'));
+  });
+
+  testWidgets('the market shows the board when logged in; Beat it starts that item with the target', (tester) async {
+    final m = Market()
+      ..board = {
+        'week': '2026-11-23',
+        'items': [
+          {
+            'stall': 'mei',
+            'item': 'mango',
+            'players': 1,
+            'top': [
+              {'name': 'Arella', 'price': 11, 'you': false},
+            ],
+            'you': null,
+          },
+        ],
+        'gossip': <Object>[],
+      };
+    final api = apiWith(m, accountServer: 'https://market.example.com');
+    await api.signIn(server: api.accountServer, username: 'jingqi', password: 'kopi1234', signUp: true);
+    await tester.pumpWidget(HawkerHaggleApp(api: api));
+    await settle(tester, 2000);
+    expect(find.byKey(const ValueKey('board_open')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('board_open')));
+    await settle(tester, 1000);
+    expect(find.text('🥇 Arella  \$11'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('beat_mei_mango')));
+    await settle(tester, 1500);
+    expect(find.text("🏆 Beat Arella's \$11!"), findsOneWidget);
+    await settle(tester, 3000);
   });
 }

@@ -502,12 +502,23 @@ class Game {
     ss.festival = fest;
     _sessions[id] = ss;
     String? said;
-    if (ai.enabled && (surprise.isNotEmpty || fest != null || progress.hearts(stallId) > 0)) {
-      // A friend, a surprise or a festival week: worth a fresh greeting from the AI.
-      said = await ai.say(stall: stall, item: item, event: 'greet', numbers: {'ask': ss.h.s.ask}, note: _notes(ss));
+    final heard = gossipNote(stallId);
+    if (ai.enabled && (surprise.isNotEmpty || fest != null || heard.isNotEmpty || progress.hearts(stallId) > 0)) {
+      // A friend, a surprise, a festival week or some gossip: worth a fresh greeting from the AI.
+      said = await ai.say(
+        stall: stall,
+        item: item,
+        event: 'greet',
+        numbers: {'ask': ss.h.s.ask},
+        note: _notes(ss, heard),
+      );
     }
     final aiLine = said != null;
-    said ??= _line(stall, item, surprise.isEmpty ? 'greet' : 'greet_$surprise', ss.h, seed: seed);
+    if (said == null) {
+      said = _line(stall, item, surprise.isEmpty ? 'greet' : 'greet_$surprise', ss.h, seed: seed);
+      final opener = _gossipOpener(stallId);
+      if (opener != null) said = '$opener $said';
+    }
     ss.chat.add({'who': 'them', 'text': said, 'ask': ss.h.s.ask, if (aiLine) 'ai': true});
     return _view(ss, said, 'greet', null, null, aiLine);
   }
@@ -683,6 +694,54 @@ class Game {
     if (ss.h.s.done) throw GameError(400, 'This haggle is over');
     if (price <= 0 || price > 100000) throw GameError(400, 'Guess a price in dollars.');
     ss.guess = (price * 100).round() / 100;
+  }
+
+  /// Friends' recent deals, by stall (from the account's market server): the stallholder may mention them.
+  /// Each: {name, item, day}. Never with prices.
+  Map<String, List<Map>> gossip = {};
+
+  /// What the stallholder has heard: a friend who came by lately, or that this customer was rude next door today.
+  String gossipNote(String stallId) {
+    final parts = <String>[];
+    final friends = gossip[stallId] ?? const [];
+    if (friends.isNotEmpty) {
+      final f = friends.first;
+      final name = (cleanName('${f['name']}') ?? '')
+          .replaceAll(RegExp(r'\d+'), ' ')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      final item = ((_stalls[stallId]?['items'] as List? ?? const []).cast<Map>())
+          .where((i) => i['id'] == f['item'])
+          .map((i) => '${i['name']}')
+          .firstOrNull;
+      if (name.isNotEmpty && item != null) {
+        final today = dayKey(now());
+        final when = f['day'] == today ? 'earlier today' : 'a day or two ago';
+        parts.add(
+          'A friend of this customer (their name is "$name") bought the $item here $when. You may mention it in '
+          'passing, without saying what they paid.',
+        );
+      }
+    }
+    final rudeAt = <String>{
+      for (final h in (_profile['haggles'] as List? ?? const []).cast<Map>())
+        if (h['rude'] == true && h['day'] == dayKey(now()) && h['stall'] != stallId)
+          '${_stalls['${h['stall']}']?['name']}',
+    };
+    if (rudeAt.isNotEmpty) {
+      parts.add(
+        'Word travels at the market: you heard this customer was rude to ${rudeAt.first} earlier today. '
+        'Tease them about it a little.',
+      );
+    }
+    return parts.join(' ');
+  }
+
+  /// The ready-made greeting's opener when a friend came by (simple mode, or when the AI didn't answer).
+  String? _gossipOpener(String stallId) {
+    final f = (gossip[stallId] ?? const []).firstOrNull;
+    final name = f == null ? '' : (cleanName('${f['name']}') ?? '').replaceAll(RegExp(r'\d+'), '').trim();
+    return name.isEmpty ? null : 'Eh, your friend $name came by also!';
   }
 
   /// The festival week today, if any (never in tests that turn surprises off).

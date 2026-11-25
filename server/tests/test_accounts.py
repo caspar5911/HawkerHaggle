@@ -269,3 +269,50 @@ def test_admin_progress_only_from_the_owners_login(app):
     assert c.post("/ai/accounts/progress", headers=bearer(adm, ME)).json()["rev"] == 1
     for who in (FRIEND, GATEWAY, NOBODY):
         assert c.post("/ai/accounts/progress", headers=bearer(adm, who)).status_code in (401, 404)
+
+
+# ------------------------------------------------------------------ friends: this week's board and gossip
+def _save(c, tok, who, name, deals):
+    import datetime as _dt
+    today = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
+    data = {"name": name, "haggles": [{"stall": st, "item": it, "result": "deal", "deal": p, "day": d or today}
+                                      for st, it, p, d in deals]}
+    import json as _json
+    rev = c.post("/ai/accounts/progress", headers=bearer(tok, who)).json()["rev"]
+    r = c.post("/ai/accounts/progress/save", json={"data": _json.dumps(data), "rev": rev}, headers=bearer(tok, who))
+    assert r.status_code == 200, r.text
+
+
+def test_the_board_shows_approved_friends_best_prices_this_week(app):
+    c, accounts, _ = app
+    a, b, pend = signup(c, "Arella"), signup(c, "Melody"), signup(c, "Pending1")
+    ids = {p["username"]: p["id"] for p in accounts.list()}
+    adm = admin_token(c)
+    for u in ("Arella", "Melody"):
+        c.post("/ai/admin/decide", json={"id": ids[u], "action": "approve"}, headers=bearer(adm, ME))
+    _save(c, a, GATEWAY, "Arella 99", [("mei", "durian", 20, None), ("mei", "durian", 19, None), ("lim", "pomfret", 1, None)])
+    _save(c, b, GATEWAY, "Mel <b>", [("mei", "durian", 21, None), ("mei", "durian", 18, "2020-01-01")])
+    _save(c, pend, GATEWAY, "Sneaky", [("mei", "durian", 17, None)])
+    _save(c, adm, ME, "Caspar", [("raj", "case", 9, None)])
+    r = c.post("/ai/accounts/board", headers=bearer(a, GATEWAY))
+    assert r.status_code == 200
+    board = r.json()
+    durian = next(i for i in board["items"] if i["item"] == "durian")
+    assert [(x["name"], x["price"]) for x in durian["top"]] == [("Arella", 19), ("Mel b", 21)]  # best each, cleaned
+    assert durian["you"]["price"] == 19 and durian["players"] == 2
+    assert not any(i["item"] == "pomfret" for i in board["items"])       # $1 is impossible: ignored
+    assert any(i["item"] == "case" and i["top"][0]["name"] == "Caspar" for i in board["items"])   # the admin plays too
+    assert "Sneaky" not in r.text                                         # pending accounts aren't shown
+    # gossip: other friends' recent deals, never your own
+    names = {g["name"] for g in board["gossip"]}
+    assert names == {"Mel b", "Caspar"}
+    assert all(set(g) == {"stall", "item", "name", "day"} for g in board["gossip"])   # no prices in gossip
+
+
+def test_the_board_needs_a_login(app):
+    c, _, _ = app
+    assert c.post("/ai/accounts/board", headers=GATEWAY).status_code == 401
+    assert c.post("/ai/accounts/board", headers=bearer("hh_nope", NOBODY)).status_code == 401
+    tok = signup(c, "Newbie")
+    r = c.post("/ai/accounts/board", headers=bearer(tok, GATEWAY))       # pending: may look, isn't listed
+    assert r.status_code == 200 and r.json()["items"] == []

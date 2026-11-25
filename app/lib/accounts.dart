@@ -130,6 +130,9 @@ class AccountClient {
   Future<int> deleteProgress(String token) async =>
       ((await _post('accounts/progress/delete', token: token))['rev'] as num).toInt();
 
+  // friends: this week's best prices, and who bought what lately
+  Future<Map<String, dynamic>> board(String token) => _post('accounts/board', token: token);
+
   // admin
   Future<Map<String, dynamic>> players(String token) => _post('admin/players', token: token);
   Future<Map<String, dynamic>> decide(String token, int id, String action) =>

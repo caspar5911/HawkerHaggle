@@ -124,3 +124,10 @@ above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of
   days become about 30% of haggles instead of 8%, the market shows a banner, the AI is told to wish the customer
   (no numbers), and a deal that week earns a sticker. Off whenever surprises are off (tests, the reference check),
   and read from the game's clock. Add the next year's dates to the list.
+- **Friends' board** (`/ai/accounts/board`): this week's (Monday–Sunday, Singapore time) lowest price per player on
+  each item, read from the progress the accounts already keep on the server; only approved accounts and the admin
+  are listed, prices outside floor×0.9…ask×1.3 are ignored, names are cleaned. "Beat it" starts that item with the
+  friend's price as the target, and the result says whether you beat it.
+- **Gossip:** the same call lists friends' deals from the last two days (no prices). The stallholder's AI greeting
+  may mention the friend by name (never what they paid); simple mode opens the ready-made greeting with
+  "Eh, your friend … came by also!". Being rude at one stall today is heard at the others (AI only, no effect on prices).

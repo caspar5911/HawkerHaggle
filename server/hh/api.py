@@ -52,7 +52,7 @@ GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS",
 ADMIN_LOGINS = {x.strip().lower() for x in os.environ.get("HH_ADMIN_LOGINS", "").split(",") if x.strip()}
 PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
                 "/ai/accounts/logout", "/ai/accounts/password", "/ai/accounts/progress", "/ai/accounts/progress/save",
-                "/ai/accounts/progress/delete"}
+                "/ai/accounts/progress/delete", "/ai/accounts/board"}
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
 PUBLIC_AI_PER_DAY = 600        # per account (a haggle move is about 2 calls)
@@ -466,6 +466,12 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     def progress_delete(request: Request, authorization: str = Header(default="")):
         row = saver(request, authorization)
         return account_call(lambda: accounts.delete_progress(row))
+
+    @app.post("/ai/accounts/board")
+    def friends_board(request: Request, authorization: str = Header(default="")):
+        row = saver(request, authorization)
+        today = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()     # the market's week: Singapore time
+        return account_call(lambda: accounts.board(row, STALLS, today))
 
     def admin_only(request: Request, authorization: str) -> None:
         row = accounts.who(bearer(authorization))

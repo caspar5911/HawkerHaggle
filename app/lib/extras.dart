@@ -1083,3 +1083,120 @@ class _CardBubble extends StatelessWidget {
     ),
   );
 }
+
+/// This week's best prices among the market's players (from their accounts), with "Beat it" for each item.
+class BoardScreen extends StatefulWidget {
+  const BoardScreen({super.key, required this.api, required this.stalls, required this.onBeat});
+  final Api api;
+  final List<Map> stalls;
+  final void Function(String stall, String item, Map target) onBeat;
+  @override
+  State<BoardScreen> createState() => _BoardScreenState();
+}
+
+class _BoardScreenState extends State<BoardScreen> {
+  Map<String, dynamic>? _b;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.api.board().then((b) {
+      if (mounted) setState(() => b == null ? _failed = true : _b = b);
+    });
+  }
+
+  ({Map stall, Map item})? _find(String stallId, String itemId) {
+    final s = widget.stalls.where((x) => x['id'] == stallId).firstOrNull;
+    final i = (s?['items'] as List?)?.cast<Map>().where((x) => x['id'] == itemId).firstOrNull;
+    return s == null || i == null ? null : (stall: s, item: i);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = (_b?['items'] as List? ?? const []).cast<Map>();
+    return Scaffold(
+      appBar: AppBar(title: const Text("🏆 This week's best prices"), backgroundColor: Palette.cream),
+      backgroundColor: Palette.cream,
+      body: _b == null
+          ? Center(
+              child: _failed
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text("Couldn't reach the market server. Try again later.", textAlign: TextAlign.center),
+                    )
+                  : const CircularProgressIndicator(),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+              children: [
+                const Text(
+                  'The lowest price each player paid this week (Monday to Sunday), from everyone with an approved '
+                  'account on this market. Beat a friend\'s price to take the top spot!',
+                  style: TextStyle(color: Palette.soft, height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                if (items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 40),
+                    child: Text(
+                      'No deals yet this week. Close one and it shows here!',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
+                    ),
+                  ),
+                for (final it in items)
+                  if (_find('${it['stall']}', '${it['item']}') case final f?) _row(it, f.stall, f.item),
+              ],
+            ),
+    );
+  }
+
+  Widget _row(Map it, Map stall, Map item) {
+    final top = (it['top'] as List).cast<Map>();
+    final you = it['you'] as Map?;
+    final best = top.first;
+    return Container(
+      key: ValueKey('board_${stall['id']}_${item['id']}'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${item['emoji']} ${item['name']} · ${stall['name']}',
+            style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+          ),
+          const SizedBox(height: 4),
+          for (final (i, x) in top.indexed)
+            Text(
+              '${const ['🥇', '🥈', '🥉'][i]} ${x['name']}${x['you'] == true ? ' (you)' : ''}  ${money(x['price'] as num)}',
+              style: TextStyle(color: Palette.ink, fontWeight: x['you'] == true ? FontWeight.w700 : FontWeight.w400),
+            ),
+          if (you != null && !top.any((x) => x['you'] == true))
+            Text('You: ${money(you['price'] as num)}', style: const TextStyle(color: Palette.soft)),
+          const SizedBox(height: 6),
+          if (best['you'] == true)
+            const Text(
+              "👑 You're the best this week!",
+              style: TextStyle(color: Palette.teal, fontWeight: FontWeight.w700),
+            )
+          else
+            Bouncy(
+              key: ValueKey('beat_${stall['id']}_${item['id']}'),
+              onTap: () {
+                Navigator.of(context).pop();
+                widget.onBeat('${stall['id']}', '${item['id']}', {'name': best['name'], 'price': best['price']});
+              },
+              child: Pill(
+                text: "Beat ${best['name']}'s ${money(best['price'] as num)}",
+                icon: '🏃',
+                color: Palette.gold,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}

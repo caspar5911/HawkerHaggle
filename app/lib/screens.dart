@@ -65,12 +65,38 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         _error = null;
       });
       if (_me?['named'] != true && !_asking) await _editName(first: true);
+      // friends: this week's board (also what the stallholders gossip about)
+      final b = await widget.api.board();
+      if (mounted && b != null) setState(() => _board = b);
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
     }
   }
 
   bool _asking = false;
+  Map<String, dynamic>? _board;
+
+  String _boardLine() {
+    final n = (_board?['items'] as List? ?? const []).length;
+    return n == 0 ? "This week's best prices: be the first!" : "This week's best prices · beat your friends";
+  }
+
+  Future<void> _openBoard() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => BoardScreen(
+          api: widget.api,
+          stalls: _stalls.cast<Map>(),
+          onBeat: (stallId, itemId, target) {
+            final stall = _stalls.cast<Map>().where((x) => x['id'] == stallId).firstOrNull;
+            final item = (stall?['items'] as List?)?.cast<Map>().where((x) => x['id'] == itemId).firstOrNull;
+            if (stall != null && item != null) _open(stall, item, target: target);
+          },
+        ),
+      ),
+    );
+    _load();
+  }
 
   /// First launch (or a tap on 👋): pick the name the stallholders call you.
   Future<void> _editName({bool first = false}) async {
@@ -101,7 +127,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     if (stall != null && item != null) _open(stall, item);
   }
 
-  Future<void> _open(Map stall, Map item, {String surprise = ''}) async {
+  Future<void> _open(Map stall, Map item, {String surprise = '', Map? target}) async {
     if (stall['locked'] == true) {
       final days = (stall['unlock_days'] ?? 0) as num;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -118,7 +144,8 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     await Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
-        pageBuilder: (_, _, _) => HaggleScreen(api: widget.api, stall: stall, item: item, surprise: surprise),
+        pageBuilder: (_, _, _) =>
+            HaggleScreen(api: widget.api, stall: stall, item: item, surprise: surprise, target: target),
         transitionsBuilder: (_, a, _, child) => SlideTransition(
           position: Tween(
             begin: const Offset(0, 1),
@@ -193,6 +220,36 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
                     ),
                   ),
                 if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
+                if (widget.api.account != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Bouncy(
+                      key: const ValueKey('board_open'),
+                      onTap: _openBoard,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF1C9),
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Row(
+                          children: [
+                            const Text('🏆', style: TextStyle(fontSize: 20)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _boardLine(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                              ),
+                            ),
+                            const Icon(Icons.chevron_right_rounded, color: Palette.soft),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 if (_me != null) _Hello(me: _me!, onName: _editName),
                 const SizedBox(height: 12),
                 if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
@@ -429,11 +486,19 @@ class _Msg {
 }
 
 class HaggleScreen extends StatefulWidget {
-  const HaggleScreen({super.key, required this.api, required this.stall, required this.item, this.surprise = ''});
+  const HaggleScreen({
+    super.key,
+    required this.api,
+    required this.stall,
+    required this.item,
+    this.surprise = '',
+    this.target,
+  });
   final Api api;
   final Map stall;
   final Map item;
   final String surprise; // the daily challenge's Play button can ask for a market surprise
+  final Map? target; // "Beat it" from the friends' board: {name, price}
   @override
   State<HaggleScreen> createState() => _HaggleScreenState();
 }
@@ -532,7 +597,14 @@ class _HaggleScreenState extends State<HaggleScreen> {
     }
   }
 
-  String _banner(Map<String, dynamic>? g) => g == null || g['done'] == true ? '' : '${g['surprise_note'] ?? ''}';
+  String _banner(Map<String, dynamic>? g) {
+    if (g == null || g['done'] == true) return '';
+    final t = widget.target;
+    final note = '${g['surprise_note'] ?? ''}';
+    if (t == null) return note;
+    final beat = '🏆 Beat ${t['name']}\'s ${money(t['price'] as num)}!';
+    return note.isEmpty ? beat : '$beat  $note';
+  }
 
   /// Her last reply answered something the player typed: they can say she got it wrong.
   bool get _canFlag =>
@@ -563,6 +635,19 @@ class _HaggleScreenState extends State<HaggleScreen> {
 
   void _toast(String m) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  /// After a "Beat it" haggle: did you beat your friend's price?
+  String _beatNote(Map g) {
+    final t = widget.target!;
+    final theirs = (t['price'] as num).toDouble();
+    if (g['result'] != 'deal' || g['deal'] == null) {
+      return "🏆 ${t['name']}'s ${money(theirs)} still stands. Try again!";
+    }
+    final mine = (g['deal'] as num).toDouble();
+    if (mine < theirs) return '🏆 You beat ${t['name']}\'s ${money(theirs)}! It shows on the board soon.';
+    if (mine == theirs) return "🏆 Same as ${t['name']}'s ${money(theirs)}. So close!";
+    return "🏆 ${t['name']}'s ${money(theirs)} still stands. Try again!";
   }
 
   @override
@@ -645,7 +730,12 @@ class _HaggleScreenState extends State<HaggleScreen> {
               if (g['result'] == 'deal') const Positioned.fill(child: Confetti()),
               _Result(
                 api: widget.api,
-                g: g,
+                g: widget.target == null
+                    ? g
+                    : {
+                        ...g,
+                        'notes': [...(g['notes'] as List? ?? const []), _beatNote(g)],
+                      },
                 stall: widget.stall,
                 item: widget.item,
                 again: _start,

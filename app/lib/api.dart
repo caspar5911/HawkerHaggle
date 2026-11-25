@@ -397,6 +397,25 @@ class Api {
     await _saveAccount(a.withInfo({'default_password': false, 'admin': a.admin}));
   }
 
+  /// This week's best prices among the market's players, and who came by lately (the stallholders' gossip).
+  /// Null when not logged in or the server can't be reached.
+  Future<Map<String, dynamic>?> board() async {
+    await ensureDevice();
+    final a = _account;
+    if (a == null) return null;
+    try {
+      final b = await _accounts(a.server).board(a.token);
+      final by = <String, List<Map>>{};
+      for (final g in (b['gossip'] as List? ?? const []).cast<Map>()) {
+        (by['${g['stall']}'] ??= []).add(g);
+      }
+      _game!.gossip = by;
+      return b;
+    } on AccountError {
+      return null;
+    }
+  }
+
   Future<Map<String, dynamic>> players() async {
     final a = _account;
     if (a == null || !a.admin) throw AccountError('Admin only.');

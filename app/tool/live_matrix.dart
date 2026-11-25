@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:hawker_haggle/core/ai_client.dart';
 import 'package:hawker_haggle/core/game.dart';
+import 'package:hawker_haggle/core/progress.dart' show dayKey;
 
 final finalWords = RegExp(
   r"\b(final|last price|lowest|rock bottom|cannot go lower|can't go lower)\b",
@@ -165,6 +166,30 @@ Future<void> main(List<String> args) async {
     stdout.writeln('FEST  ${fg.festivalWeek?.name} ${g['ai_line'] == true ? '✨' : '  '} wished=$wished ${g['line']}');
     if (g['ai_line'] != true) fails.add('no AI greeting in ${fg.festivalWeek?.name} week');
     if (!wished) fails.add('the ${fg.festivalWeek?.name} greeting did not mention the festival');
+  }
+
+  // gossip: a friend came by (named, never priced); rude next door today
+  {
+    final gg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), surprises: false, unlockAll: true);
+    await gg.load();
+    gg.gossip = {
+      'mei': [
+        {'name': 'Arella', 'item': 'durian', 'day': dayKey(DateTime.now())},
+      ],
+    };
+    final g = await gg.start('mei', 'mango', 'none');
+    final named = '${g['line']}'.toLowerCase().contains('arella');
+    stdout.writeln('GOSS  friend ${g['ai_line'] == true ? '✨' : '  '} named=$named ${g['line']}');
+    if (g['ai_line'] != true) fails.add('no AI greeting with a friend\'s gossip');
+    if (!named) fails.add('the gossip greeting did not name the friend');
+    final x = await gg.start('lim', 'pomfret', 'none');
+    var y = await gg.move(x['id'] as String, text: 'you stupid old man');
+    for (var i = 0; i < 10 && y['done'] != true; i++) {
+      y = await gg.move(x['id'] as String, move: 'walk');
+    }
+    final r = await gg.start('siti', 'kueh', 'none');
+    stdout.writeln('GOSS  rude ${r['ai_line'] == true ? '✨' : '  '} ${r['line']}');
+    if (r['ai_line'] != true) fails.add('no AI greeting after rudeness next door');
   }
 
   // market surprises: the greeting reflects them; Auntie Rose can win
