@@ -628,6 +628,8 @@ void main() {
     await api.signIn(server: api.accountServer, username: 'jingqi', password: 'kopi1234', signUp: true);
     await tester.pumpWidget(HawkerHaggleApp(api: api));
     await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('tab_friends')));
+    await settle(tester);
     expect(find.byKey(const ValueKey('board_open')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('board_open')));
     await settle(tester, 1000);

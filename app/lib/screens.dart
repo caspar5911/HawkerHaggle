@@ -164,195 +164,302 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     _load();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: TileBackground(
-        child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: _load,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-              children: [
-                Row(
-                  children: [
-                    const Text('🏮', style: TextStyle(fontSize: 30)),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      // one line on any phone: shrinks a little on narrow screens instead of wrapping
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Hawker Haggle',
-                          maxLines: 1,
-                          style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Palette.ink),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      key: const ValueKey('history'),
-                      tooltip: 'Past haggles',
-                      icon: const Text('📜', style: TextStyle(fontSize: 22)),
-                      onPressed: () =>
-                          Navigator.of(context).push(MaterialPageRoute(builder: (_) => HistoryScreen(api: widget.api))),
-                    ),
-                    IconButton(
-                      key: const ValueKey('sticker_book'),
-                      icon: const Text('📒', style: TextStyle(fontSize: 24)),
-                      onPressed: () async {
-                        await Navigator.of(context)
-                            .push(MaterialPageRoute(builder: (_) => StickerBookScreen(api: widget.api)));
-                        _load();
-                      },
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.settings_rounded, color: Palette.soft),
-                      onPressed: () async {
-                        await Navigator.of(context)
-                            .push(MaterialPageRoute(builder: (_) => SettingsScreen(api: widget.api)));
-                        _load();
-                      },
-                    ),
-                  ],
-                ),
-                if (_newVersion)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Bouncy(
-                      key: const ValueKey('new_version'),
-                      onTap: reloadPage,
-                      child: const Pill(text: 'A new version is out: tap to reload', icon: '🆕', color: Palette.gold),
-                    ),
-                  ),
-                if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
-                if (widget.api.account != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Bouncy(
-                      key: const ValueKey('coop_join'),
-                      onTap: () => joinFriend(context, widget.api, _stalls.cast<Map>()),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEDE7F6),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Row(
-                          children: [
-                            Text('👥', style: TextStyle(fontSize: 20)),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                "Join a friend's haggle",
-                                style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
-                              ),
-                            ),
-                            Icon(Icons.chevron_right_rounded, color: Palette.soft),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                if (_jar != null)
-                  JarStrip(
-                    jar: _jar!,
-                    onTap: () async {
-                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => JarScreen(api: widget.api)));
-                      _load();
-                    },
-                  ),
-                if (widget.api.account != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Bouncy(
-                      key: const ValueKey('board_open'),
-                      onTap: _openBoard,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFF1C9),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Row(
-                          children: [
-                            const Text('🏆', style: TextStyle(fontSize: 20)),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                _boardLine(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
-                              ),
-                            ),
-                            const Icon(Icons.chevron_right_rounded, color: Palette.soft),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                if (_me != null) _Hello(me: _me!, onName: _editName),
-                const SizedBox(height: 12),
-                if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
-                if (_me != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 14),
-                    child: Bouncy(
-                      key: const ValueKey('shop_open'),
-                      onTap: () async {
-                        await Navigator.of(context)
-                            .push(MaterialPageRoute(builder: (_) => ShopScreen(api: widget.api)));
-                        _load();
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFDE2D8),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: const Row(
-                          children: [
-                            Text('🧺', style: TextStyle(fontSize: 20)),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Your own stall: you sell!',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
-                              ),
-                            ),
-                            Icon(Icons.chevron_right_rounded, color: Palette.soft),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                if (_today != null) TodayCard(today: _today!, onItem: _openById),
-                if (_error != null) _Oops(message: _error!, retry: _load),
-                if (_me == null && _error == null)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 80),
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                for (var i = 0; i < _stalls.length; i++)
-                  _Rise(
-                    delay: i * 90,
-                    child: _StallCard(
-                      stall: _stalls[i] as Map,
-                      awning: Palette.awnings[i % Palette.awnings.length],
-                      onItem: _open,
-                      onProfile: (st) => showStallProfile(context, widget.api, st),
-                    ),
-                  ),
-              ],
+  // ---------------------------------------------------------------- tabs
+  int _tab = 0;
+  static const _tabs = [
+    ('market', '🏮', 'Market'),
+    ('stall', '🧺', 'My stall'),
+    ('friends', '👥', 'Friends'),
+    ('me', '📒', 'Me'),
+  ];
+
+  /// A goal in the jar you can afford now: a dot on the My stall tab.
+  bool get _canBuyGoal {
+    final j = _jar;
+    if (j == null) return false;
+    final saved = (j['jar'] as num).toDouble();
+    return (j['goals'] as List).cast<Map>().any((g) => g['owned'] != true && saved >= (g['cost'] as num));
+  }
+
+  Widget _tabIcon(int i, {bool selected = false}) => Badge(
+    isLabelVisible: i == 1 && _canBuyGoal,
+    smallSize: 9,
+    backgroundColor: Palette.red,
+    child: Text(_tabs[i].$2, style: TextStyle(fontSize: selected ? 24 : 21)),
+  );
+
+  void _goTab(int i) {
+    if (i == _tab) return;
+    setState(() => _tab = i);
+  }
+
+  Future<void> _push(Widget screen) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+    _load();
+  }
+
+  Widget _header() {
+    final (_, emoji, label) = _tabs[_tab];
+    return Row(
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 30)),
+        const SizedBox(width: 8),
+        Expanded(
+          // one line on any phone: shrinks a little on narrow screens instead of wrapping
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _tab == 0 ? 'Hawker Haggle' : label,
+              maxLines: 1,
+              style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Palette.ink),
             ),
           ),
         ),
-      ),
+        IconButton(
+          tooltip: 'Settings',
+          icon: const Icon(Icons.settings_rounded, color: Palette.soft),
+          onPressed: () => _push(SettingsScreen(api: widget.api)),
+        ),
+      ],
     );
   }
+
+  List<Widget> _marketPage() => [
+    if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
+    if (_me != null) _Hello(me: _me!, onName: _editName),
+    const SizedBox(height: 12),
+    if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
+    if (_today != null) TodayCard(today: _today!, onItem: _openById),
+    if (_error != null) _Oops(message: _error!, retry: _load),
+    if (_me == null && _error == null)
+      const Padding(
+        padding: EdgeInsets.only(top: 80),
+        child: Center(child: CircularProgressIndicator()),
+      ),
+    for (var i = 0; i < _stalls.length; i++)
+      _Rise(
+        delay: i * 90,
+        child: _StallCard(
+          stall: _stalls[i] as Map,
+          awning: Palette.awnings[i % Palette.awnings.length],
+          onItem: _open,
+          onProfile: (st) => showStallProfile(context, widget.api, st),
+        ),
+      ),
+  ];
+
+  List<Widget> _stallPage() => [
+    const SizedBox(height: 8),
+    _Entry(
+      key: const ValueKey('shop_open'),
+      emoji: '🧺',
+      title: 'Your own stall: you sell!',
+      line: 'Customers come to you. Sell what you bought for more than you paid.',
+      color: const Color(0xFFFDE2D8),
+      onTap: () => _push(ShopScreen(api: widget.api)),
+    ),
+    if (_jar != null)
+      JarStrip(
+        jar: _jar!,
+        onTap: () => _push(JarScreen(api: widget.api)),
+      ),
+    if (_canBuyGoal)
+      const Padding(
+        padding: EdgeInsets.only(left: 6, bottom: 10),
+        child: Text('🎉 You can afford a goal now: open the jar!', style: TextStyle(color: Palette.soft)),
+      ),
+  ];
+
+  List<Widget> _friendsPage() => [
+    const SizedBox(height: 8),
+    if (widget.api.account != null) ...[
+      _Entry(
+        key: const ValueKey('coop_join'),
+        emoji: '👥',
+        title: "Join a friend's haggle",
+        line: 'Type the code from their screen and haggle together. (To invite, tap 👥 in a haggle.)',
+        color: const Color(0xFFEDE7F6),
+        onTap: () => joinFriend(context, widget.api, _stalls.cast<Map>()),
+      ),
+      _Entry(
+        key: const ValueKey('board_open'),
+        emoji: '🏆',
+        title: _boardLine(),
+        line: "The market's best prices this week. Beat one and the stallholders will gossip about it.",
+        color: const Color(0xFFFFF1C9),
+        onTap: _openBoard,
+      ),
+    ] else
+      _Entry(
+        key: const ValueKey('friends_login'),
+        emoji: '🔑',
+        title: 'Play with friends',
+        line: "Log in to a market account (in Settings) to join friends' haggles and the weekly best prices.",
+        color: const Color(0xFFEDE7F6),
+        onTap: () => _push(SettingsScreen(api: widget.api)),
+      ),
+  ];
+
+  List<Widget> _mePage() => [
+    const SizedBox(height: 8),
+    if (_me != null)
+      Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: _Hello(me: _me!, onName: _editName),
+      ),
+    _Entry(
+      key: const ValueKey('sticker_book'),
+      emoji: '📒',
+      title: 'Sticker book',
+      line: 'Every sticker you have collected, and the ones still to find.',
+      color: const Color(0xFFE6F6EF),
+      onTap: () => _push(StickerBookScreen(api: widget.api)),
+    ),
+    _Entry(
+      key: const ValueKey('history'),
+      emoji: '📜',
+      title: 'Past haggles',
+      line: 'Reread your chats and share them as pictures.',
+      color: const Color(0xFFFFF1C9),
+      onTap: () => _push(HistoryScreen(api: widget.api)),
+    ),
+    _Entry(
+      key: const ValueKey('quotes_open'),
+      emoji: '⭐',
+      title: 'Quote book',
+      line: 'Your favourite lines from the stallholders.',
+      color: const Color(0xFFE8F0FF),
+      onTap: () => _push(QuoteBookScreen(api: widget.api)),
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 720;
+    final list = RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        key: ValueKey('home_${_tabs[_tab].$1}'),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+        children: [
+          _header(),
+          if (_newVersion)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Bouncy(
+                key: const ValueKey('new_version'),
+                onTap: reloadPage,
+                child: const Pill(text: 'A new version is out: tap to reload', icon: '🆕', color: Palette.gold),
+              ),
+            ),
+          ...switch (_tab) {
+            1 => _stallPage(),
+            2 => _friendsPage(),
+            3 => _mePage(),
+            _ => _marketPage(),
+          },
+        ],
+      ),
+    );
+    return Scaffold(
+      body: TileBackground(
+        child: SafeArea(
+          child: wide
+              ? Row(
+                  children: [
+                    NavigationRail(
+                      selectedIndex: _tab,
+                      onDestinationSelected: _goTab,
+                      labelType: NavigationRailLabelType.all,
+                      backgroundColor: Colors.white.withValues(alpha: 0.7),
+                      indicatorColor: Palette.gold.withValues(alpha: 0.5),
+                      destinations: [
+                        for (var i = 0; i < _tabs.length; i++)
+                          NavigationRailDestination(
+                            icon: KeyedSubtree(key: ValueKey('tab_${_tabs[i].$1}'), child: _tabIcon(i)),
+                            selectedIcon: _tabIcon(i, selected: true),
+                            label: Text(_tabs[i].$3),
+                          ),
+                      ],
+                    ),
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 760), child: list),
+                      ),
+                    ),
+                  ],
+                )
+              : list,
+        ),
+      ),
+      bottomNavigationBar: wide
+          ? null
+          : NavigationBar(
+              selectedIndex: _tab,
+              onDestinationSelected: _goTab,
+              height: 64,
+              backgroundColor: Colors.white,
+              indicatorColor: Palette.gold.withValues(alpha: 0.5),
+              destinations: [
+                for (var i = 0; i < _tabs.length; i++)
+                  NavigationDestination(
+                    key: ValueKey('tab_${_tabs[i].$1}'),
+                    icon: _tabIcon(i),
+                    selectedIcon: _tabIcon(i, selected: true),
+                    label: _tabs[i].$3,
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+/// A big tappable card on the home tabs: an emoji, a title and a line about it.
+class _Entry extends StatelessWidget {
+  const _Entry({
+    super.key,
+    required this.emoji,
+    required this.title,
+    required this.line,
+    required this.color,
+    required this.onTap,
+  });
+  final String emoji, title, line;
+  final Color color;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Bouncy(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(18)),
+        child: Row(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 28)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Palette.ink),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(line, style: const TextStyle(color: Palette.soft, fontSize: 13)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, color: Palette.soft),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _Hello extends StatelessWidget {
