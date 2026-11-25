@@ -356,6 +356,21 @@ Future<void> Function(String text, Uint8List? png) shareBrag = (text, png) async
   );
 };
 
+/// Share several pictures at once, in order (the chat in parts). Swappable for tests.
+Future<void> Function(String text, List<Uint8List> pngs) sharePictures = (text, pngs) async {
+  await SharePlus.instance.share(
+    ShareParams(
+      text: text,
+      files: pngs.isEmpty
+          ? null
+          : [
+              for (final (i, png) in pngs.indexed)
+                XFile.fromData(png, mimeType: 'image/png', name: 'hawker-haggle-${i + 1}.png'),
+            ],
+    ),
+  );
+};
+
 /// Takes the picture for sharing (swappable in tests, where real rendering isn't available).
 Future<Uint8List?> Function(GlobalKey key) capturePng = _capturePng;
 
@@ -363,7 +378,9 @@ Future<Uint8List?> _capturePng(GlobalKey key) async {
   try {
     final boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
     if (boundary == null) return null;
-    final image = await boundary.toImage(pixelRatio: 3);
+    // up to 3x sharp, but never taller than ~8000 pixels (phones can't make bigger images)
+    final ratio = (8000 / boundary.size.height).clamp(1.0, 3.0);
+    final image = await boundary.toImage(pixelRatio: ratio);
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
     return data?.buffer.asUint8List();
   } catch (_) {
@@ -460,9 +477,8 @@ class HistoryChatScreen extends StatefulWidget {
   State<HistoryChatScreen> createState() => _HistoryChatScreenState();
 }
 
-/// A past haggle's chat. Tap lines to pick them (the last four to start with), then share them as a picture.
+/// A past haggle's chat. The whole chat is picked to start with (one tall picture); tap lines to leave some out.
 class _HistoryChatScreenState extends State<HistoryChatScreen> {
-  static const maxLines = 6;
   Map<String, dynamic>? _h;
   final _picked = <int>{};
 
@@ -474,59 +490,91 @@ class _HistoryChatScreenState extends State<HistoryChatScreen> {
       final n = (h['chat'] as List).length;
       setState(() {
         _h = h;
-        _picked.addAll([
-          for (var i = n - 4; i < n; i++)
-            if (i >= 0) i,
-        ]);
+        _picked.addAll([for (var i = 0; i < n; i++) i]);
       });
     });
   }
 
-  void _toggle(int i) => setState(() {
-    if (!_picked.remove(i)) {
-      if (_picked.length >= maxLines) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Up to 6 lines fit on the picture.')));
-        return;
-      }
-      _picked.add(i);
-    }
-  });
+  void _toggle(int i) => setState(() => _picked.remove(i) || _picked.add(i));
+
+  static const perPart = 8; // messages on each picture when shared in parts
 
   Future<void> _share() async {
     final h = _h!;
     final chat = (h['chat'] as List).cast<Map>();
     final lines = [for (final i in (_picked.toList()..sort())) chat[i]];
-    final key = GlobalKey();
+    final parts = [
+      for (var i = 0; i < lines.length; i += perPart) lines.sublist(i, (i + perPart).clamp(0, lines.length)),
+    ];
+    final look = Map<String, dynamic>.from(h['look'] as Map? ?? const {});
+    final text = [
+      '${h['stall_name']} · ${h['item_name']}',
+      for (final m in lines) '${m['who'] == 'you' ? 'Me' : h['stall_name']}: ${m['text']}',
+      '🏮 Hawker Haggle',
+    ].join('\n');
+    var inParts = parts.length > 1;
     await showDialog<void>(
       context: context,
-      builder: (c) => AlertDialog(
-        backgroundColor: Palette.cream,
-        contentPadding: const EdgeInsets.all(12),
-        content: SingleChildScrollView(
-          child: FittedBox(
-            child: RepaintBoundary(
-              key: key,
-              child: ChatCard(h: h, lines: lines, look: Map<String, dynamic>.from(h['look'] as Map? ?? const {})),
+      builder: (c) => StatefulBuilder(
+        builder: (c, setDialog) {
+          final keys = [for (var i = 0; i < (inParts ? parts.length : 1); i++) GlobalKey()];
+          return AlertDialog(
+            backgroundColor: Palette.cream,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
+            contentPadding: const EdgeInsets.all(6),
+            title: parts.length > 1
+                ? SegmentedButton<bool>(
+                    segments: [
+                      const ButtonSegment(value: false, label: Text('One picture')),
+                      ButtonSegment(value: true, label: Text('${parts.length} pictures')),
+                    ],
+                    selected: {inParts},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (v) => setDialog(() => inParts = v.first),
+                  )
+                : null,
+            // the pictures at their real width, scrolling down for a long chat
+            content: SingleChildScrollView(
+              child: Column(
+                children: [
+                  if (inParts)
+                    for (final (i, part) in parts.indexed) ...[
+                      RepaintBoundary(
+                        key: keys[i],
+                        child: ChatCard(h: h, lines: part, look: look, part: '${i + 1}/${parts.length}'),
+                      ),
+                      const SizedBox(height: 8),
+                    ]
+                  else
+                    RepaintBoundary(
+                      key: keys.first,
+                      child: ChatCard(h: h, lines: lines, look: look),
+                    ),
+                ],
+              ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
-          TextButton(
-            key: const ValueKey('chat_share_go'),
-            onPressed: () async {
-              final png = await capturePng(key);
-              if (c.mounted) Navigator.pop(c);
-              final text = [
-                '${h['stall_name']} · ${h['item_name']}',
-                for (final m in lines) '${m['who'] == 'you' ? 'Me' : h['stall_name']}: ${m['text']}',
-                '🏮 Hawker Haggle',
-              ].join('\n');
-              await shareBrag(text, png);
-            },
-            child: const Text('Share'),
-          ),
-        ],
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+              TextButton(
+                key: const ValueKey('chat_share_go'),
+                onPressed: () async {
+                  final pngs = <Uint8List>[];
+                  for (final k in keys) {
+                    final png = await capturePng(k);
+                    if (png != null) pngs.add(png);
+                  }
+                  if (c.mounted) Navigator.pop(c);
+                  if (keys.length > 1) {
+                    await sharePictures(text, pngs);
+                  } else {
+                    await shareBrag(text, pngs.firstOrNull);
+                  }
+                },
+                child: const Text('Share'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -547,11 +595,25 @@ class _HistoryChatScreenState extends State<HistoryChatScreen> {
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
               children: [
                 const Text(
-                  'Tap lines to pick them for a picture to share.',
+                  'The whole chat goes in the picture. Tap lines to leave them out.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Palette.soft, fontSize: 13),
                 ),
-                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    TextButton(
+                      key: const ValueKey('pick_all'),
+                      onPressed: () => setState(() => _picked.addAll([for (var i = 0; i < chat.length; i++) i])),
+                      child: const Text('All'),
+                    ),
+                    TextButton(
+                      key: const ValueKey('pick_none'),
+                      onPressed: () => setState(_picked.clear),
+                      child: const Text('None'),
+                    ),
+                  ],
+                ),
                 for (final (i, m) in chat.indexed)
                   GestureDetector(
                     key: ValueKey('line_$i'),
@@ -1046,14 +1108,15 @@ class FestivalBanner extends StatelessWidget {
 
 /// A picture of a few lines from a haggle, to share.
 class ChatCard extends StatelessWidget {
-  const ChatCard({super.key, required this.h, required this.lines, required this.look});
+  const ChatCard({super.key, required this.h, required this.lines, required this.look, this.part = ''});
   final Map h;
   final List<Map> lines;
   final Map<String, dynamic> look;
+  final String part; // "2/3" when the chat is shared in parts
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 340,
+      width: 320,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
@@ -1082,6 +1145,15 @@ class ChatCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (part.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                  child: Text(
+                    part,
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 8),
@@ -1106,7 +1178,7 @@ class _CardBubble extends StatelessWidget {
   Widget build(BuildContext context) => Align(
     alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
     child: Container(
-      constraints: const BoxConstraints(maxWidth: 250),
+      constraints: const BoxConstraints(maxWidth: 240),
       margin: const EdgeInsets.symmetric(vertical: 3),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(color: mine ? Palette.teal : Colors.white, borderRadius: BorderRadius.circular(16)),

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -179,10 +181,15 @@ class Fake extends Game {
     ...history().first,
     'chat': [
       {'who': 'them', 'text': 'Morning my dear! \$18 only.'},
+      for (var i = 0; i < extraChat; i++) ...[
+        {'who': 'you', 'text': 'Chat line $i?'},
+        {'who': 'them', 'text': 'Answer $i!'},
+      ],
       {'who': 'you', 'text': '\$15 lah, OK?'},
       {'who': 'them', 'text': 'OK lah, \$15 for you!', 'ai': true},
     ],
   };
+  int extraChat = 0; // a longer chat, for sharing in parts
 
   @override
   List<Map<String, Object?>> stickers() => [
@@ -681,7 +688,11 @@ void main() {
     await tester.tap(find.text('box of mangoes · Auntie Mei'));
     await settle(tester);
     expect(find.textContaining('Share as a picture ('), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('line_0'))); // toggle the first line
+    // the whole chat is picked to start with; None, then All, picks everything again
+    await tester.tap(find.byKey(const ValueKey('pick_none')));
+    await settle(tester, 300);
+    expect(find.text('Share as a picture (0)'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pick_all')));
     await settle(tester, 300);
     await tester.ensureVisible(find.byKey(const ValueKey('chat_share')));
     await tester.tap(find.byKey(const ValueKey('chat_share')));
@@ -689,7 +700,51 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('chat_share_go')));
     await settle(tester, 800);
     expect(shared.single, contains('Auntie Mei · box of mangoes'));
+    expect(shared.single, contains('\$15 lah, OK?')); // the first line…
+    expect(shared.single, contains('OK lah, \$15 for you!')); // …and the last
     expect(shared.single, contains('🏮 Hawker Haggle'));
+    await settle(tester, 2000);
+  });
+
+  testWidgets('a long chat can be shared as one tall picture or as numbered pictures', (tester) async {
+    final shared = <String>[];
+    var pictures = 0;
+    shareBrag = (text, png) async => shared.add('one');
+    sharePictures = (text, pngs) async {
+      shared.add('parts');
+      pictures = pngs.length;
+    };
+    capturePng = (_) async => Uint8List(4);
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([])..extraChat = 9))); // 21 messages
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('history')));
+    await settle(tester);
+    await tester.tap(find.text('box of mangoes · Auntie Mei'));
+    await settle(tester);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('chat_share')),
+      find.byType(ListView).last,
+      const Offset(0, -300),
+    );
+    await settle(tester, 300);
+    expect(find.text('Share as a picture (21)'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('chat_share')));
+    await settle(tester, 800);
+    expect(find.text('3 pictures'), findsOneWidget); // 8 + 8 + 5
+    expect(find.text('1/3'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('chat_share_go')));
+    await settle(tester, 800);
+    expect(shared.last, 'parts');
+    expect(pictures, 3);
+    // or one tall picture
+    await tester.tap(find.byKey(const ValueKey('chat_share')));
+    await settle(tester, 800);
+    await tester.tap(find.text('One picture'));
+    await settle(tester, 500);
+    expect(find.text('1/3'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('chat_share_go')));
+    await settle(tester, 800);
+    expect(shared.last, 'one');
     await settle(tester, 2000);
   });
 
