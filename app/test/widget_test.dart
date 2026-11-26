@@ -740,10 +740,19 @@ void main() {
     expect(Music.wanted, 'stroll');
     await tester.tap(find.byIcon(Icons.settings_rounded));
     await settle(tester);
+    await tester.drag(find.byKey(const ValueKey('music_volume')), const Offset(-2000, 0)); // all the way down
+    await settle(tester, 400);
+    expect(Music.level, 0);
+    expect(Music.volumeOf('stroll'), 0);
+    await tester.drag(find.byKey(const ValueKey('music_volume')), const Offset(2000, 0)); // all the way up
+    await settle(tester, 400);
+    expect(Music.level, 1);
+    expect(Music.volumeOf('stroll'), closeTo(0.6, 1e-9));
     await tester.tap(find.byKey(const ValueKey('music_switch')));
     await settle(tester, 400);
     expect(Music.on, isFalse);
     expect(Music.wanted, isNull);
+    expect(find.byKey(const ValueKey('music_volume')), findsNothing); // no slider while it's off
     await tester.tap(find.byKey(const ValueKey('music_switch')));
     await settle(tester, 400);
     expect(Music.wanted, 'stroll');

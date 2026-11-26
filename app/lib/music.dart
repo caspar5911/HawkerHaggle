@@ -15,6 +15,12 @@ class Music {
 
   static const volumes = {'stroll': 0.3, 'calm': 0.25};
 
+  /// The player's volume, 0 to 1. The middle is the normal level; all the way up is twice as loud.
+  static double level = 0.5;
+
+  /// How loud a tune plays at the player's [level].
+  static double volumeOf(String tune) => (volumes[tune] ?? 0.3) * level * 2;
+
   /// The player's switch (on unless they turned it off).
   static bool on = true;
   static final _moods = <(Object, String)>[];
@@ -40,6 +46,7 @@ class Music {
     _blocked = kIsWeb; // browsers refuse sound before the first tap (often without saying so), so wait for it
     try {
       on = startsOn(await _storage.read(key: 'music'), await _storage.read(key: 'muted'));
+      level = (double.tryParse(await _storage.read(key: 'music_level') ?? '') ?? 0.5).clamp(0.0, 1.0);
     } catch (_) {}
     AppLifecycleListener(
       onStateChange: (s) {
@@ -53,6 +60,22 @@ class Music {
   /// On, unless switched off; a player who turned sound off before there was music starts without it too.
   @visibleForTesting
   static bool startsOn(String? music, String? muted) => music == null ? muted != '1' : music != '0';
+
+  /// Changes the volume at once (while the slider moves); [save] when the finger lifts.
+  static Future<void> setLevel(double value, {bool save = false}) async {
+    level = value.clamp(0.0, 1.0);
+    final p = _player, tune = _loaded;
+    if (Sfx.available && p != null && tune != null && _playing) {
+      try {
+        await p.setVolume(_volume = volumeOf(tune));
+      } catch (_) {}
+    }
+    if (save) {
+      try {
+        await _storage.write(key: 'music_level', value: level.toStringAsFixed(2));
+      } catch (_) {}
+    }
+  }
 
   static Future<void> setOn(bool value) async {
     on = value;
@@ -124,7 +147,7 @@ class Music {
       _blocked = true; // most likely the browser refusing sound before a tap
       return;
     }
-    await _fade(volumes[tune] ?? 0.3);
+    await _fade(volumeOf(tune));
   }
 
   static Future<AudioPlayer> _make() async {
@@ -150,6 +173,7 @@ class Music {
   @visibleForTesting
   static void reset() {
     on = true;
+    level = 0.5;
     _moods.clear();
     _hushed = _away = _blocked = false;
   }

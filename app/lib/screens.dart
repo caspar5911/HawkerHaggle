@@ -2338,6 +2338,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               setState(() {});
             },
           ),
+          if (Music.on)
+            Row(
+              children: [
+                const Icon(Icons.volume_down_rounded, color: Palette.soft),
+                Expanded(
+                  child: Slider(
+                    key: const ValueKey('music_volume'),
+                    value: Music.level,
+                    divisions: 10,
+                    label: '${(Music.level * 100).round()}%',
+                    onChanged: (v) {
+                      Music.setLevel(v);
+                      setState(() {});
+                    },
+                    onChangeEnd: (v) => Music.setLevel(v, save: true),
+                  ),
+                ),
+                const Icon(Icons.volume_up_rounded, color: Palette.soft),
+              ],
+            ),
           SwitchListTile(
             key: const ValueKey('reduce_motion'),
             contentPadding: EdgeInsets.zero,
