@@ -1671,11 +1671,17 @@ class Game {
   Future<Map<String, Object?>> shopStart([String? productId]) async {
     final shop = (_profile['shop'] ??= <String, Object?>{}) as Map;
     final n = ((shop['served'] ?? 0) as num).toInt();
-    // what you bought at the market is what you sell (the oldest first); with nothing in stock, wholesale goods
+    // the customer comes first (🪧 the shop sign: big spenders more often)
+    var customer = customers[_rnd.nextInt(customers.length)];
+    if (progress.owns('sign') && _rnd.nextInt(10) < 4) {
+      customer = customers.reduce((a, b) => a.most >= b.most ? a : b);
+    }
+    // they pick from your stock: something they love if you have it, else the next in line; with nothing in stock,
+    // wholesale goods (the kind they love, if there is one)
     final stock = progress.stock;
     final Product product;
     if (productId == null && stock.isNotEmpty) {
-      final x = stock.first;
+      final x = stock.firstWhere((x) => customer.loves.contains(kindOf('${x['key']}')), orElse: () => stock.first);
       product = Product(
         'stock:${x['key']}',
         '${x['name']}',
@@ -1692,15 +1698,24 @@ class Game {
           'sell!',
         );
       }
-      product = products.firstWhere((p) => p.id == productId, orElse: () => products[n % products.length]);
-    }
-    var customer = customers[_rnd.nextInt(customers.length)];
-    // 🪧 the shop sign: big spenders come more often
-    if (progress.owns('sign') && _rnd.nextInt(10) < 4) {
-      customer = customers.reduce((a, b) => a.most >= b.most ? a : b);
+      product = products.firstWhere(
+        (p) => p.id == productId,
+        orElse: () => products.firstWhere(
+          (p) => customer.loves.contains(kindOf(p.id)),
+          orElse: () => products[n % products.length],
+        ),
+      );
     }
     final seed = _rnd.nextInt(1 << 31);
     final sale = Sale(product, customer, seed: seed);
+    // 😍 something they love: they pay more, and open higher
+    final loved = customer.loves.contains(
+      kindOf(product.id.startsWith('stock:') ? product.id.substring(6) : product.id),
+    );
+    if (loved) {
+      sale.most = (sale.most * loveMore * 2).round() / 2;
+      sale.offer = math.min(sale.most, (sale.offer * loveOpens * 2).round() / 2);
+    }
     // a nicer stall: they pay a bit more (⛱️ the awning, 💡 the neon sign, 🧊 the ice box for fresh things)
     var more = 1.0;
     if (progress.owns('awning')) more *= 1.05;
@@ -1715,7 +1730,37 @@ class Game {
     if (progress.owns('radio')) sale.offer = math.min(sale.most, (sale.offer * 1.1 * 2).round() / 2); // 📻
     final id = 's${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
     _sales[id] = (sale: sale, chat: <Map<String, Object?>>[], seed: seed);
+    _loved[id] = loved;
     return _shopSay(id, 'greet');
+  }
+
+  final _loved = <String, bool>{}; // (this customer loves what they want)
+
+  /// 👋 How many customers you can send away a day ("Not today"): enough to wait for the right buyer now and then,
+  /// not enough to sell only to the richest.
+  static const passesPerDay = 3;
+
+  int _passedToday(Map shop) {
+    final w = shop['passed_today'];
+    return w is Map && w['day'] == dayKey(now()) ? ((w['n'] ?? 0) as num).toInt() : 0;
+  }
+
+  int get _passesLeft => passesPerDay - _passedToday((_profile['shop'] ?? const <String, Object?>{}) as Map);
+
+  /// "Not today": you send the customer away (no sale, no fuss); the next one can come. A few a day.
+  Future<Map<String, Object?>> shopPass(String id) async {
+    final s = _sales[id];
+    if (s == null) throw GameError(404, 'That customer has gone home');
+    if (s.sale.done) throw GameError(409, 'This sale is over');
+    if (_passesLeft <= 0) {
+      throw GameError(409, "👋 You've sent $passesPerDay customers away today. Try selling to this one!");
+    }
+    _sales.remove(id);
+    _loved.remove(id);
+    final shop = (_profile['shop'] ??= <String, Object?>{}) as Map;
+    shop['passed_today'] = {'day': dayKey(now()), 'n': _passedToday(shop) + 1};
+    await _save();
+    return {'id': id, 'done': true, 'result': 'passed', 'passes_left': _passesLeft};
   }
 
   /// Your move: name a price, take their offer, or chat.
@@ -1877,6 +1922,8 @@ class Game {
         'look': sale.customer.look,
         'clue': sale.customer.clue,
       },
+      if (_loved[id] == true) 'loves': true, // 😍 they love this kind of thing
+      'passes_left': _passesLeft, // 👋 "Not today" left today
       'product': {
         'id': sale.product.id,
         'name': sale.product.name,

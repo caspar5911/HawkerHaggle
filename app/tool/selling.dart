@@ -1,61 +1,101 @@
-// How hard is selling at your own stall? Plays many sales (no AI: the customer rules only) with different sellers,
-// and prints how often each sells, the price against the usual one, and the stars.
+// How selling at your own stall plays (no AI: the customer rules only): is there one customer to wait for? Does selling
+// someone what they love pay? Does reading the customer beat pressing buttons?
 // Run: dart run tool/selling.dart
 import 'dart:math' as math;
 
 import 'package:hawker_haggle/core/shop.dart';
 
-typedef Seller = String Function(Sale s, int turn);
+/// One of each kind of thing (what it cost you, its usual price at your stall).
+const goods = [
+  Product('mango', 'box of mangoes', '🥭', 13, 18), // fresh
+  Product('scarf', 'batik scarf', '🧣', 25, 35), // souvenir
+  Product('case', 'phone case', '📱', 10, 15), // toy
+  Product('lee/scallops', 'dried scallops', '🦪', 42, 58), // premium
+];
+
+/// A sale as the game makes it: the customer's love for the thing makes them pay more and open higher.
+Sale sale(Product p, Customer c, int seed) {
+  final s = Sale(p, c, seed: seed);
+  if (c.loves.contains(kindOf(p.id))) {
+    s.most = (s.most * loveMore * 2).round() / 2;
+    s.offer = math.min(s.most, (s.offer * loveOpens * 2).round() / 2);
+  }
+  return s;
+}
 
 void main() {
-  const product = Product('mango', 'box of mangoes', '🥭', 13, 18); // bought for $13, usually $18 at your stall
-  // what a careful seller makes of each customer's clue (never their real limit)
-  const reads = {'taitai': 1.35, 'tourist': 1.2, 'uncle': 0.95, 'student': 0.8};
-  final sellers = <String, Seller>{
-    // presses the top price button again and again, then takes the offer
-    'top button, again and again': (s, t) =>
-        t < 3 ? 'ask:${s.suggestions().isEmpty ? s.offer : s.suggestions().last}' : 'take',
-    // the usual price, held firm, then takes the offer
-    'the usual price, held': (s, t) => t < 2 ? 'ask:${product.fair}' : 'take',
-    // reads the clue: a price for that kind of customer, held once; if it was too much, takes the offer
-    'reads the clue, holds once': (s, t) => t < 2 ? 'ask:${product.fair * reads[s.customer.id]!}' : 'take',
-    // asks 1.5x the usual price straight away
-    'very greedy (1.5x)': (s, t) => t < 2 ? 'ask:${product.fair * 1.5}' : 'take',
-    // takes the first offer
-    'takes the first offer': (s, t) => 'take',
-  };
   final rnd = math.Random(1);
-  out('| seller | sold | they walked | price / usual | profit | ⭐ avg | ⭐⭐⭐ |');
-  out('|---|---|---|---|---|---|---|');
-  for (final MapEntry(key: name, value: play) in sellers.entries) {
-    var n = 0, sold = 0, walked = 0, stars = 0, three = 0;
-    var ratio = 0.0, profit = 0.0;
+  // 1. who pays the most? (their limit against the usual price)
+  out('Their limit / the usual price (4000 each):');
+  for (final c in customers) {
+    var all = 0.0, loved = 0.0, nl = 0;
     for (var i = 0; i < 4000; i++) {
-      final s = Sale(product, customers[rnd.nextInt(customers.length)], seed: rnd.nextInt(1 << 30));
-      n++;
-      for (var t = 0; t < 12 && !s.done; t++) {
-        final move = play(s, t);
-        if (move == 'take') {
-          s.take();
-        } else {
-          s.askFor(double.parse(move.substring(4)));
-        }
-      }
-      if (s.result == 'sold') {
-        sold++;
-        stars += s.stars;
-        if (s.stars == 3) three++;
-        ratio += s.price! / product.fair;
-        profit += s.profit;
-      } else {
-        walked++;
+      final p = goods[rnd.nextInt(goods.length)];
+      final s = sale(p, c, rnd.nextInt(1 << 30));
+      all += s.most / p.fair;
+      if (c.loves.contains(kindOf(p.id))) {
+        loved += s.most / p.fair;
+        nl++;
       }
     }
-    String pc(num x) => '${(100 * x / n).round()}%';
     out(
-      '| $name | ${pc(sold)} | ${pc(walked)} | ${sold == 0 ? '-' : (ratio / sold).toStringAsFixed(2)} | '
-      '\$${(profit / n).toStringAsFixed(2)} a customer | ${sold == 0 ? '-' : (stars / sold).toStringAsFixed(1)} | '
-      '${pc(three)} |',
+      '  ${c.id}: ${(all / 4000).toStringAsFixed(2)} on average, ${(loved / math.max(1, nl)).toStringAsFixed(2)} '
+      'for what they love (${c.loves.join(', ')})',
+    );
+  }
+  // 2. sellers
+  const reads = {'taitai': 1.1, 'tourist': 1.05, 'uncle': 0.95, 'student': 0.85};
+  double readsPrice(Sale s) =>
+      s.product.fair * reads[s.customer.id]! * (s.customer.loves.contains(kindOf(s.product.id)) ? 1.2 : 1.0);
+  String reader(Sale s, int t) => t < 2 ? 'ask:${readsPrice(s)}' : 'take';
+  bool loves(Sale s) => s.customer.loves.contains(kindOf(s.product.id));
+  // a day: 4 things to sell, customers come one by one, and "Not today" sends one away (3 a day)
+  final sellers = <String, (bool Function(Sale), String Function(Sale, int))>{
+    'top button, again and again': (
+      (_) => true,
+      (s, t) => t < 3 ? 'ask:${s.suggestions().isEmpty ? s.offer : s.suggestions().last}' : 'take',
+    ),
+    'reads the customer, never passes': ((_) => true, reader),
+    'waits for a buyer who loves it': (loves, reader),
+    'waits for the taitai': ((s) => s.customer.id == 'taitai', reader),
+    'takes the first offer': ((_) => true, (s, t) => 'take'),
+  };
+  out('\n| seller (3 "Not today" a day) | sold | walked | passed a day | profit a thing sold | ⭐ avg |');
+  out('|---|---|---|---|---|---|');
+  for (final MapEntry(key: name, value: (keep, play)) in sellers.entries) {
+    var tries = 0, sold = 0, walked = 0, passed = 0, stars = 0;
+    var profit = 0.0;
+    const days = 3000;
+    for (var d = 0; d < days; d++) {
+      var passes = 3;
+      for (var k = 0; k < 4; k++) {
+        final p = goods[rnd.nextInt(goods.length)];
+        while (true) {
+          final s = sale(p, customers[rnd.nextInt(customers.length)], rnd.nextInt(1 << 30));
+          if (passes > 0 && !keep(s)) {
+            passes--;
+            passed++;
+            continue;
+          }
+          tries++;
+          for (var t = 0; t < 12 && !s.done; t++) {
+            final m = play(s, t);
+            m == 'take' ? s.take() : s.askFor(double.parse(m.substring(4)));
+          }
+          if (s.result == 'sold') {
+            sold++;
+            stars += s.stars;
+            profit += s.profit;
+            break;
+          }
+          walked++; // (it walked: the next customer comes for the same thing)
+        }
+      }
+    }
+    String pc(num x) => '${(100 * x / tries).round()}%';
+    out(
+      '| $name | ${pc(sold)} | ${pc(walked)} | ${(passed / days).toStringAsFixed(1)} | '
+      '\$${(profit / sold).toStringAsFixed(2)} | ${(stars / sold).toStringAsFixed(1)} |',
     );
   }
 }

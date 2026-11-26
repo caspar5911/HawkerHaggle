@@ -164,6 +164,8 @@ class Api {
   }
 
   Future<Map<String, dynamic>> deliverOrder() => _run((g) async => Map<String, dynamic>.from(await g.deliverOrder()));
+  Future<Map<String, dynamic>> shopPass(String id) =>
+      _run((g) async => Map<String, dynamic>.from(await g.shopPass(id)));
   Future<Map<String, dynamic>> takeFromJar(double amount) =>
       _run((g) async => Map<String, dynamic>.from(await g.takeFromJar(amount)));
   Future<Map<String, dynamic>> saveToJar(double amount) =>
