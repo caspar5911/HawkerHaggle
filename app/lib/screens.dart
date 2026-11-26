@@ -67,6 +67,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
 
   Future<void> _load() async {
     try {
+      await widget.api.refreshLegends(); // first, so the banner and the haggle agree on today's legendary item
       final r = await Future.wait([widget.api.me(), widget.api.stalls(), widget.api.today(), widget.api.challenges()]);
       if (!mounted) return;
       setState(() {

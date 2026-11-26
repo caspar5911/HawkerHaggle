@@ -1,5 +1,3 @@
-import 'reminder.dart' as reminders;
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -10,6 +8,8 @@ import 'package:http/http.dart' as http;
 import 'accounts.dart';
 import 'core/ai_client.dart';
 import 'core/game.dart';
+import 'core/legendary.dart' show cleanEvents;
+import 'reminder.dart' as reminders;
 
 /// Defaults for a private build (never put a private address in the public repo):
 ///   flutter build apk --dart-define=AI_ENDPOINT=https://host/v1 --dart-define=AI_MODEL=name
@@ -95,6 +95,11 @@ class Api {
     _account = Account.fromJson(await _store.read('account'));
     _game ??= Game(content: _content!, store: _store);
     _game!.ai = AiClient(_ai, client: _aiHttp);
+    // the admin's legendary events, as last fetched (so they work offline too)
+    try {
+      _legends = cleanEvents(jsonDecode(await _store.read('legend_events') ?? '[]'), _stallIds);
+    } catch (_) {}
+    _game!.legendEvents = _legends;
     _game!.onSaved = _changed;
     var a = _account;
     if (a != null && await _store.read(_keyFor(a)) == null) {
@@ -500,10 +505,61 @@ class Api {
       final me = await this.me();
       final stalls = (await this.stalls())['stalls'] as List;
       await reminders.refreshReminders(
+        events: _legends,
         playedToday: me['played_today'] == true,
         stallNames: {for (final s in stalls.cast<Map>()) '${s['id']}': '${s['name']}'},
       );
     } catch (_) {}
+  }
+
+  // ---------------------------------------------------------------- ✨ legendary events (posted by the admin)
+  List<Map> _legends = const [];
+  DateTime? _legendsFetched;
+  Set<String> get _stallIds => {for (final s in (_content?['stalls'] as List? ?? const [])) '${(s as Map)['id']}'};
+  String get _legendServer => _account?.server ?? accountServer;
+
+  /// Fetches the admin's legendary events, at most once an hour (the market reloads after every haggle), quickly
+  /// (the market doesn't wait long), and keeps them for offline starts. An older server, or no internet: the last
+  /// ones known (or none).
+  Future<void> refreshLegends({bool force = false}) async {
+    await ensureDevice();
+    final server = _legendServer;
+    if (server.isEmpty) return;
+    final last = _legendsFetched;
+    if (!force && last != null && DateTime.now().difference(last) < const Duration(hours: 1)) return;
+    _legendsFetched = DateTime.now();
+    try {
+      final r = await _accounts(server).legendary().timeout(const Duration(seconds: 4));
+      final raw = r['events'] is List ? r['events'] as List : const [];
+      _legends = cleanEvents(raw, _stallIds);
+      await _store.write('legend_events', jsonEncode(raw));
+    } on AccountError catch (e) {
+      if (e.code == 404) _legends = const []; // a market server without events
+    } catch (_) {
+      // too slow or offline: keep the last ones
+    }
+    _game?.legendEvents = _legends;
+  }
+
+  /// The admin's events (also the ones that ended in the last month).
+  Future<List<Map>> legendList() async {
+    final a = _account;
+    if (a == null || !a.admin) throw AccountError('Admin only.');
+    return ((await _accounts(a.server).adminLegend(a.token))['events'] as List).cast<Map>();
+  }
+
+  Future<void> legendCreate(Map<String, Object?> event) async {
+    final a = _account;
+    if (a == null || !a.admin) throw AccountError('Admin only.');
+    await _accounts(a.server).legendCreate(a.token, event);
+    await refreshLegends(force: true);
+  }
+
+  Future<void> legendDelete(int id) async {
+    final a = _account;
+    if (a == null || !a.admin) throw AccountError('Admin only.');
+    await _accounts(a.server).legendDelete(a.token, id);
+    await refreshLegends(force: true);
   }
 
   /// 📊 How the market's players play (the admin only).

@@ -146,6 +146,13 @@ class AccountClient {
 
   // admin
   Future<Map<String, dynamic>> players(String token) => _post('admin/players', token: token);
+
+  // ✨ legendary events: everyone reads them (no login); the admin posts and removes them
+  Future<Map<String, dynamic>> legendary() => _post('legendary');
+  Future<Map<String, dynamic>> adminLegend(String token) => _post('admin/legend', token: token);
+  Future<Map<String, dynamic>> legendCreate(String token, Map<String, Object?> event) =>
+      _post('admin/legend/create', token: token, body: event);
+  Future<void> legendDelete(String token, int id) => _post('admin/legend/delete', token: token, body: {'id': id});
   Future<Map<String, dynamic>> stats(String token) => _post('admin/stats', token: token);
   Future<Map<String, dynamic>> decide(String token, int id, String action) =>
       _post('admin/decide', token: token, body: {'id': id, 'action': action});

@@ -58,6 +58,8 @@ class Market {
     'ai_today': 12,
   };
   var n = 1;
+  List<Map<String, Object?>>? legend = []; // ✨ the admin's events (null: an older server without them)
+  final legendPosts = <Map<String, dynamic>>[];
 
   Map<String, Object?> pub(Map u) => {
     'username': u['username'],
@@ -179,6 +181,31 @@ class Market {
           'ai_today': 0,
           'default_password': who!['default'] == true,
         });
+      case '/ai/legendary':
+        if (legend == null) return out(404, {'detail': 'Not Found'});
+        return out(200, {'events': legend});
+      case '/ai/admin/legend':
+        if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
+        return out(200, {'events': legend ?? const []});
+      case '/ai/admin/legend/create':
+        if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
+        if ('${body['name']}'.length < 3) return out(400, {'detail': 'Name: 3 to 50 characters.'});
+        legendPosts.add(body);
+        final ev = {
+          'id': legendPosts.length,
+          'stall': body['stall'],
+          'from': body['from'],
+          'to': body['to'],
+          'item': {
+            for (final k in const ['name', 'emoji', 'fair', 'ask', 'floor', 'facts']) k: body[k],
+          },
+        };
+        (legend ??= []).add(ev);
+        return out(200, ev);
+      case '/ai/admin/legend/delete':
+        if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
+        legend?.removeWhere((e) => e['id'] == body['id']);
+        return out(200, {'ok': true});
       case '/ai/admin/stats':
         if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
         return out(200, stats);
@@ -729,6 +756,114 @@ void main() {
     );
     expect(find.text('Nobody has haggled here yet.'), findsOneWidget);
     expect(find.text('25%'), findsOneWidget); // typed: 30 of 120 moves
+  });
+
+  group('✨ legendary events from the market', () {
+    String day(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    Map<String, Object?> ev(int id, String stall, int days) => {
+      'id': id,
+      'stall': stall,
+      'from': day(DateTime.now()),
+      'to': day(DateTime.now().add(Duration(days: days - 1))),
+      'item': {
+        'name': 'golden jackfruit',
+        'emoji': '🟡',
+        'fair': 30,
+        'ask': 42,
+        'floor': 28,
+        'facts': ['From a 40-year-old tree in Johor'],
+      },
+    };
+    int asked(Market m) => m.seen.where((u) => u.endsWith('/ai/legendary')).length;
+
+    test('fetched before the market shows, at most once an hour, and kept for an offline start', () async {
+      final m = Market()..legend = [ev(3, 'tan', 2)];
+      final kv = MemoryKeyValue();
+      final a = phone(m, kv);
+      await a.refreshLegends();
+      expect(((await a.stalls())['legendary'] as Map)['name'], 'golden jackfruit');
+      expect(asked(m), 1);
+      await a.refreshLegends(); // the market reloads after every haggle: not asked again within the hour
+      expect(asked(m), 1);
+      await a.refreshLegends(force: true);
+      expect(asked(m), 2);
+      // the next time the app starts, offline: the last events known still show
+      final offline = Api(
+        game: Game(content: content, store: kv, unlockAll: true, surprises: false),
+        content: content,
+        store: kv,
+        aiHttp: MockClient((_) async => throw Exception('offline')),
+        accountServer: 'https://relay.example',
+      );
+      await offline.refreshLegends();
+      expect(((await offline.stalls())['legendary'] as Map)['name'], 'golden jackfruit');
+    });
+
+    test('an older market server without events, or a broken event: just the built-in ones', () async {
+      final m = Market()..legend = null;
+      final a = phone(m);
+      await a.refreshLegends();
+      final l = (await a.stalls())['legendary'] as Map?;
+      expect(l?['name'], isNot('golden jackfruit'));
+      final m2 = Market()
+        ..legend = [
+          {
+            ...ev(4, 'tan', 1),
+            'item': {
+              ...(ev(4, 'tan', 1)['item'] as Map),
+              'facts': ['visit http://x.example'],
+            },
+          },
+        ];
+      final b = phone(m2);
+      await b.refreshLegends();
+      expect(((await b.stalls())['legendary'] as Map?)?['name'], isNot('golden jackfruit'));
+    });
+
+    testWidgets('the admin posts an event, sees it, and removes it', (tester) async {
+      final m = Market();
+      final api = apiWith(m, accountServer: 'https://relay.example');
+      await api.signIn(server: api.accountServer, username: 'admin', password: 'admin');
+      await tester.pumpWidget(MaterialApp(home: PlayersScreen(api: api)));
+      await settle(tester, 1000);
+      await tester.tap(find.byKey(const ValueKey('legend_events_open')));
+      await settle(tester, 1000);
+      expect(find.text('No events yet.'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('legend_new')));
+      await settle(tester, 800);
+      // too short a name: the server's reason shows, nothing posted
+      await tester.enterText(find.byKey(const ValueKey('legend_name')), 'x');
+      await tester.enterText(find.byKey(const ValueKey('legend_ask')), '42');
+      await tester.enterText(find.byKey(const ValueKey('legend_floor')), '28');
+      await tester.enterText(find.byKey(const ValueKey('legend_facts')), 'From a 40-year-old tree in Johor\nSweet');
+      await tester.dragUntilVisible(
+        find.byKey(const ValueKey('legend_post')),
+        find.byType(ListView).last,
+        const Offset(0, -200),
+      );
+      await tester.tap(find.byKey(const ValueKey('legend_post')));
+      await settle(tester, 800);
+      expect(find.text('Name: 3 to 50 characters.'), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('legend_name')), 'golden jackfruit');
+      await tester.dragUntilVisible(
+        find.byKey(const ValueKey('legend_post')),
+        find.byType(ListView).last,
+        const Offset(0, -200),
+      );
+      await tester.tap(find.byKey(const ValueKey('legend_post')));
+      await settle(tester, 1500);
+      final posted = m.legendPosts.single;
+      expect(posted['fair'], 35.0); // halfway between the lowest and the asking price
+      expect(posted['facts'], ['From a 40-year-old tree in Johor', 'Sweet']);
+      expect(posted['from'], posted['to']); // one day
+      expect(find.text('golden jackfruit'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('legend_remove_1')));
+      await settle(tester, 600);
+      await tester.tap(find.byKey(const ValueKey('legend_remove_confirm')));
+      await settle(tester, 1000);
+      expect(find.text('No events yet.'), findsOneWidget);
+      await settle(tester, 4000);
+    });
   });
 
   test('only the admin can ask for the stats', () async {

@@ -138,6 +138,7 @@ class _Session {
   String twistNote = ''; // what happened, for the AI's next reply
   Map<String, Object?> finish = const {}; // new stickers, Mum's note, unlocks (when it ends)
   bool legendary = false; // today's legendary item (rare, for one day)
+  String legendKey = ''; // what its "sold out" is counted by (the day, or the whole event)
   int combos = 0; // co-op tag-team combos this haggle (at most two)
   final comboStickers = <String>{}; // the Tag team sticker, when the first combo earns it
   bool comboNow = false; // the move just played was a combo (for the screen)
@@ -320,7 +321,7 @@ class Game {
   }
 
   Map<String, Object?> stalls() {
-    final legend = legendaryToday(now());
+    final legend = legendaryToday(now(), events: legendEvents);
     final best = <String, int>{};
     for (final h in _done) {
       final k = '${h['stall']}/${h['item']}';
@@ -349,14 +350,14 @@ class Game {
                   'stars': best['${s['id']}/${i['id']}'] ?? 0,
                 },
               // today's legendary item, at its stall (for this day only)
-              if (legend != null && legend.$1 == s['id']) _legendView(legend.$2),
+              if (legend != null && legend.stall == s['id']) _legendView(legend.item, legend.key),
             ],
           },
       ],
       // on other days: when and where the next one is (not what it is: that's a surprise until the day)
       'next_legendary': legend != null
           ? null
-          : switch (nextLegendary(now())) {
+          : switch (nextLegendary(now(), events: legendEvents)) {
               (final days, final stall) => {
                 'days': days,
                 'day': dayKey(DateTime(now().year, now().month, now().day + days)),
@@ -368,18 +369,22 @@ class Game {
             },
       'legendary': legend == null
           ? null
-          : {'stall': legend.$1, 'stall_name': _stalls[legend.$1]?['name'], ..._legendView(legend.$2)},
+          : {
+              'stall': legend.stall,
+              'stall_name': _stalls[legend.stall]?['name'],
+              ..._legendView(legend.item, legend.key),
+            },
     };
   }
 
-  Map<String, Object?> _legendView(Map item) => {
+  Map<String, Object?> _legendView(Map item, String key) => {
     'id': item['id'],
     'name': item['name'],
     'emoji': item['emoji'],
     'ask': item['ask'],
     'stars': 0,
     'legendary': true,
-    'sold_out': progress.legendBought(dayKey(now())),
+    'sold_out': progress.legendBought(key),
   };
 
   /// Delete my data: everything this app kept on the phone.
@@ -613,13 +618,13 @@ class Game {
     final stall = _stalls[stallId];
     if (stall == null) throw GameError(404, 'No such stall');
     // today's legendary item: open to everyone that day (even at a stall not unlocked yet), once
-    final legend = legendaryToday(now());
+    final legend = legendaryToday(now(), events: legendEvents);
     final wantsLegend = itemId != null && isLegendary(itemId);
     if (wantsLegend) {
-      if (legend == null || legend.$1 != stallId || legend.$2['id'] != itemId) {
+      if (legend == null || legend.stall != stallId || legend.item['id'] != itemId) {
         throw GameError(410, "That legendary item is gone: it was only here for a day. Watch for the next one!");
       }
-      if (progress.legendBought(dayKey(now()))) {
+      if (progress.legendBought(legend.key)) {
         throw GameError(409, "Sold out! You already got today's legendary item. Another one shows up soon.");
       }
       anyStall = true;
@@ -654,7 +659,7 @@ class Game {
     if (surprise == 'none') surprise = ''; // tests: no surprise on purpose
     final items = stall['items'] as List;
     final item = wantsLegend
-        ? legend!.$2 as Map
+        ? legend!.item
         : (items.firstWhere((i) => (i as Map)['id'] == itemId, orElse: () => items.first)) as Map;
     final seed = _rnd.nextInt(1 << 31);
     final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
@@ -674,6 +679,7 @@ class Game {
     ss.festival = fest;
     if (wantsLegend) {
       ss.legendary = true;
+      ss.legendKey = legend!.key;
       ss.h.s.patience = 75; // proud of it, and in no mood for a long chat
     }
     // now and then a friend has a small trouble (a choice with a cost); never in tests without surprises
@@ -1021,7 +1027,7 @@ class Game {
           'rude': ss.rude,
           if (ss.combos > 0) 'combos': ss.combos,
           if (ss.events.contains('final') || ss.events.contains('budget_best') || event == 'final') 'heard_final': true,
-          if (ss.legendary) 'legendary': true,
+          if (ss.legendary) ...{'legendary': true, 'item_name': item['name'], 'emoji': item['emoji']},
           if (ss.guess != null) 'guess': ss.guess,
           if (ss.festival != null) 'festival_week': ss.festival!.id,
         },
@@ -1032,7 +1038,7 @@ class Game {
       final extra = <String>[];
       final fresh = <String>{...r.stickers, ...ss.comboStickers};
       if (ss.legendary && h.s.result == 'deal') {
-        progress.buyLegend(dayKey(now()));
+        progress.buyLegend(ss.legendKey);
         progress.earn('legend', fresh);
         extra.add('✨ A legendary ${item['name']}! Only today, and you got it.');
       }
@@ -1183,6 +1189,9 @@ class Game {
   /// Friends' recent deals, by stall (from the account's market server): the stallholder may mention them.
   /// Each: {name, item, day}. Never with prices.
   Map<String, List<Map>> gossip = {};
+
+  /// ✨ Legendary events the market's admin posted (checked; the app fetches them now and then).
+  List<Map> legendEvents = const [];
 
   /// What the stallholder has heard: a friend who came by lately, or that this customer was rude next door today.
   String gossipNote(String stallId) {

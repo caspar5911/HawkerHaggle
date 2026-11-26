@@ -22,6 +22,7 @@ List<Nudge> planReminders({
   required int minute,
   required bool playedToday,
   required Map<String, String> stallNames,
+  List<Map> events = const [],
   int days = 7,
 }) {
   final out = <Nudge>[];
@@ -30,13 +31,13 @@ List<Nudge> planReminders({
     final at = DateTime(day.year, day.month, day.day, hour, minute);
     if (d == 0 && (playedToday || !at.isAfter(now))) continue;
     final key = dayKey(day);
-    final legend = legendaryOn(key);
+    final legend = legendaryOn(key, events: events);
     if (legend != null) {
-      final who = stallNames[legend.$1] ?? 'the market';
+      final who = stallNames[legend.stall] ?? 'the market';
       out.add((
         at: at,
         title: '✨ Legendary today only!',
-        body: '${legend.$2['emoji']} A ${legend.$2['name']} at $who\'s. Gone tomorrow!',
+        body: '${legend.item['emoji']} A ${legend.item['name']} at $who\'s. Only for a short time!',
       ));
       continue;
     }
@@ -177,13 +178,24 @@ class PhoneReminder implements Reminder {
 }
 
 /// Plans the reminders again from the player's choice and progress (call when the game opens and after a haggle).
-Future<void> refreshReminders({required bool playedToday, required Map<String, String> stallNames}) async {
+Future<void> refreshReminders({
+  required bool playedToday,
+  required Map<String, String> stallNames,
+  List<Map> events = const [],
+}) async {
   if (!Reminder.supported) return;
   final s = await Reminder.settings();
   if (!s.on) return Reminder.instance.schedule(const []);
   final now = tz.TZDateTime.now(_sgOrUtc()).toLocalLike();
   await Reminder.instance.schedule(
-    planReminders(now: now, hour: s.hour, minute: s.minute, playedToday: playedToday, stallNames: stallNames),
+    planReminders(
+      now: now,
+      hour: s.hour,
+      minute: s.minute,
+      playedToday: playedToday,
+      stallNames: stallNames,
+      events: events,
+    ),
   );
 }
 

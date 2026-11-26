@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS ai_calls (account_id INTEGER NOT NULL, day TEXT NOT N
     PRIMARY KEY (account_id, day));
 CREATE TABLE IF NOT EXISTS saves (account_id INTEGER PRIMARY KEY, data TEXT NOT NULL, rev INTEGER NOT NULL,
     updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS legend_events (id INTEGER PRIMARY KEY AUTOINCREMENT, stall TEXT NOT NULL,
+    day_from TEXT NOT NULL, day_to TEXT NOT NULL, item TEXT NOT NULL, created_at TEXT NOT NULL);
 """
 
 ADMIN = "admin"
@@ -318,6 +320,33 @@ class Accounts:
         hagglers = ranked[:10] + [x for x in ranked[10:] if x["you"]]
         return {"week": week, "items": items, "gossip": latest, "hagglers": hagglers}
 
+    # ------------------------------------------------------------------ ✨ legendary events (posted by the admin)
+    def legend_events(self, today: dt.date, past_days: int = 1, ahead_days: int = 60) -> list[dict]:
+        """Events still on or coming up (what every phone fetches), oldest first."""
+        lo, hi = (today - dt.timedelta(days=past_days)).isoformat(), (today + dt.timedelta(days=ahead_days)).isoformat()
+        with self._db() as db:
+            rows = db.execute("SELECT * FROM legend_events WHERE day_to>=? AND day_from<=? ORDER BY day_from, id",
+                              (lo, hi)).fetchall()
+        return [{"id": r["id"], "stall": r["stall"], "from": r["day_from"], "to": r["day_to"],
+                 "item": json.loads(r["item"])} for r in rows]
+
+    def legend_create(self, body: dict, stalls: dict, today: dt.date) -> dict:
+        ev = clean_legend(body, stalls, today)
+        with self._db() as db:
+            clash = db.execute("SELECT id FROM legend_events WHERE day_from<=? AND day_to>=?",
+                               (ev["to"], ev["from"])).fetchone()
+            if clash is not None:
+                raise AccountError(409, "Another legendary event is already on those days.")
+            cur = db.execute("INSERT INTO legend_events (stall, day_from, day_to, item, created_at) VALUES (?,?,?,?,?)",
+                             (ev["stall"], ev["from"], ev["to"], json.dumps(ev["item"]), now()))
+            return {**ev, "id": cur.lastrowid}
+
+    def legend_delete(self, event_id: int) -> dict:
+        with self._db() as db:
+            if db.execute("DELETE FROM legend_events WHERE id=?", (event_id,)).rowcount == 0:
+                raise AccountError(404, "No such event.")
+        return {"ok": True}
+
     # ------------------------------------------------------------------ admin
     def stats(self, stalls: dict, today: dt.date) -> dict:
         """How the market's players play, for the admin: who keeps playing and where people stop, how each stall
@@ -424,3 +453,59 @@ class Accounts:
             if status == "removed":
                 db.execute("DELETE FROM logins WHERE account_id=?", (account_id,))
             return {"status": status}
+
+
+# ------------------------------------------------------------------ ✨ checking a legendary event
+_PLAIN = re.compile(r"^[^\W_]?[\w '’\-,&().!:;/]+$")
+_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _text(x, lo: int, hi: int, what: str) -> str:
+    if not isinstance(x, str) or not lo <= len(x.strip()) <= hi:
+        raise AccountError(400, f"{what}: {lo} to {hi} characters.")
+    x = x.strip()
+    low = x.lower()
+    if not _PLAIN.match(x) or "_" in x or "http" in low or "www." in low:
+        raise AccountError(400, f"{what}: plain words only (letters, numbers, spaces and . , ' - & ( ) ! : ; /).")
+    return x
+
+
+def clean_legend(body: dict, stalls: dict, today: dt.date) -> dict:
+    """An event the admin wants to post, checked the same way the app checks it (its facts go to the AI): a real
+    stall, at most 7 days from today on, prices with as little room as a legendary item, plain short text."""
+    if not isinstance(body, dict):
+        raise AccountError(400, "Bad event.")
+    stall = body.get("stall")
+    if stall not in stalls:
+        raise AccountError(400, "Pick one of the market's stalls.")
+    d_from, d_to = str(body.get("from", "")), str(body.get("to", ""))
+    try:
+        if not (_DATE.match(d_from) and _DATE.match(d_to)):
+            raise ValueError
+        f, t = dt.date.fromisoformat(d_from), dt.date.fromisoformat(d_to)
+    except ValueError:
+        raise AccountError(400, "Dates as YYYY-MM-DD.")
+    if f < today or t < f or (t - f).days > 6 or (f - today).days > 60:
+        raise AccountError(400, "From today on, at most 7 days long, within the next 60 days.")
+    name = _text(body.get("name"), 3, 50, "Name")
+    emoji = body.get("emoji")
+    if not isinstance(emoji, str) or not 1 <= len(emoji) <= 8 or any(ord(c) < 128 for c in emoji):
+        raise AccountError(400, "One emoji, please.")
+    nums = {}
+    for k in ("fair", "ask", "floor"):
+        v = body.get(k)
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise AccountError(400, "Prices must be numbers.")
+        nums[k] = round(float(v), 2)
+    fair, ask, floor = nums["fair"], nums["ask"], nums["floor"]
+    if not (0.5 <= floor < fair < ask <= 2000):
+        raise AccountError(400, "Lowest price < fair price < asking price (at most $2000).")
+    if not 0.55 <= floor / ask <= 0.95:
+        raise AccountError(400, "A legendary item has little room: the lowest price must be 55% to 95% of the asking price.")
+    facts = body.get("facts")
+    if not isinstance(facts, list) or not 1 <= len(facts) <= 5:
+        raise AccountError(400, "One to five facts.")
+    facts = [_text(x, 3, 140, "Each fact") for x in facts]
+    return {"stall": stall, "from": d_from, "to": d_to,
+            "item": {"name": name, "emoji": emoji, "fair": fair, "ask": ask, "floor": floor, "facts": facts}}
+

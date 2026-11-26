@@ -516,6 +516,13 @@ class _PlayersScreenState extends State<PlayersScreen> {
         backgroundColor: Palette.cream,
         actions: [
           IconButton(
+            key: const ValueKey('legend_events_open'),
+            tooltip: 'Legendary events',
+            icon: const Text('✨', style: TextStyle(fontSize: 20)),
+            onPressed: () =>
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => LegendEventsScreen(api: widget.api))),
+          ),
+          IconButton(
             key: const ValueKey('stats_open'),
             tooltip: 'How players play',
             icon: const Icon(Icons.insights_rounded),
@@ -866,4 +873,335 @@ class _StatsScreenState extends State<StatsScreen> {
       ],
     );
   }
+}
+
+/// ✨ For the admin: post a legendary item for some days (up to a week). Every phone and the web version picks it up
+/// within the hour, no app update needed. It replaces the built-in legendary item on those days.
+class LegendEventsScreen extends StatefulWidget {
+  const LegendEventsScreen({super.key, required this.api});
+  final Api api;
+  @override
+  State<LegendEventsScreen> createState() => _LegendEventsScreenState();
+}
+
+class _LegendEventsScreenState extends State<LegendEventsScreen> {
+  List<Map>? _events;
+  List<Map> _stalls = [];
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+
+  Future<void> _load() async {
+    try {
+      final r = await Future.wait([widget.api.legendList(), widget.api.stalls()]);
+      if (!mounted) return;
+      setState(() {
+        _events = r[0] as List<Map>;
+        _stalls = ((r[1] as Map)['stalls'] as List).cast<Map>();
+        _error = null;
+      });
+    } on AccountError catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  String _stallName(Object? id) => '${_stalls.where((s) => s['id'] == id).firstOrNull?['name'] ?? id}';
+
+  Future<void> _remove(Map e) async {
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Remove the ${(e['item'] as Map)['name']}?'),
+        content: const Text('It disappears from every phone within the hour.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep')),
+          TextButton(
+            key: const ValueKey('legend_remove_confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true) return;
+    try {
+      await widget.api.legendDelete((e['id'] as num).toInt());
+      await _load();
+    } on AccountError catch (err) {
+      if (mounted) _toast(err.message);
+    }
+  }
+
+  Future<void> _new() async {
+    final made = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _NewLegendScreen(api: widget.api, stalls: _stalls),
+      ),
+    );
+    if (made == true) {
+      await _load();
+      if (mounted) _toast('✨ Posted! Phones pick it up within the hour.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final events = _events;
+    return Scaffold(
+      appBar: AppBar(title: const Text('✨ Legendary events'), backgroundColor: Palette.cream),
+      backgroundColor: Palette.cream,
+      floatingActionButton: FloatingActionButton.extended(
+        key: const ValueKey('legend_new'),
+        onPressed: _stalls.isEmpty ? null : _new,
+        backgroundColor: Palette.gold,
+        icon: const Text('✨', style: TextStyle(fontSize: 18)),
+        label: const Text('New event'),
+      ),
+      body: events == null
+          ? Center(
+              child: _error != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(_error!, textAlign: TextAlign.center),
+                    )
+                  : const CircularProgressIndicator(),
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+              children: [
+                const Text(
+                  'Post a legendary item for one to seven days. Every player gets it (the app and the web version, '
+                  'within the hour), and on those days it replaces the usual legendary item. The game decides every '
+                  'price from the three you set; your facts are what the stallholder knows about it.',
+                  style: TextStyle(color: Palette.soft, height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                if (events.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 30),
+                    child: Text('No events yet.', textAlign: TextAlign.center),
+                  ),
+                for (final e in events)
+                  Container(
+                    key: ValueKey('legend_event_${e['id']}'),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+                    child: Row(
+                      children: [
+                        Text('${(e['item'] as Map)['emoji']}', style: const TextStyle(fontSize: 30)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${(e['item'] as Map)['name']}',
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                              ),
+                              Text(
+                                '${_stallName(e['stall'])} · ${e['from']}${e['to'] == e['from'] ? '' : ' to ${e['to']}'}',
+                                style: const TextStyle(color: Palette.soft),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          key: ValueKey('legend_remove_${e['id']}'),
+                          icon: const Icon(Icons.delete_outline_rounded),
+                          onPressed: () => _remove(e),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+class _NewLegendScreen extends StatefulWidget {
+  const _NewLegendScreen({required this.api, required this.stalls});
+  final Api api;
+  final List<Map> stalls;
+  @override
+  State<_NewLegendScreen> createState() => _NewLegendScreenState();
+}
+
+class _NewLegendScreenState extends State<_NewLegendScreen> {
+  late String _stall = '${widget.stalls.first['id']}';
+  final _name = TextEditingController();
+  final _emoji = TextEditingController(text: '✨');
+  final _ask = TextEditingController();
+  final _floor = TextEditingController();
+  final _facts = TextEditingController();
+  late DateTime _from = DateUtils.dateOnly(DateTime.now()).add(const Duration(days: 1));
+  int _days = 1;
+  bool _busy = false;
+  String? _problem;
+
+  static String _day(DateTime d) =>
+      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  Future<void> _post() async {
+    final ask = double.tryParse(_ask.text.trim().replaceAll(r'$', ''));
+    final floor = double.tryParse(_floor.text.trim().replaceAll(r'$', ''));
+    if (ask == null || floor == null) {
+      setState(() => _problem = 'Type the asking price and the lowest price as numbers.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _problem = null;
+    });
+    try {
+      await widget.api.legendCreate({
+        'stall': _stall,
+        'from': _day(_from),
+        'to': _day(_from.add(Duration(days: _days - 1))),
+        'name': _name.text.trim(),
+        'emoji': _emoji.text.trim(),
+        'ask': ask,
+        'floor': floor,
+        'fair': ((ask + floor) / 2 * 10).round() / 10, // halfway: only used for the fair-price guess
+        'facts': [
+          for (final l in _facts.text.split('\n'))
+            if (l.trim().isNotEmpty) l.trim(),
+        ],
+      });
+      if (mounted) Navigator.of(context).pop(true);
+    } on AccountError catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _problem = e.message;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('✨ New legendary event'), backgroundColor: Palette.cream),
+    backgroundColor: Palette.cream,
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        DropdownButtonFormField<String>(
+          key: const ValueKey('legend_stall'),
+          initialValue: _stall,
+          decoration: const InputDecoration(labelText: 'Stall'),
+          items: [for (final s in widget.stalls) DropdownMenuItem(value: '${s['id']}', child: Text('${s['name']}'))],
+          onChanged: (v) => setState(() => _stall = v ?? _stall),
+        ),
+        TextField(
+          key: const ValueKey('legend_name'),
+          controller: _name,
+          maxLength: 50,
+          decoration: const InputDecoration(labelText: 'Item name', hintText: 'golden jackfruit'),
+        ),
+        TextField(
+          key: const ValueKey('legend_emoji'),
+          controller: _emoji,
+          maxLength: 8,
+          decoration: const InputDecoration(labelText: 'Emoji'),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                key: const ValueKey('legend_ask'),
+                controller: _ask,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Asking price', prefixText: r'$'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                key: const ValueKey('legend_floor'),
+                controller: _floor,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Lowest she goes', prefixText: r'$'),
+              ),
+            ),
+          ],
+        ),
+        const Padding(
+          padding: EdgeInsets.only(top: 4),
+          child: Text(
+            'Legendary means little room: the lowest price is 55–95% of the asking price (about 65–70% feels right).',
+            style: TextStyle(color: Palette.soft, fontSize: 12),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const ValueKey('legend_facts'),
+          controller: _facts,
+          minLines: 3,
+          maxLines: 6,
+          decoration: const InputDecoration(
+            labelText: 'Facts the stallholder knows (one per line, up to 5)',
+            hintText: 'From a 40-year-old tree in Johor\nSweet and crunchy',
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Plain words only, no prices (the game says prices) and no links.',
+          style: TextStyle(color: Palette.soft, fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        ListTile(
+          key: const ValueKey('legend_from'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Starts'),
+          trailing: Text(_day(_from), style: const TextStyle(fontWeight: FontWeight.w700)),
+          onTap: () async {
+            final d = await showDatePicker(
+              context: context,
+              initialDate: _from,
+              firstDate: DateUtils.dateOnly(DateTime.now()),
+              lastDate: DateTime.now().add(const Duration(days: 60)),
+            );
+            if (d != null) setState(() => _from = d);
+          },
+        ),
+        Row(
+          children: [
+            const Text('For'),
+            const SizedBox(width: 12),
+            DropdownButton<int>(
+              key: const ValueKey('legend_days'),
+              value: _days,
+              items: [
+                for (var i = 1; i <= 7; i++) DropdownMenuItem(value: i, child: Text('$i day${i == 1 ? '' : 's'}')),
+              ],
+              onChanged: (v) => setState(() => _days = v ?? 1),
+            ),
+          ],
+        ),
+        if (_problem != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              _problem!,
+              key: const ValueKey('legend_problem'),
+              style: const TextStyle(color: Palette.red),
+            ),
+          ),
+        const SizedBox(height: 16),
+        FilledButton(
+          key: const ValueKey('legend_post'),
+          onPressed: _busy ? null : _post,
+          child: Text(_busy ? 'Posting…' : 'Post it'),
+        ),
+      ],
+    ),
+  );
 }

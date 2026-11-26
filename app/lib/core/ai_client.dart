@@ -296,9 +296,10 @@ class AiClient {
         '${budget != null ? 'Remember: the customer said they only have ${money(budget)}.\n' : ''}'
         '${heard != null ? 'The customer just said: <<<${pySlice(heard, 300)}>>>\n' : ''}'
         'Your reply as ${stall['name']}:';
-    // Plain numbers she may say: her facts ("6 mangoes", "20,000 mAh") and, sometimes, the customer's own.
+    // Plain numbers she may say: her facts ("6 mangoes", "20,000 mAh"), the item's own name ("tray of 30 eggs",
+    // "12-layer kueh lapis") and, sometimes, the customer's own. Never as a price: $ amounts are only the game's.
     final factNumbers = [
-      for (final m in RegExp(r'\d[\d,]*(?:\.\d+)?').allMatches(facts.join(' ')))
+      for (final m in RegExp(r'\d[\d,]*(?:\.\d+)?').allMatches([...facts, item['name'] ?? ''].join(' ')))
         double.parse(m[0]!.replaceAll(',', '')),
     ];
     final theirs = [for (final m in RegExp(r'\d+(?:\.\d+)?').allMatches(heard ?? '')) double.parse(m[0]!)];

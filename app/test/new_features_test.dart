@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hawker_haggle/core/festivals.dart';
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/core/legendary.dart';
 import 'package:hawker_haggle/core/progress.dart' show dayKey;
@@ -15,7 +16,7 @@ final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()
 DateTime legendDay([String? stall]) {
   for (var d = DateTime(2026, 12, 1, 10); ; d = d.add(const Duration(days: 1))) {
     final l = legendaryOn(dayKey(d));
-    if (l != null && (stall == null || l.$1 == stall)) return d;
+    if (l != null && (stall == null || l.stall == stall)) return d;
   }
 }
 
@@ -58,57 +59,201 @@ Future<Map> tapThrough(Game g, Map r) async {
 
 void main() {
   group('✨ legendary items', () {
-    test('about one day in four, the same stall and item for everyone, for every stall now and then', () {
+    test('about one day in four, the same stall and item for everyone; every item turns up within two years', () {
       var legendDays = 0;
       final seen = <String>{};
-      for (var d = DateTime(2027, 1, 1); d.year == 2027; d = d.add(const Duration(days: 1))) {
+      // two years from the start of the rotation (the festival list runs to the end of 2027)
+      for (var d = DateTime(2026, 12, 1); d.isBefore(DateTime(2028, 12, 1)); d = d.add(const Duration(days: 1))) {
         final l = legendaryOn(dayKey(d));
         if (l == null) continue;
         legendDays++;
-        seen.add(l.$1);
-        expect(l.$2['id'], 'legend_${l.$1}');
+        seen.add('${l.item['id']}');
         expect(legendaryOn(dayKey(d)), l); // the same, whoever asks
       }
-      expect(legendDays, inInclusiveRange(60, 125));
-      expect(seen, legendaryItems.keys.toSet());
-      for (final l in legendaryItems.values) {
-        final ask = (l['ask'] as num), floor = (l['floor'] as num), fair = (l['fair'] as num);
-        expect(floor < fair && fair < ask, isTrue, reason: '${l['id']}');
-        expect(floor / ask, greaterThan(0.62), reason: '${l['id']} has less room to bargain than usual');
+      expect(legendDays, inInclusiveRange(140, 270)); // a quarter of the days, plus the festival specials
+      final all = {for (final items in legendaryByStall.values) ...items.map((i) => '${i['id']}')};
+      expect(all.length, 33 + festivalSpecials.length);
+      expect(seen, all);
+      for (final items in legendaryByStall.values) {
+        for (final l in items) {
+          final ask = (l['ask'] as num), floor = (l['floor'] as num), fair = (l['fair'] as num);
+          expect(floor < fair && fair < ask, isTrue, reason: '${l['id']}');
+          expect(floor / ask, greaterThan(0.62), reason: '${l['id']} has less room to bargain than usual');
+          expect((l['facts'] as List).join(' '), isNot(contains(r'$')), reason: 'no prices in facts');
+        }
       }
+    });
+
+    test('the days already announced stay the same: the grouper on 27 Nov, the tea cake on 30 Nov', () {
+      expect(legendaryOn('2026-11-27')!.item['id'], 'legend_lim');
+      expect(legendaryOn('2026-11-30')!.item['id'], 'legend_lee');
+    });
+
+    test('festival specials: on the 2nd and 5th day of each festival week, at their stall', () {
+      for (final f in festivals) {
+        final first = DateTime.parse(f.from);
+        final special = festivalSpecials[f.id.replaceAll(RegExp(r'\d+$'), '')]!;
+        for (final d in [1, 4]) {
+          final l = legendaryOn(dayKey(DateTime(first.year, first.month, first.day + d)))!;
+          expect(l.stall, special.$1, reason: f.id);
+          expect(l.item['id'], special.$2['id']);
+        }
+      }
+      expect(legendaryOn('2026-12-20')!.item['name'], contains('Christmas')); // the first one: Christmas 2026
+    });
+
+    test("the admin's events come first, on every day they cover; sold out once for the whole event", () async {
+      final day = ordinaryDay();
+      final from = dayKey(day), to = dayKey(day.add(const Duration(days: 2)));
+      final events = cleanEvents(
+        [
+          {
+            'id': 7,
+            'stall': 'tan',
+            'from': from,
+            'to': to,
+            'item': {
+              'name': 'golden jackfruit',
+              'emoji': '🟡',
+              'fair': 30,
+              'ask': 42,
+              'floor': 28,
+              'facts': ['From a 40-year-old tree in Johor'],
+            },
+          },
+        ],
+        {for (final s in content['stalls'] as List) '${s['id']}'},
+      );
+      expect(events.single['item'], containsPair('id', 'legend_evt_7'));
+      expect(legendaryOn(from, events: events)!.stall, 'tan');
+      expect(legendaryOn(to, events: events)!.key, 'evt-7');
+      expect(nextLegendary(day.subtract(const Duration(days: 1)), events: events), (1, 'tan'));
+      final g = await newGame(day, unlockAll: true)
+        ..legendEvents = events;
+      expect((g.stalls()['legendary'] as Map)['name'], 'golden jackfruit');
+      final r = await tapThrough(g, await g.start('tan', 'legend_evt_7'));
+      expect(r['result'], 'deal');
+      // the next day of the same event: still sold out
+      final g2 = Game(
+        content: content,
+        store: g.store,
+        surprises: false,
+        unlockAll: true,
+        now: () => day.add(const Duration(days: 1)),
+      );
+      await g2.load();
+      g2.legendEvents = events;
+      expect((g2.stalls()['legendary'] as Map)['sold_out'], isTrue);
+      await expectLater(g2.start('tan', 'legend_evt_7'), throwsA(isA<GameError>()));
+      // after the event is gone, the history still knows what it was
+      g2.legendEvents = const [];
+      expect(g2.history().first['item_name'], 'golden jackfruit');
+      expect(g2.history().first['emoji'], '🟡');
+    });
+
+    test('events that fail the checks never reach the game (their facts would go to the AI)', () {
+      final stalls = {'mei', 'tan'};
+      Map ev(Map<String, Object?> over, [Map<String, Object?> item = const {}]) => {
+        'id': 1,
+        'stall': 'mei',
+        'from': '2027-01-04',
+        'to': '2027-01-05',
+        ...over,
+        'item': {
+          'name': 'golden jackfruit',
+          'emoji': '🟡',
+          'fair': 30,
+          'ask': 42,
+          'floor': 28,
+          'facts': ['Sweet and crunchy'],
+          ...item,
+        },
+      };
+      expect(cleanEvents([ev({})], stalls), hasLength(1));
+      for (final bad in [
+        ev({'stall': 'nowhere'}),
+        ev({'id': 'x'}),
+        ev({'to': '2027-02-01'}), // longer than a week
+        ev({'to': '2027-01-01'}), // ends before it starts
+        ev({}, {'name': 'see http://x.example'}),
+        ev({}, {'name': 'a {b} <c>'}),
+        ev({}, {'emoji': 'abc'}),
+        ev({}, {'fair': 50}),
+        ev({}, {'floor': 10}),
+        ev({}, {'facts': <String>[]}),
+        ev({}, {
+          'facts': [r'costs $5'],
+        }),
+        ev({}, {'facts': 'just text'}),
+      ]) {
+        expect(cleanEvents([bad], stalls), isEmpty, reason: '$bad');
+      }
+      // overlapping days: the first one wins
+      expect(
+        cleanEvents([
+          ev({}),
+          ev({'id': 2, 'from': '2027-01-05', 'to': '2027-01-06'}),
+        ], stalls),
+        hasLength(1),
+      );
+      expect(cleanEvents('nonsense', stalls), isEmpty);
     });
 
     test('it shows at its stall and on top of the market, opens even at a locked stall, and is harder', () async {
       final day = legendDay('wong'); // Uncle Wong opens on day 7: locked for a new player
+      final l = legendaryOn(dayKey(day))!;
       final g = await newGame(day);
       final s = g.stalls();
-      final l = s['legendary'] as Map;
-      expect(l['stall'], 'wong');
-      expect(l['name'], legendaryItems['wong']!['name']);
+      final banner = s['legendary'] as Map;
+      expect(banner['stall'], 'wong');
+      expect(banner['name'], l.item['name']);
       final wong = (s['stalls'] as List).cast<Map>().firstWhere((x) => x['id'] == 'wong');
       expect(wong['locked'], isTrue);
       expect((wong['items'] as List).cast<Map>().last['legendary'], isTrue);
-      final r = await g.start('wong', 'legend_wong', 'rain');
+      final r = await g.start('wong', '${l.item['id']}', 'rain');
       expect(r['legendary'], isTrue);
       expect(r['surprise'], ''); // no market surprise on a legendary haggle
       expect(r['patience'], 75);
-      expect(r['ask'], legendaryItems['wong']!['ask']);
+      expect(r['ask'], l.item['ask']);
     });
 
-    for (final stall in legendaryItems.keys) {
-      test('$stall: winnable with taps only; then sold out, in the history, with its sticker', () async {
-        final g = await newGame(legendDay(stall), unlockAll: true, seed: stall.length);
-        final r = await tapThrough(g, await g.start(stall, 'legend_$stall'));
-        expect(r['result'], 'deal', reason: 'taps only should reach a deal for $stall');
-        expect(r['new_stickers'], contains('legend'));
-        expect((r['notes'] as List).join(' '), contains('legendary'));
-        expect(((g.stalls()['legendary'] as Map)['sold_out']), isTrue);
-        await expectLater(g.start(stall, 'legend_$stall'), throwsA(isA<GameError>()));
-        final h = g.history().first;
-        expect(h['item_name'], legendaryItems[stall]!['name']);
-        expect(h['emoji'], legendaryItems[stall]!['emoji']);
-      });
+    // every built-in item and festival special can be won with taps (each played as a one-day event)
+    var n = 0;
+    for (final e in legendaryByStall.entries) {
+      for (final item in e.value) {
+        final id = ++n;
+        test('${item['id']}: winnable with taps only; then sold out, in the history, with its sticker', () async {
+          final day = ordinaryDay();
+          final events = cleanEvents(
+            [
+              {'id': id, 'stall': e.key, 'from': dayKey(day), 'to': dayKey(day), 'item': item},
+            ],
+            {e.key},
+          );
+          expect(events, hasLength(1), reason: '${item['id']} passes the same checks as a posted event');
+          final g = await newGame(day, unlockAll: true, seed: id)
+            ..legendEvents = events;
+          final r = await tapThrough(g, await g.start(e.key, 'legend_evt_$id'));
+          expect(r['result'], 'deal', reason: 'taps only should reach a deal for ${item['id']}');
+          expect(r['new_stickers'], contains('legend'));
+          expect((r['notes'] as List).join(' '), contains('legendary'));
+          expect(((g.stalls()['legendary'] as Map)['sold_out']), isTrue);
+          await expectLater(g.start(e.key, 'legend_evt_$id'), throwsA(isA<GameError>()));
+          final h = g.history().first;
+          expect(h['item_name'], item['name']);
+          expect(h['emoji'], item['emoji']);
+        });
+      }
     }
+
+    test('a built-in legendary day: playing the day\'s own item, and the history finds it by id', () async {
+      final day = legendDay('mei');
+      final l = legendaryOn(dayKey(day))!;
+      final g = await newGame(day, unlockAll: true);
+      final r = await tapThrough(g, await g.start('mei', '${l.item['id']}'));
+      expect(r['result'], 'deal');
+      expect(g.history().first['item_name'], l.item['name']);
+    });
 
     test('on other days the market says when and where the next one is, but not what it is', () async {
       final day = ordinaryDay();
@@ -118,7 +263,7 @@ void main() {
       expect(next['days'], days);
       expect(days, greaterThan(0));
       expect(next['stall'], stall);
-      expect(legendaryOn(next['day'] as String)!.$1, stall); // the same day the real schedule says
+      expect(legendaryOn(next['day'] as String)!.stall, stall); // the same day the real schedule says
       expect(next.containsKey('name'), isFalse); // the item stays a surprise
       expect(next.containsKey('emoji'), isFalse);
       // on the day itself: the banner, no teaser
@@ -232,7 +377,7 @@ void main() {
         days: 1,
       );
       expect(p.single.title, contains('Legendary'));
-      expect(p.single.body, contains(legendaryOn(dayKey(day))!.$2['name']));
+      expect(p.single.body, contains('${legendaryOn(dayKey(day))!.item['name']}'));
       final again = planReminders(
         now: DateTime(day.year, day.month, day.day, 8),
         hour: 19,

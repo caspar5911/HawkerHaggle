@@ -296,9 +296,18 @@ class Progress {
 
   void earn(String id, Set<String> fresh) => _earn(id, fresh);
 
-  /// Today's legendary item was bought (sold out for this player until the next one).
-  bool legendBought(String day) => _map('legend')['bought'] == day;
-  void buyLegend(String day) => _map('legend')['bought'] = day;
+  /// A legendary item was bought: sold out for this player (counted by its day, or by its whole event).
+  bool legendBought(String key) {
+    final b = _map('legend')['bought'];
+    return b == key || (b is List && b.contains(key));
+  }
+
+  void buyLegend(String key) {
+    final m = _map('legend');
+    final old = m['bought'];
+    final list = [if (old is String) old, if (old is List) ...old.map((x) => '$x'), key];
+    m['bought'] = list.length > 30 ? list.sublist(list.length - 30) : list;
+  }
 
   /// Played (finished a haggle) on [day]?
   bool playedOn(String day) => _map('days').containsKey(day);
@@ -401,6 +410,9 @@ class Progress {
       'saved': record['saved'],
       'event': record['event'],
       'qty': qty,
+      // a legendary item from an event: its name stays in the history after the event is gone
+      if (record['item_name'] != null) 'item_name': record['item_name'],
+      if (record['emoji'] != null) 'emoji': record['emoji'],
       'chat': [
         for (final m in chat.length > 60 ? chat.sublist(chat.length - 60) : chat)
           {'who': m['who'], 'text': m['text'], if (m['ai'] == true) 'ai': true},
@@ -414,7 +426,8 @@ class Progress {
     final items = {
       for (final s in content['stalls'] as List) ...{
         for (final i in (s as Map)['items'] as List) '${s['id']}/${(i as Map)['id']}': (s, i),
-        if (legendaryItems[s['id']] case final l?) '${s['id']}/${l['id']}': (s, l as Map),
+        for (final l in legendaryByStall[s['id']] ?? const <Map<String, Object>>[])
+          '${s['id']}/${l['id']}': (s, l as Map),
       },
     };
     return [
@@ -423,8 +436,8 @@ class Progress {
           for (final e in h.entries)
             if (e.key != 'chat') e.key as String: e.value,
           'stall_name': items['${h['stall']}/${h['item']}']?.$1['name'] ?? h['stall'],
-          'item_name': items['${h['stall']}/${h['item']}']?.$2['name'] ?? h['item'],
-          'emoji': items['${h['stall']}/${h['item']}']?.$2['emoji'] ?? '🛒',
+          'item_name': items['${h['stall']}/${h['item']}']?.$2['name'] ?? h['item_name'] ?? h['item'],
+          'emoji': items['${h['stall']}/${h['item']}']?.$2['emoji'] ?? h['emoji'] ?? '🛒',
           'look': items['${h['stall']}/${h['item']}']?.$1['look'],
           'messages': (h['chat'] as List?)?.length ?? 0,
         },

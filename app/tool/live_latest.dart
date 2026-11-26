@@ -21,7 +21,7 @@ Future<void> main() async {
   final rejected = <String>[];
   DateTime dayFor(String stall) {
     for (var d = DateTime(2026, 12, 1, 10); ; d = d.add(const Duration(days: 1))) {
-      if (legendaryOn(dayKey(d))?.$1 == stall) return d;
+      if (legendaryOn(dayKey(d))?.stall == stall) return d;
     }
   }
 
@@ -42,7 +42,7 @@ Future<void> main() async {
       now: () => day,
     );
     await g.load();
-    final item = legendaryItems[stall]!;
+    final item = legendaryOn(dayKey(day))!.item;
     var r = await g.start(stall, item['id'] as String);
     stdout.writeln('LEGEND $stall greet ${r['ai_line'] == true ? '✨' : '  '} ${r['line']}');
     if (r['ai_line'] != true) fails.add('$stall: no AI greeting for the legendary item');

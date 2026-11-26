@@ -19,7 +19,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ValidationError, Field
 
 from .accounts import SAVE_MAX, AccountError, Accounts
 from .coop import CoopError, Rooms
@@ -53,7 +53,8 @@ GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS",
 ADMIN_LOGINS = {x.strip().lower() for x in os.environ.get("HH_ADMIN_LOGINS", "").split(",") if x.strip()}
 PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
                 "/ai/accounts/logout", "/ai/accounts/password", "/ai/accounts/progress", "/ai/accounts/progress/save",
-                "/ai/accounts/progress/delete", "/ai/accounts/board", "/ai/admin/players", "/ai/admin/decide", "/ai/admin/stats",
+                "/ai/accounts/progress/delete", "/ai/accounts/board", "/ai/admin/players", "/ai/admin/decide", "/ai/admin/stats", "/ai/legendary",
+                "/ai/admin/legend", "/ai/admin/legend/create", "/ai/admin/legend/delete",
                 "/ai/coop/create", "/ai/coop/join", "/ai/coop/send", "/ai/coop/pull", "/ai/coop/leave"}
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
@@ -84,6 +85,10 @@ class Login(BaseModel):
 class NewPassword(BaseModel):
     old: str = Field(max_length=200)
     new: str = Field(max_length=200)
+
+
+class EventId(BaseModel):
+    id: int
 
 
 class Decide(BaseModel):
@@ -564,6 +569,38 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         admin_only(request, authorization)
         today = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()
         return accounts.stats(STALLS, today)
+
+    # ✨ legendary events: the admin posts them; every phone (and the web version) reads them, no login needed
+    def market_today() -> dt.date:
+        return dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()
+
+    @app.post("/ai/legendary")
+    def legendary(request: Request):
+        limit("legend:" + client_ip(request), RELAY_PER_MINUTE * (20 if from_public(request) else 1))
+        return {"events": accounts.legend_events(market_today())}
+
+    @app.post("/ai/admin/legend")
+    def admin_legend(request: Request, authorization: str = Header(default="")):
+        admin_only(request, authorization)
+        return {"events": accounts.legend_events(market_today(), past_days=30)}
+
+    @app.post("/ai/admin/legend/create")
+    async def admin_legend_create(request: Request, authorization: str = Header(default="")):
+        admin_only(request, authorization)
+        try:
+            body = await request.json()
+        except ValueError:
+            raise HTTPException(400, "Bad event.")
+        return account_call(lambda: accounts.legend_create(body, STALLS, market_today()))
+
+    @app.post("/ai/admin/legend/delete")
+    async def admin_legend_delete(request: Request, authorization: str = Header(default="")):
+        admin_only(request, authorization)   # before reading the body: nobody else learns anything
+        try:
+            body = EventId.model_validate(await request.json())
+        except (ValueError, ValidationError):
+            raise HTTPException(400, "Bad request.")
+        return account_call(lambda: accounts.legend_delete(body.id))
 
     @app.post("/ai/admin/decide")
     def admin_decide(body: Decide, request: Request, authorization: str = Header(default="")):
