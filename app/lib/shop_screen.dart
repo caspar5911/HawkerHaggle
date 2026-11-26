@@ -198,6 +198,12 @@ class _ShopScreenState extends State<ShopScreen> {
                                 '${customer['name']} wants your ${product!['emoji']} ${product['name']}',
                                 style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
                               ),
+                              if ('${customer['clue'] ?? ''}'.isNotEmpty)
+                                Text(
+                                  '${customer['clue']}',
+                                  key: const ValueKey('customer_clue'),
+                                  style: const TextStyle(color: Palette.ink, fontSize: 12, fontStyle: FontStyle.italic),
+                                ),
                               Text(
                                 product['from'] != null
                                     ? 'You bought it at ${product['from']}\'s for ${money(product['cost'] as num)} · usually ${money(product['fair'] as num)}'
@@ -317,9 +323,9 @@ class _ShopScreenState extends State<ShopScreen> {
     final paid = money(product['cost'] as num);
     final usual = money(product['fair'] as num);
     final tip = switch ('${s['event']}') {
-      'raise' ||
-      'accept' ||
-      'thanks' => "They came up! Hold near your price, or take their offer if it's more than it cost you ($paid).",
+      'raise' || 'accept' || 'thanks' =>
+        "They came up! Ask the same price again to hold firm (if it's not too much for them, they give in), or "
+            "take their offer if it's more than it cost you ($paid).",
       'annoyed' => "Too high for them! Come down a little: anything above $paid is still profit.",
       _ =>
         'Your first customer! They will offer low. Ask for the usual price ($usual) or a bit more, and come down '
