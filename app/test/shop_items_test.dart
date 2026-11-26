@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hawker_haggle/core/challenges.dart';
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/core/treats.dart';
 
@@ -87,7 +88,7 @@ void main() {
     c.nextDay();
     final me = g.me();
     expect(g.progress.wallet, before + 20 + 5);
-    expect((me['morning'] as Map)['cake'], 5);
+    expect((me['morning'] as Map)['extra'], 5);
     g.me();
     expect(g.progress.wallet, before + 20 + 5, reason: 'once a day');
   });
@@ -203,5 +204,131 @@ void main() {
     c.nextDay();
     g.me();
     expect(g.progress.jar, jar + 5);
+  });
+
+  test('the shop is in order (tier, then price) and has 30+ things', () async {
+    final (g, _) = await newGame();
+    final shop = (g.jar()['goals'] as List).cast<Map>();
+    expect(shop.length, greaterThanOrEqualTo(30));
+    final order = [for (final t in goalTiers) t.$1];
+    for (var i = 1; i < shop.length; i++) {
+      final a = shop[i - 1], b = shop[i];
+      final ta = order.indexOf('${a['tier']}'), tb = order.indexOf('${b['tier']}');
+      expect(
+        ta < tb || (ta == tb && (a['cost'] as num) <= (b['cost'] as num)),
+        isTrue,
+        reason: '${a['id']} ${b['id']}',
+      );
+    }
+  });
+
+  test('🍲 the dinner and 📺 the TV add pocket money too; 🛺 the trishaw delivers one more', () async {
+    final (g, c) = await newGame();
+    await own(g, ['cake', 'dinner', 'tv', 'trishaw']);
+    g.progress.receive(100);
+    final (st, it) = notOnList(g);
+    await buyNow(g, st, it);
+    await buyNow(g, st, it);
+    final before = g.progress.wallet;
+    c.nextDay();
+    final m = g.me()['morning'] as Map;
+    expect(m['extra'], 20);
+    expect((m['delivered'] as List).length, 1, reason: 'the trishaw alone: one');
+    expect(g.progress.wallet, greaterThan(before + 20 + 20));
+  });
+
+  test('🌺 the orchid: a bigger list budget; 💌 the cards: friendships grow faster', () async {
+    final (a, _) = await newGame(seed: 2);
+    final (b, _) = await newGame(seed: 2);
+    final budget = a.today()['budget'] as num;
+    await own(b, ['orchid', 'cards']);
+    expect(b.today()['budget'] as num, greaterThan(budget));
+    final (st, it) = notOnList(a);
+    await buyNow(a, st, it);
+    await buyNow(b, st, it);
+    num points(Game g) => (g.progress.p['friends'] as Map)[st]['points'] as num;
+    expect(points(b), greaterThan(points(a)));
+  });
+
+  test('☂️ the umbrella and ⏰ the clock: rainy and closing-time bargains come more often', () async {
+    Future<int> count(List<String> owned) async {
+      final c = Clock();
+      final g = Game(content: content, store: MemoryKeyValue(), random: math.Random(7), unlockAll: true, now: c.call);
+      await g.load();
+      await own(g, owned);
+      await buyNow(g, 'boy', 'yoyo'); // (the first haggle never has a surprise)
+      var n = 0;
+      for (var i = 0; i < 200; i++) {
+        final r = await g.start('mei', 'mango');
+        if (r['surprise'] == 'rain' || r['surprise'] == 'closing') n++;
+      }
+      return n;
+    }
+
+    final plain = await count([]), owned = await count(['umbrella', 'clock']);
+    expect(owned, greaterThan(plain + 10), reason: 'without $plain, with them $owned (of 200)');
+  });
+
+  test('📻 the radio: customers at your stall open with better offers; 🎁 gift wrap: a tip', () async {
+    Future<Map<String, Object?>> firstCustomer(List<String> owned) async {
+      final (g, _) = await newGame(seed: 4);
+      await own(g, owned);
+      return g.shopStart();
+    }
+
+    final plain = await firstCustomer([]), radio = await firstCustomer(['radio']);
+    expect(radio['offer'] as num, greaterThan(plain['offer'] as num));
+    final (g, _) = await newGame();
+    await own(g, ['giftwrap']);
+    final s = await g.shopStart();
+    final before = g.progress.wallet;
+    final x = await g.shopMove(s['id'] as String, take: true);
+    expect('${x['notes']}', contains('tip'));
+    expect(g.progress.wallet, greaterThan(before + 1));
+  });
+
+  test('🎓 the course: five wholesale goods a day', () async {
+    final (g, _) = await newGame();
+    await own(g, ['course']);
+    for (var i = 0; i < 5; i++) {
+      final s = await g.shopStart();
+      await g.shopMove(s['id'] as String, take: true);
+    }
+    await expectLater(g.shopStart(), throwsA(isA<GameError>()));
+  });
+
+  test('🗺️ the map: a later stall opens a day sooner; 📸 the camera: what the next legendary item is', () async {
+    final (g, c) = await newGame();
+    // Uncle Wong opens on day 2 of play; with the map, on day 1
+    final wongBefore = ((g.stalls()['stalls'] as List).cast<Map>().firstWhere((s) => s['id'] == 'wong'))['locked'];
+    expect(wongBefore, isTrue);
+    final g2 = Game(content: content, store: MemoryKeyValue(), random: math.Random(1), surprises: false, now: c.call);
+    await g2.load();
+    g2.me();
+    await own(g2, ['map']);
+    await buyNow(g2, 'mei', 'mango');
+    expect(((g2.stalls()['stalls'] as List).cast<Map>().firstWhere((s) => s['id'] == 'wong'))['locked'], isFalse);
+    // a day with a legendary item coming
+    while (g.stalls()['next_legendary'] == null) {
+      c.nextDay();
+    }
+    expect((g.stalls()['next_legendary'] as Map).containsKey('item_name'), isFalse);
+    await own(g, ['camera']);
+    expect((g.stalls()['next_legendary'] as Map)['item_name'], isNotNull);
+  });
+
+  test('🪙 the coin: more XP for a daily challenge; 📚 the school: a higher daily XP cap from haggles', () async {
+    final (g, _) = await newGame(wallet: false); // (about XP: no money in the way of 30 deals)
+    await own(g, ['coin', 'school']);
+    expect(g.progress.owns('coin'), isTrue);
+    expect(xpDailyChallenge * 3 ~/ 2, greaterThan(xpDailyChallenge));
+    // (the cap itself: haggling a lot in one day earns more than the plain cap)
+    final before = (g.challenges()['rank'] as Map)['xp'] as num;
+    for (var i = 0; i < 30; i++) {
+      final mum = (g.today()['items'] as List).cast<Map>().first;
+      await buyNow(g, '${mum['stall']}', '${mum['item']}');
+    }
+    final after = (g.challenges()['rank'] as Map)['xp'] as num;
+    expect(after - before, greaterThan(xpHaggleCapPerDay));
   });
 }

@@ -189,7 +189,11 @@ class Progress {
   }
 
   int unlockAt(String stall) => ((_stalls[stall]?['unlock_stars'] ?? 0) as num).toInt();
-  int unlockDays(String stall) => ((_stalls[stall]?['unlock_days'] ?? 0) as num).toInt();
+  int unlockDays(String stall) {
+    final d = ((_stalls[stall]?['unlock_days'] ?? 0) as num).toInt();
+    return d > 0 && owns('map') ? math.max(1, d - 1) : d; // 🗺️ the market map: a day sooner
+  }
+
   int daysPlayed() => _map('days').length;
   bool unlocked(String stall) => bestStars() >= unlockAt(stall) && daysPlayed() >= unlockDays(stall);
 
@@ -219,7 +223,9 @@ class Progress {
       final it = items[(h >> (8 + i * 3)) % items.length] as Map;
       picks.add({'stall': st, 'item': it['id'], 'name': it['name'], 'emoji': it['emoji'], 'fair': it['fair']});
     }
-    final budget = (picks.fold<double>(0, (a, i) => a + (i['fair'] as num)) * 1.05).ceilToDouble();
+    // (🌺 the orchid for Mum: a bigger budget)
+    final budget = (picks.fold<double>(0, (a, i) => a + (i['fair'] as num)) * (owns('orchid') ? 1.2 : 1.05))
+        .ceilToDouble();
     final d = _map('daily');
     if (d['date'] != day) {
       d
@@ -389,7 +395,11 @@ class Progress {
     f['visits'] = ((f['visits'] ?? 0) as num).toInt() + 1;
     final deal = record['result'] == 'deal';
     if (deal) f['last_item'] = record['item'];
-    _addPoints(stall, (deal ? 8 : 2) + math.min(3, ((flags['nice'] ?? 0) as num).toInt()));
+    // (💌 thank-you cards: friendships grow faster)
+    _addPoints(
+      stall,
+      (deal ? 8 : 2) + math.min<int>(3, ((flags['nice'] ?? 0) as num).toInt()) + (deal && owns('cards') ? 3 : 0),
+    );
     _stickersForHaggle(record, flags, fresh);
     _friendStickers(fresh);
     final story = _storyProgress(record, fresh);
@@ -503,7 +513,11 @@ class Progress {
   bool owns(String goal) => _map('goals')[goal] != null;
 
   List<Map<String, Object?>> goalsView() => [
-    for (final g in goals)
+    for (final g
+        in [...goals]..sort((a, b) {
+          final t = goalTiers.indexWhere((x) => x.$1 == a.tier).compareTo(goalTiers.indexWhere((x) => x.$1 == b.tier));
+          return t != 0 ? t : a.cost.compareTo(b.cost);
+        }))
       {
         'id': g.id,
         'emoji': g.emoji,
@@ -629,9 +643,11 @@ class Progress {
       p['perks_day'] = day;
       void gain(double v) => wallet ? receive(v) : addToJar(v);
       final m = <String, Object?>{'day': day};
-      if (owns('cake')) {
-        gain(5);
-        m['cake'] = 5.0;
+      // Mum's extra pocket money: 🎂 the cake, 🍲 the family dinner, 📺 Grandma's TV
+      final extra = (owns('cake') ? 5.0 : 0.0) + (owns('dinner') ? 5.0 : 0.0) + (owns('tv') ? 10.0 : 0.0);
+      if (extra > 0) {
+        gain(extra);
+        m['extra'] = extra;
       }
       if (owns('piggy') && jar > 0) {
         final interest = (math.min(5.0, jar * 0.02) * 100).floor() / 100;
@@ -642,7 +658,8 @@ class Progress {
       }
       // deliveries: the oldest things in your stock, at 90% of the market's price (a gift from a stallholder: its
       // fair price). More than you paid if you haggled well; less than a good customer at your own stall pays.
-      final n = (owns('scooter') ? 1 : 0) + (owns('van') ? 2 : 0) + (owns('stall2') ? 3 : 0);
+      final n =
+          (owns('scooter') ? 1 : 0) + (owns('trishaw') ? 1 : 0) + (owns('van') ? 2 : 0) + (owns('stall2') ? 3 : 0);
       final sent = <String>[];
       var total = 0.0;
       for (var i = 0; i < n && stock.isNotEmpty; i++) {

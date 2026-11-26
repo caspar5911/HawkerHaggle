@@ -393,6 +393,13 @@ class Game {
                 'weekday': DateTime(now().year, now().month, now().day + days).weekday,
                 'stall': stall,
                 'stall_name': _stalls[stall]?['name'],
+                // 📸 the camera: what it is, too (otherwise a surprise until the day)
+                if (progress.owns('camera'))
+                  if (legendaryOn(dayKey(DateTime(now().year, now().month, now().day + days)), events: legendEvents)
+                      case final l?) ...{
+                    'item_name': l.item['name'],
+                    'item_emoji': l.item['emoji'],
+                  },
               },
               null => null,
             },
@@ -728,6 +735,7 @@ class Game {
     // About 1 haggle in 3 has a market surprise; in a festival week, festival days are much more common.
     final fest = festivalWeek;
     if (!surprises || (haggleCount == 0 && !wantsLegend)) surprise ??= ''; // (the first haggle: no surprise)
+    final rolled = surprise == null; // (a market surprise picked here, not asked for)
     surprise ??= fest == null
         ? switch (_rnd.nextInt(100)) {
             < 9 => 'rain',
@@ -743,6 +751,14 @@ class Game {
             < 46 => 'rival',
             _ => '',
           };
+    // from the shop: ☂️ the umbrella, ⏰ the alarm clock (rainy and closing-time bargains more often)
+    if (rolled && surprise == '' && !wantsLegend) {
+      if (progress.owns('umbrella') && _rnd.nextInt(100) < 10) {
+        surprise = 'rain';
+      } else if (progress.owns('clock') && _rnd.nextInt(100) < 10) {
+        surprise = 'closing';
+      }
+    }
     if (surprise == 'none') surprise = ''; // tests: no surprise on purpose
     final items = stall['items'] as List;
     final item = wantsLegend
@@ -1195,7 +1211,10 @@ class Game {
         }
         // a stallholder who likes you might throw something in (never in tests without surprises)
         if (surprises) {
-          final chance = math.min(50, 12 + 10 * ss.nice + 5 * progress.hearts('${stall['id']}'));
+          final chance = math.min(
+            60,
+            12 + 10 * ss.nice + 5 * progress.hearts('${stall['id']}') + (progress.owns('redpacket') ? 10 : 0), // 🧧
+          );
           final free = progress.maybeFreebie(
             '${stall['id']}',
             lucky: stableSeed('${ss.seed}-free') % 100 < chance,
@@ -1533,10 +1552,10 @@ class Game {
       );
     } else {
       // 👛 with a wallet, the wholesaler lets you have three a day (you pay them their price out of the sale)
-      if (walletOn && _wholesaleToday(shop) >= wholesalePerDay) {
+      if (walletOn && _wholesaleToday(shop) >= _wholesaleLimit) {
         throw GameError(
           409,
-          '📦 Nothing to sell: the wholesaler only gives you $wholesalePerDay a day. Buy something at the market to '
+          '📦 Nothing to sell: the wholesaler only gives you $_wholesaleLimit a day. Buy something at the market to '
           'sell!',
         );
       }
@@ -1556,7 +1575,11 @@ class Game {
     if (progress.owns('icebox') && product.id.startsWith('stock:') && freshThings.contains(product.id.substring(6))) {
       more *= 1.1;
     }
+    if (progress.owns('balloons') && customer.id == 'student') more *= 1.1; // 🎈
+    if (progress.owns('lanterns') && festivalWeek != null) more *= 1.1; // 🏮
     if (more > 1) sale.most = (sale.most * more * 2).round() / 2;
+    if (progress.owns('tea')) sale.patience += 1; // 🍵 they take their time
+    if (progress.owns('radio')) sale.offer = math.min(sale.most, (sale.offer * 1.1 * 2).round() / 2); // 📻
     final id = 's${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
     _sales[id] = (sale: sale, chat: <Map<String, Object?>>[], seed: seed);
     return _shopSay(id, 'greet');
@@ -1619,6 +1642,10 @@ class Game {
         shop['profit'] = ((shop['profit'] ?? 0) as num).toDouble() + s.sale.profit;
         final fresh = <String>{};
         if (s.sale.stars >= 2) progress.earn('shopkeeper', fresh);
+        if (progress.owns('giftwrap')) {
+          walletOn ? progress.receive(1) : progress.addToJar(1); // 🎁 a tip
+          notes.add('🎁 They loved the gift wrap: a \$1 tip!');
+        }
         for (final st in fresh) {
           final d = stickerDefs.firstWhere((x) => x.$1 == st);
           notes.add('New sticker! ${d.$2} ${d.$3}');
@@ -1688,6 +1715,7 @@ class Game {
 
   /// Wholesale goods a day (when your stock is empty), with a wallet.
   static const wholesalePerDay = 3;
+  int get _wholesaleLimit => progress.owns('course') ? 5 : wholesalePerDay; // 🎓 the business course
   int _wholesaleToday(Map shop) {
     final w = shop['wholesale'];
     return w is Map && w['day'] == dayKey(now()) ? ((w['n'] ?? 0) as num).toInt() : 0;

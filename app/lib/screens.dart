@@ -198,11 +198,12 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   static const _tabs = [
     ('market', '🏮', 'Market'),
     ('stall', '🧺', 'My stall'),
+    ('shop', '🛍️', 'Shop'),
     ('friends', '👥', 'Friends'),
     ('me', '📒', 'Me'),
   ];
 
-  /// A goal in the jar you can afford now: a dot on the My stall tab.
+  /// Something in the shop you can afford now: a dot on the Shop tab.
   bool get _canBuyGoal {
     final j = _jar;
     if (j == null) return false;
@@ -211,7 +212,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   }
 
   Widget _tabIcon(int i, {bool selected = false}) => Badge(
-    isLabelVisible: i == 1 && _canBuyGoal,
+    isLabelVisible: _tabs[i].$1 == 'shop' && _canBuyGoal,
     smallSize: 9,
     backgroundColor: Palette.red,
     child: Text(_tabs[i].$2, style: TextStyle(fontSize: selected ? 24 : 21)),
@@ -220,6 +221,20 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   void _goTab(int i) {
     if (i == _tab) return;
     setState(() => _tab = i);
+    _refreshMoney(); // (after buying in the shop, the wallet and jar elsewhere are up to date)
+  }
+
+  Future<void> _refreshMoney() async {
+    try {
+      final j = await widget.api.jar();
+      final me = await widget.api.me();
+      if (mounted) {
+        setState(() {
+          _jar = j;
+          _me = me;
+        });
+      }
+    } on ApiError catch (_) {}
   }
 
   Future<void> _push(Widget screen) async {
@@ -320,15 +335,14 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
       color: const Color(0xFFE6F4EA),
       onTap: () => _push(InventoryScreen(api: widget.api)),
     ),
-    if (_jar != null)
-      JarStrip(
-        jar: _jar!,
-        onTap: () => _push(JarScreen(api: widget.api)),
-      ),
+    if (_jar != null) JarStrip(jar: _jar!, onTap: () => _goTab(_tabs.indexWhere((t) => t.$1 == 'shop'))),
     if (_canBuyGoal)
       const Padding(
         padding: EdgeInsets.only(left: 6, bottom: 10),
-        child: Text('🎉 You can afford a goal now: open the jar!', style: TextStyle(color: Palette.soft)),
+        child: Text(
+          '🎉 You can afford something in the shop now: open 🛍️ Shop!',
+          style: TextStyle(color: Palette.soft),
+        ),
       ),
   ];
 
@@ -506,10 +520,11 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
                 child: const Pill(text: 'A new version is out: tap to reload', icon: '🆕', color: Palette.gold),
               ),
             ),
-          ...switch (_tab) {
-            1 => _stallPage(),
-            2 => _friendsPage(),
-            3 => _mePage(),
+          ...switch (_tabs[_tab].$1) {
+            'stall' => _stallPage(),
+            'shop' => [const SizedBox(height: 8), ShopPanel(key: const ValueKey('shop_panel'), api: widget.api)],
+            'friends' => _friendsPage(),
+            'me' => _mePage(),
             _ => _marketPage(),
           },
         ],
@@ -715,7 +730,11 @@ class LegendTeaser extends StatelessWidget {
                   text: '${when(next)}, at ${next['stall_name']}\'s',
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                const TextSpan(text: '. What could it be? 🤔'),
+                TextSpan(
+                  text: next['item_name'] != null
+                      ? '. 📸 It\'s a ${next['item_emoji']} ${next['item_name']}!'
+                      : '. What could it be? 🤔',
+                ),
               ],
             ),
             style: const TextStyle(color: Palette.ink, height: 1.3),
@@ -3437,7 +3456,7 @@ class _Morning extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lines = [
-      if (m['cake'] is num) "🎂 Mum's cake: +${money(m['cake'] as num)} pocket money",
+      if (m['extra'] is num) "👩 Mum's extra pocket money: +${money(m['extra'] as num)}",
       if (m['interest'] is num) '🐷 Piggy bank: +${money(m['interest'] as num)} in your jar',
       if (m['delivered'] is List)
         '🛵 Delivered ${(m['delivered'] as List).join(', ')}: +${money(m['delivered_total'] as num)}',
