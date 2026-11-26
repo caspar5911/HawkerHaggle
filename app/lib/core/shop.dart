@@ -34,9 +34,11 @@ class Customer {
     required this.step,
     required this.lines,
     this.clue = '',
+    this.loves = const {},
   });
   final String id, name, persona, voice;
   final String clue; // what you can tell by looking at them (shown at your stall)
+  final Set<String> loves; // the kinds of things they love (see kindOf): they pay more for those
   final Map<String, String> look;
   final double most; // the most they'll pay, as a share of the fair price (a little random around it)
   final double opens; // their first offer, as a share of the fair price
@@ -45,6 +47,18 @@ class Customer {
   final Map<String, List<String>> lines; // ready-made lines: {offer}, {ask}, {price}, {item}
 }
 
+/// What kind of thing it is, for what customers love: fresh food, souvenirs, toys and gadgets, premium things.
+String kindOf(String key) => switch (key) {
+  'mei/durian' || 'lim/prawns' || 'lee/scallops' || 'kumar/saffron' || 'wong/radio' || 'wong/tiffin' => 'premium',
+  'mei/mango' || 'lim/pomfret' || 'siti/kueh' || 'rosnah/ondeh' || 'rosnah/tray' || 'tan/eggs' || 'mango' => 'fresh',
+  'siti/scarf' || 'lee/oolong' || 'kumar/masala' || 'scarf' => 'souvenir',
+  'raj/case' || 'raj/powerbank' || 'boy/rccar' || 'boy/yoyo' || 'faiz/sneakers' || 'faiz/jersey' || 'case' => 'toy',
+  _ => 'other',
+};
+
+/// A loved thing: they pay up to a quarter more, and open higher.
+const loveMore = 1.25, loveOpens = 1.1;
+
 const customers = [
   Customer(
     'uncle',
@@ -52,11 +66,12 @@ const customers = [
     'A kiasu retired uncle who counts every cent and loves a bargain, but pays fairly for good stuff.',
     "Gruff and short. Calls the seller 'boss', uses 'aiyah', 'so ex' and 'can or not'.",
     {'skin': '#E6BF9C', 'hair': '#BDBDBD', 'shirt': '#90A4AE', 'apron': '#90A4AE', 'accessory': 'glasses'},
-    most: 1.0,
+    most: 1.05,
     opens: 0.55,
     patience: 5,
     step: 0.35,
     clue: '👴 Counts every cent',
+    loves: {'fresh'},
     lines: {
       'greet': ['Boss, this {item}. {offer} can or not?', 'Aiyah, {item} how much? I give you {offer}.'],
       'raise': ['{ask}? So ex! Okay, {offer} lah.', 'Aiyah boss, {ask} cannot. {offer}.'],
@@ -74,11 +89,12 @@ const customers = [
     'A cheerful tourist on her first trip to Singapore, unsure of local prices and happy to pay a bit more for something nice.',
     'Friendly and polite, curious, says "lovely" and "oh wow", asks about the item.',
     {'skin': '#F6D7C3', 'hair': '#D8A35D', 'shirt': '#4FC3F7', 'apron': '#FFFFFF', 'accessory': 'cap'},
-    most: 1.35,
+    most: 1.15,
     opens: 0.75,
     patience: 6,
     step: 0.5,
     clue: '📸 On holiday, happy to spend',
+    loves: {'souvenir'},
     lines: {
       'greet': ['Oh wow, a {item}! Would you take {offer}?', 'Hello! This {item} is lovely. {offer}, maybe?'],
       'raise': ['Hmm, {ask} is a bit much. How about {offer}?', 'Oh, {ask}? Could you do {offer}?'],
@@ -96,11 +112,12 @@ const customers = [
     'A broke polytechnic student buying a present, with very little money but lots of charm.',
     "Casual Singlish, calls the seller 'boss' or 'uncle/auntie', says 'pls lah', 'student price' and 'shiok'.",
     {'skin': '#EBC2A0', 'hair': '#1B1B1B', 'shirt': '#FFB74D', 'apron': '#5C6BC0', 'accessory': 'headphones'},
-    most: 0.85,
+    most: 0.95,
     opens: 0.5,
     patience: 6,
     step: 0.3,
     clue: '🎒 A small allowance',
+    loves: {'toy'},
     lines: {
       'greet': ['Boss, {item} for my girlfriend. Student price {offer}?', 'Eh boss, {offer} for the {item} can?'],
       'raise': ['{ask}? Pls lah boss. {offer}?', 'Aiyo {ask}, my allowance cannot. {offer}?'],
@@ -118,11 +135,12 @@ const customers = [
     'A well-off auntie in a hurry, who will pay well for quality but hates wasting time.',
     "Brisk and a little posh, says 'darling', 'quickly ah' and 'I don't have all day'.",
     {'skin': '#F3D2B8', 'hair': '#5D4037', 'shirt': '#AD1457', 'apron': '#F8BBD0', 'accessory': 'perm'},
-    most: 1.5,
+    most: 1.2,
     opens: 0.9,
     patience: 4,
     step: 0.6,
     clue: '💎 Wants the best, money no problem',
+    loves: {'premium'},
     lines: {
       'greet': ['Darling, the {item}. {offer}, quickly ah.', '{item}, {offer}? I am in a hurry.'],
       'raise': ['{ask}? Fine, {offer}. Quickly.', 'Hmm, {ask}. I give {offer}, final.'],
@@ -141,7 +159,7 @@ double _half(double v) => (v * 2).round() / 2; // prices in 50-cent steps
 /// One sale: a customer wants your product.
 class Sale {
   Sale(this.product, this.customer, {required int seed}) : _rnd = math.Random(seed) {
-    most = _half(product.fair * customer.most * (0.95 + _rnd.nextDouble() * 0.1));
+    most = _half(product.fair * customer.most * (0.8 + _rnd.nextDouble() * 0.4));
     offer = math.min(most, _half(product.fair * customer.opens));
     patience = customer.patience;
   }

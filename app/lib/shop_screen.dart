@@ -93,6 +93,24 @@ class _ShopScreenState extends State<ShopScreen> {
     });
   }
 
+  /// 👋 "Not today": send this customer away, and the next one comes.
+  Future<void> _pass() async {
+    final s = _s;
+    if (s == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.api.shopPass(s['id'] as String);
+    } on ApiError catch (e) {
+      if (e.code != 404) {
+        // (out of "Not today"s: this customer stays)
+        _toast(e.message);
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+    }
+    if (mounted) await _next();
+  }
+
   Future<void> _move({double? ask, bool take = false, bool chat = false, required String mine}) async {
     final s = _s;
     if (s == null || _busy || s['done'] == true) return;
@@ -192,23 +210,32 @@ class _ShopScreenState extends State<ShopScreen> {
                                 look: Map<String, dynamic>.from(customer['look'] as Map),
                                 face: _face,
                                 reactKey: _react,
-                                size: 120,
+                                size: 104,
                               ),
                               Text(
                                 '${customer['name']} wants your ${product!['emoji']} ${product['name']}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
                               ),
-                              if ('${customer['clue'] ?? ''}'.isNotEmpty)
-                                Text(
-                                  '${customer['clue']}',
-                                  key: const ValueKey('customer_clue'),
-                                  style: const TextStyle(color: Palette.ink, fontSize: 12, fontStyle: FontStyle.italic),
-                                ),
+                              // what you can tell about them, and 😍 when it's the kind of thing they love
+                              Text(
+                                [
+                                  if ('${customer['clue'] ?? ''}'.isNotEmpty) '${customer['clue']}',
+                                  if (s?['loves'] == true) '😍 loves it!',
+                                ].join('  ·  '),
+                                key: const ValueKey('customer_clue'),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(color: Palette.ink, fontSize: 12, fontStyle: FontStyle.italic),
+                              ),
                               Text(
                                 product['from'] != null
                                     ? 'You bought it at ${product['from']}\'s for ${money(product['cost'] as num)} · usually ${money(product['fair'] as num)}'
                                     : 'Wholesale, you paid ${money(product['cost'] as num)} · usually sells for ${money(product['fair'] as num)}',
                                 textAlign: TextAlign.center,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(color: Palette.soft, fontSize: 13),
                               ),
                               GestureDetector(
@@ -229,6 +256,28 @@ class _ShopScreenState extends State<ShopScreen> {
                             ],
                           ),
                   ),
+                  // 👋 "Not today": send this customer away (a few a day)
+                  if (customer != null && s?['done'] != true && ((s?['passes_left'] ?? 0) as num) > 0)
+                    Positioned(
+                      top: 6,
+                      right: 8,
+                      child: Bouncy(
+                        key: const ValueKey('shop_pass'),
+                        enabled: !_busy,
+                        onTap: _pass,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Text(
+                            '👋 Not today (${s?['passes_left']})',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Palette.ink),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -328,8 +377,8 @@ class _ShopScreenState extends State<ShopScreen> {
             "take their offer if it's more than it cost you ($paid).",
       'annoyed' => "Too high for them! Come down a little: anything above $paid is still profit.",
       _ =>
-        'Your first customer! They will offer low. Ask for the usual price ($usual) or a bit more, and come down '
-            "slowly: it cost you $paid, so anything above that is profit.",
+        'Your first customer! They will offer low. Ask for the usual price ($usual) or a bit more (😍 means they '
+            "love it: ask more!). It cost you $paid, so anything above that is profit.",
     };
     return Container(
       key: const ValueKey('first_sale_tip'),
