@@ -770,7 +770,7 @@ void main() {
     tester,
   ) async {
     MumGuide.enabled = true;
-    await openHaggle(tester, [
+    final fake = await openHaggle(tester, [
       game('Aiyo, \$16 lah.', event: 'counter', ask: 16),
       game('OK lah OK lah, \$16!', event: 'accept', result: 'deal', deal: 16, stars: 1),
     ]);
@@ -788,6 +788,18 @@ void main() {
     await tester.tap(find.text('Confirm \$16'));
     await settle(tester, 2500);
     expect(find.textContaining('Mum: Well done!'), findsOneWidget); // she still says well done
+    await settle(tester, 3000);
+    // play again: no tips, and no last word from Mum
+    fake.replies.add(game('OK lah OK lah, \$17!', event: 'accept', result: 'deal', deal: 17, stars: 1));
+    await tester.ensureVisible(find.text('Again!'));
+    await tester.tap(find.text('Again!'));
+    await settle(tester);
+    expect(find.byKey(const ValueKey('mum_tip')), findsNothing);
+    await tester.tap(find.text('OK lah, \$18'));
+    await settle(tester, 600);
+    await tester.tap(find.text('Confirm \$18'));
+    await settle(tester, 2500);
+    expect(find.textContaining('Mum: Well done!'), findsNothing);
     await settle(tester, 3000);
   });
 

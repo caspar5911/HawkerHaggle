@@ -1140,7 +1140,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
         final me = await widget.api.me();
         _guided = _wasGuided = MumGuide.wanted(haggles: (me['haggles'] as num?)?.toInt() ?? 1);
       } else {
-        _guided = false; // "play again": once is enough
+        _guided = _wasGuided = false; // "play again": once is enough
       }
       final g = await widget.api.start(
         widget.stall['id'] as String,
