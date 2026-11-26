@@ -716,6 +716,13 @@ class Progress {
     if (list.length > stockMax) list.removeRange(0, list.length - stockMax);
   }
 
+  /// "Sell this next": your stall sells the first thing in your stock, so this one goes to the front.
+  void stockToFront(int i) {
+    final list = (p['stock'] as List?) ?? const [];
+    if (i <= 0 || i >= list.length) return;
+    list.insert(0, list.removeAt(i));
+  }
+
   /// Sold at your own stall: one unit of it leaves your stock.
   void takeStock(String key, double cost) {
     final list = (p['stock'] as List?) ?? const [];

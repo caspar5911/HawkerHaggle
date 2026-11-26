@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'character.dart';
+import 'extras.dart' show InventoryScreen;
 import 'music.dart';
 import 'sfx.dart';
 import 'widgets.dart';
@@ -193,12 +194,17 @@ class _ShopScreenState extends State<ShopScreen> {
                           textAlign: TextAlign.center,
                           style: const TextStyle(color: Palette.soft, fontSize: 13),
                         ),
-                        Text(
-                          (s!['stock'] as num) > 0
-                              ? '📦 ${s['stock']} thing${s['stock'] == 1 ? '' : 's'} in stock from the market'
-                              : '📦 Buy things at the market to sell them here',
-                          key: const ValueKey('shop_stock'),
-                          style: const TextStyle(color: Palette.soft, fontSize: 12),
+                        GestureDetector(
+                          onTap: () =>
+                              Navigator.of(context)
+                                  .push(MaterialPageRoute<void>(builder: (_) => InventoryScreen(api: widget.api))),
+                          child: Text(
+                            (s!['stock'] as num) > 0
+                                ? '📦 ${s['stock']} thing${s['stock'] == 1 ? '' : 's'} in stock · see them ›'
+                                : '📦 Buy things at the market to sell them here',
+                            key: const ValueKey('shop_stock'),
+                            style: const TextStyle(color: Palette.soft, fontSize: 12, fontWeight: FontWeight.w600),
+                          ),
                         ),
                       ],
                     ),

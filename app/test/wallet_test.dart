@@ -7,7 +7,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
-import 'package:hawker_haggle/extras.dart' show JarScreen;
+import 'package:hawker_haggle/extras.dart' show InventoryScreen, JarScreen;
 import 'package:hawker_haggle/core/challenges.dart';
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/core/voice.dart' show money;
@@ -310,5 +310,88 @@ void main() {
       'wallet month: $dailies dailies done, $blocked days out of reach, '
       'wallet \$${g.progress.wallet}, stock ${g.progress.stock.length}',
     );
+  }, timeout: const Timeout(Duration(minutes: 3))); // thirty days of play: slow when every test runs at once
+
+  test('📦 my things: stock in the order it sells (with where from, what you paid, the price at your stall), Mum\'s '
+      'things, and "sell this next"', () async {
+    final g = await walletGame(() => day1);
+    g.me();
+    g.progress.receive(100);
+    final (stall, item, ask) = notOnList(g, under: 30);
+    await buyNow(g, stall, item);
+    final mango = (stall, item) == ('mei', 'mango') ? ('raj', 'case') : ('mei', 'mango');
+    await buyNow(g, mango.$1, mango.$2);
+    final mum = (g.today()['items'] as List).cast<Map>().first;
+    await buyNow(g, '${mum['stall']}', '${mum['item']}');
+    var inv = g.inventory();
+    final stock = (inv['stock'] as List).cast<Map>();
+    expect(stock.length, 2);
+    expect(stock.first['paid'], ask);
+    expect(stock.first['price'], ask, reason: 'at your stall the usual price is the market asking price');
+    expect(stock.first['from'], isNotNull);
+    expect((inv['for_mum'] as List).single['name'], mum['name']);
+    expect(inv['wallet'], g.progress.wallet);
+    expect(inv['max'], 10);
+    // sell the second one next
+    final second = '${stock[1]['name']}';
+    inv = await g.sellNext(1);
+    expect((inv['stock'] as List).cast<Map>().first['name'], second);
+    final sale = await g.shopStart();
+    expect((sale['product'] as Map)['name'], second);
+    await expectLater(g.sellNext(5), throwsA(isA<GameError>()));
+  });
+
+  test('📦 treasures: a legendary find and the goals you own', () async {
+    var day = DateTime(2026, 12, 1, 10);
+    // a day with a legendary item at a first stall
+    while (true) {
+      final g0 = await walletGame(() => day);
+      final legend = (g0.stalls()['legendary'] as Map?);
+      if (legend != null) break;
+      day = day.add(const Duration(days: 1));
+    }
+    final g = await walletGame(() => day);
+    g.me();
+    g.progress.receive(500);
+    final legend = g.stalls()['legendary'] as Map;
+    final r = await g.start('${legend['stall']}', '${legend['id']}');
+    await g.move(r['id'] as String, move: 'buy');
+    await g.saveToJar(30);
+    await g.buyGoal('cake');
+    final t = g.inventory();
+    expect((t['treasures'] as List).cast<Map>().single['name'], legend['name']);
+    expect((t['goals'] as List).cast<Map>().single['emoji'], '🎂');
+    expect((t['stock'] as List), isEmpty, reason: 'a legendary find is a treasure, not stock');
+  });
+
+  testWidgets('📦 the My things screen: money, stock with "Next to sell", and choosing what sells next', (
+    tester,
+  ) async {
+    Sfx.available = false;
+    final store = MemoryKeyValue();
+    final g = await walletGame(() => day1, store: store);
+    g.me();
+    g.progress.receive(100);
+    await buyNow(g, 'raj', 'case');
+    await buyNow(g, 'siti', 'kueh');
+    await store.write('profile', g.exportProfile());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: InventoryScreen(
+          api: Api(game: g, content: content, store: store),
+        ),
+      ),
+    );
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('inv_wallet')), findsOneWidget);
+    expect(find.textContaining('To sell at your stall (2 of 10)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('stock_next')), findsOneWidget);
+    expect(find.textContaining('phone case'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('sell_next_1')));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pumpAndSettle();
+    expect('${g.progress.stock.first['name']}', contains('kueh'));
+    expect(tester.takeException(), isNull);
   });
 }
