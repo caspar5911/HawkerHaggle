@@ -341,6 +341,7 @@ class Challenges {
   /// Called once when a haggle ends (after Progress.finish). Returns what was earned, to show on the result card.
   List<String> onFinish(Map record, {required bool listDone, required bool listUnder, required Set<String> stickers}) {
     final notes = <String>[];
+    final levelBefore = rank()['level'] as int;
     final day = today;
     // a day played
     final days = _map('days');
@@ -394,7 +395,8 @@ class Challenges {
       _map('done_daily')[day] = true;
       final dxp = progress.owns('coin') ? xpDailyChallenge * 3 ~/ 2 : xpDailyChallenge; // 🪙 the lucky coin
       _addXp(dxp);
-      notes.add('🎯 Daily challenge done: ${daily().title}! +$dxp XP');
+      progress.reward(moneyDaily);
+      notes.add('🎯 Daily challenge done: ${daily().title}! +$dxp XP, +${_price(moneyDaily)}');
       final count = _map('done_daily').length;
       if (count >= 7) progress.earn('dailies7', stickers);
     }
@@ -407,14 +409,26 @@ class Challenges {
       if (q['done'] == true && doneThisWeek[q['id']] != true) {
         doneThisWeek[q['id'] as String] = true;
         _addXp(xpQuest);
-        notes.add('📋 Weekly quest done: ${q['title']}! +$xpQuest XP');
+        progress.reward(moneyQuest);
+        notes.add('📋 Weekly quest done: ${q['title']}! +$xpQuest XP, +${_price(moneyQuest)}');
       }
     }
     if (qs.every((q) => q['done'] == true) && doneThisWeek['all'] != true) {
       doneThisWeek['all'] = true;
       _addXp(xpAllQuests);
+      progress.reward(moneyAllQuests);
       progress.earn('week_done', stickers);
-      notes.add('🏆 All of this week\'s quests done! +$xpAllQuests XP');
+      notes.add('🏆 All of this week\'s quests done! +$xpAllQuests XP, +${_price(moneyAllQuests)}');
+    }
+    // 🎖️ a new rank: \$5 times the new level (for each level reached at once)
+    final levelAfter = rank()['level'] as int;
+    if (levelAfter > levelBefore) {
+      var money = 0.0;
+      for (var l = levelBefore + 1; l <= levelAfter; l++) {
+        money += moneyPerRank * l;
+      }
+      progress.reward(money);
+      notes.add('🎖️ New rank: ${rank()['title']}! +${_price(money)}');
     }
     return notes;
   }

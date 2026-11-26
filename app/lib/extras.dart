@@ -1826,6 +1826,50 @@ class _InventoryScreenState extends State<InventoryScreen> {
 }
 
 /// What you're saving for, and buying it.
+/// 💡 How to earn money: every way, ✅ the ones you've done, 👉 the first one you haven't tried yet.
+class _EarnCard extends StatelessWidget {
+  const _EarnCard({required this.ways});
+  final List<Map> ways;
+  @override
+  Widget build(BuildContext context) {
+    final next = ways.where((w) => w['done'] != true).firstOrNull;
+    return Container(
+      key: const ValueKey('earn_card'),
+      margin: const EdgeInsets.only(top: 12, bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBF0),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF2D49B), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '💡 How to earn money',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Palette.ink),
+          ),
+          const SizedBox(height: 6),
+          for (final w in ways)
+            Padding(
+              key: ValueKey('earn_${w['id']}'),
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '${w == next ? '👉' : (w['done'] == true ? '✅' : '▫️')} ${w['emoji']} ${w['text']}'
+                '${w == next ? '  (try this next!)' : ''}',
+                style: TextStyle(
+                  color: Palette.ink,
+                  height: 1.3,
+                  fontWeight: w == next ? FontWeight.w800 : FontWeight.w500,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The jar and the shop as a page of its own (from the jar strip).
 class JarScreen extends StatelessWidget {
   const JarScreen({super.key, required this.api});
@@ -1965,6 +2009,7 @@ class _ShopPanelState extends State<ShopPanel> {
                   style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Palette.ink),
                 ),
               ),
+              if (j['earn'] is List) _EarnCard(ways: (j['earn'] as List).cast<Map>()),
               if (j['wallet'] is num) ...[
                 const Text(
                   'Save from your wallet for the big things below. Jar money stays here: it can\'t be spent at '

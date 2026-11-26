@@ -321,6 +321,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('tab_shop')));
     await settle(tester, 1500);
     expect(find.byKey(const ValueKey('shop_panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('earn_card')), findsOneWidget);
+    expect(find.textContaining('How to earn money'), findsOneWidget);
+    expect(find.textContaining('try this next'), findsOneWidget);
     expect(find.text('Starter'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

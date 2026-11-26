@@ -179,7 +179,7 @@ void main() {
     final r = await g.buyGoal('cake', fromWallet: true);
     expect(g.progress.owns('cake'), isTrue);
     expect(g.progress.jar, 0);
-    expect(g.progress.wallet, 30);
+    expect(g.progress.wallet, 60 - 20); // \$60 to start, \$20 of it saved into the jar for the cake
     expect('${r['note']}', contains('pocket money'));
     await expectLater(g.buyGoal('wall', fromWallet: true), throwsA(isA<GameError>()));
   });

@@ -203,7 +203,7 @@ class Game {
   /// Tests only: the wallet's default for games made without saying (test/flutter_test_config.dart switches it off
   /// for the tests about other things; test/wallet_test.dart puts it back).
   static bool? testWallet;
-  Progress get progress => Progress(_profile, content, now);
+  Progress get progress => Progress(_profile, content, now, hasWallet: walletOn);
 
   final Map content;
   final KeyValue store;
@@ -1316,7 +1316,55 @@ class Game {
     'jar': progress.jar,
     'goals': progress.goalsView(),
     if (walletOn) 'wallet': progress.wallet,
+    'earn': waysToEarn(),
   };
+
+  /// 💡 Every way to earn money, and whether you've done it yet (the shop points at the first one you haven't).
+  List<Map<String, Object?>> waysToEarn() {
+    final p = _profile;
+    final shop = p['shop'] is Map ? p['shop'] as Map : const {};
+    bool any(String k) => p[k] is Map && (p[k] as Map).isNotEmpty;
+    final quests =
+        p['quests_done'] is Map &&
+        (p['quests_done'] as Map).values.any((w) => w is Map && w.values.any((v) => v == true));
+    final arcs = p['arcs'] is Map && (p['arcs'] as Map).values.any((a) => a is Map && ((a['done'] ?? 0) as num) > 0);
+    return [
+      if (walletOn)
+        {
+          'id': 'pocket',
+          'emoji': '👩',
+          'text': "Mum's pocket money: \$${Progress.pocketMoney.toInt()} every new day you play",
+          'done': true,
+        },
+      {
+        'id': 'stall',
+        'emoji': '🧺',
+        'text': 'Buy things cheap at the market, sell them for more at your own stall',
+        'done': ((shop['sales'] ?? 0) as num) > 0,
+      },
+      {'id': 'list', 'emoji': '📝', 'text': "Mum's list under budget: keep the change", 'done': any('list_days')},
+      {'id': 'daily', 'emoji': '🎯', 'text': 'The daily challenge: \$${moneyDaily.toInt()}', 'done': any('done_daily')},
+      {
+        'id': 'quests',
+        'emoji': '🗓️',
+        'text': 'Weekly quests: \$${moneyQuest.toInt()} each, \$${moneyAllQuests.toInt()} for all of them',
+        'done': quests,
+      },
+      {
+        'id': 'stars',
+        'emoji': '⭐',
+        'text': 'Your first ⭐⭐⭐ on each item: \$${firstThreeStars.toInt()}',
+        'done': _done.any((h) => ((h['stars'] ?? 0) as num) >= 3),
+      },
+      {
+        'id': 'rank',
+        'emoji': '🎖️',
+        'text': 'Rank up: \$${moneyPerRank.toInt()} × your new level',
+        'done': (Challenges(progress).rank()['level'] as int) > 1,
+      },
+      {'id': 'story', 'emoji': '📖', 'text': "A stallholder's story chapter: \$10 to \$20", 'done': arcs},
+    ];
+  }
 
   /// 👛 Put some of your wallet in the savings jar (for goals). Jar money can't be spent at the market.
   Future<Map<String, Object?>> saveToJar(double amount) async {
