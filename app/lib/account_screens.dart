@@ -511,7 +511,19 @@ class _PlayersScreenState extends State<PlayersScreen> {
   Widget build(BuildContext context) {
     final waiting = _players.where((p) => p['status'] == 'pending').length;
     return Scaffold(
-      appBar: AppBar(title: const Text('👑 Players'), backgroundColor: Palette.cream),
+      appBar: AppBar(
+        title: const Text('👑 Players'),
+        backgroundColor: Palette.cream,
+        actions: [
+          IconButton(
+            key: const ValueKey('stats_open'),
+            tooltip: 'How players play',
+            icon: const Icon(Icons.insights_rounded),
+            onPressed: () =>
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => StatsScreen(api: widget.api))),
+          ),
+        ],
+      ),
       backgroundColor: Palette.cream,
       body: RefreshIndicator(
         onRefresh: _load,
@@ -626,6 +638,232 @@ class _PlayersScreenState extends State<PlayersScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 📊 For the admin: how the market's players play. Who keeps playing, where people stop, and how each stall goes
+/// (too hard? too easy?). Counts only, no names.
+class StatsScreen extends StatefulWidget {
+  const StatsScreen({super.key, required this.api});
+  final Api api;
+  @override
+  State<StatsScreen> createState() => _StatsScreenState();
+}
+
+class _StatsScreenState extends State<StatsScreen> {
+  Map<String, dynamic>? _s;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await widget.api.stats();
+      if (mounted) {
+        setState(() {
+          _s = s;
+          _error = null;
+        });
+      }
+    } on AccountError catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  static const _results = {'deal': '🤝 deal', 'walked': '🚶 walked away', 'refused': '😤 no sale'};
+
+  int _n(Map m, String k) => (m[k] as num?)?.toInt() ?? 0;
+  String _pct(num part, num whole) => whole <= 0 ? '–' : '${(part * 100 / whole).round()}%';
+
+  Widget _title(String t) => Padding(
+    padding: const EdgeInsets.only(top: 18, bottom: 6),
+    child: Text(
+      t,
+      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Palette.ink),
+    ),
+  );
+
+  Widget _card(List<Widget> children) => Container(
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+  );
+
+  Widget _bar(String label, int n, int of) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(label, style: const TextStyle(color: Palette.ink)),
+            ),
+            Text(
+              '$n  (${_pct(n, of)})',
+              style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: of <= 0 ? 0 : n / of,
+            minHeight: 8,
+            color: Palette.teal,
+            backgroundColor: Palette.cream,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _line(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(label, style: const TextStyle(color: Palette.ink)),
+        ),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+        ),
+      ],
+    ),
+  );
+
+  String _ends(Map m) {
+    final total = m.values.fold<int>(0, (a, v) => a + (v as num).toInt());
+    if (total == 0) return 'none yet';
+    return [for (final e in m.entries) '${_results[e.key] ?? e.key} ${_pct(e.value as num, total)}'].join(' · ');
+  }
+
+  Widget _stall(Map st) {
+    final h = _n(st, 'haggles'), d = _n(st, 'deals');
+    final rate = h == 0 ? 0.0 : d / h;
+    final flag = h < 5
+        ? ''
+        : rate < 0.4
+        ? '  😣 hard?'
+        : rate > 0.9
+        ? '  😴 easy?'
+        : '';
+    return Container(
+      key: ValueKey('stats_stall_${st['id']}'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${st['name']}$flag',
+            style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            h == 0
+                ? 'Nobody has haggled here yet.'
+                : '$h haggles · deals ${_pct(d, h)} · walked away ${_pct(_n(st, 'walked'), h)} · '
+                      'no sale ${_pct(_n(st, 'refused'), h)}\n'
+                      '${d == 0 ? '–' : (_n(st, 'stars') / d).toStringAsFixed(1)} ⭐ per deal · '
+                      '${(_n(st, 'moves') / h).toStringAsFixed(1)} moves per haggle',
+            style: const TextStyle(color: Palette.soft, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _s;
+    return Scaffold(
+      appBar: AppBar(title: const Text('📊 How players play'), backgroundColor: Palette.cream),
+      backgroundColor: Palette.cream,
+      body: s == null
+          ? Center(
+              child: _error != null
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(_error!, textAlign: TextAlign.center),
+                    )
+                  : const CircularProgressIndicator(),
+            )
+          : RefreshIndicator(onRefresh: _load, child: _body(s)),
+    );
+  }
+
+  Widget _body(Map<String, dynamic> s) {
+    final p = s['players'] as Map, reach = s['reach'] as Map, stop = s['stopped'] as Map;
+    final style = s['style'] as Map;
+    final all = _n(p, 'approved') + _n(p, 'pending');
+    final gone = stop.values.fold<int>(0, (a, v) => a + (v as num).toInt());
+    final moves = _n(style, 'typed') + _n(style, 'tapped');
+    final stalls = (s['stalls'] as List).cast<Map>().toList()
+      ..sort((a, b) => _n(b, 'haggles').compareTo(_n(a, 'haggles')));
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+      children: [
+        _title('👥 Players'),
+        _card([
+          _line('Approved', '${_n(p, 'approved')}'),
+          _line('Waiting for you', '${_n(p, 'pending')}'),
+          _line('Signed up in the last 7 days', '${_n(p, 'new_7d')}'),
+          _line('Played in the last 7 days', '${_n(p, 'active_7d')}'),
+          _line('AI calls today (everyone)', '${s['ai_today'] ?? 0}'),
+        ]),
+        _title('🪜 How far they get'),
+        _card([
+          _bar('Played a haggle', _n(reach, '1'), all),
+          _bar('3 haggles or more', _n(reach, '3'), all),
+          _bar('10 or more', _n(reach, '10'), all),
+          _bar('30 or more', _n(reach, '30'), all),
+          _bar('Came back another day', _n(reach, 'days_2'), all),
+          _bar('Played on 7 different days', _n(reach, 'days_7'), all),
+        ]),
+        _title('🚪 Where people stop'),
+        _card([
+          Text(
+            gone == 0 ? 'Nobody has stopped yet: everyone played in the last week.' : 'Not seen for a week ($gone):',
+            style: const TextStyle(color: Palette.soft),
+          ),
+          if (gone > 0) ...[
+            _bar('After 1 haggle', _n(stop, 'after_1'), gone),
+            _bar('After 2–3', _n(stop, 'after_2_3'), gone),
+            _bar('After 4–10', _n(stop, 'after_4_10'), gone),
+            _bar('After 11 or more', _n(stop, 'after_11'), gone),
+            const SizedBox(height: 4),
+            Text('Their last haggle: ${_ends(s['stopped_last'] as Map)}', style: const TextStyle(color: Palette.ink)),
+          ],
+          const SizedBox(height: 8),
+          Text('First haggles: ${_ends(s['first'] as Map)}', style: const TextStyle(color: Palette.ink)),
+          _line('First haggle wasn\'t a deal, never came back', '${s['first_bad_gone'] ?? 0}'),
+        ]),
+        _title('🏪 Stalls'),
+        for (final st in stalls) _stall(st),
+        _title('🎮 How they play'),
+        _card([
+          _line('Haggles', '${_n(style, 'haggles')}'),
+          _line('Moves typed or said 🎤', _pct(_n(style, 'typed'), moves)),
+          _line('Moves tapped', _pct(_n(style, 'tapped'), moves)),
+          _line('Played together 👥', '${_n(style, 'together')}'),
+          _line('In Hard mode', '${_n(style, 'hard')}'),
+        ]),
+        const SizedBox(height: 16),
+        const Text(
+          'Only players with an account on this market are counted. People playing without an account (the web '
+          'version or the app without logging in) keep everything on their own phone, so they aren\'t seen here.',
+          style: TextStyle(color: Palette.soft, height: 1.35),
+        ),
+      ],
     );
   }
 }

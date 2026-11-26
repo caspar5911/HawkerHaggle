@@ -539,10 +539,11 @@ class Game {
   }
 
   // ---------------------------------------------------------------- the game
-  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise]) async {
+  /// [anyStall]: a friend's challenge link may open a stall the player hasn't unlocked yet (just that haggle).
+  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise, bool anyStall = false]) async {
     final stall = _stalls[stallId];
     if (stall == null) throw GameError(404, 'No such stall');
-    if (!unlockAll && !progress.unlocked(stallId)) {
+    if (!unlockAll && !anyStall && !progress.unlocked(stallId)) {
       throw GameError(
         403,
         progress.unlockDays(stallId) > 0

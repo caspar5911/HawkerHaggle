@@ -4,7 +4,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart' hide Fake;
-import 'package:hawker_haggle/account_screens.dart' show statusText;
+import 'package:hawker_haggle/guide.dart';
+import 'package:hawker_haggle/account_screens.dart' show PlayersScreen, statusText;
 import 'package:hawker_haggle/accounts.dart';
 import 'package:hawker_haggle/api.dart';
 import 'package:hawker_haggle/core/game.dart';
@@ -31,6 +32,31 @@ class Market {
   final saves = <String, Map<String, Object?>>{}; // username: {data, rev}
   final rooms = <String, Map<String, Object?>>{}; // live co-op rooms
   Map<String, Object?> board = {'week': '2026-11-23', 'items': <Object>[], 'gossip': <Object>[]};
+  Map<String, Object?> stats = {
+    'day': '2026-11-26',
+    'players': {'approved': 4, 'pending': 1, 'new_7d': 2, 'active_7d': 3},
+    'reach': {'1': 4, '3': 3, '10': 1, '30': 0, 'days_2': 2, 'days_7': 0},
+    'stopped': {'after_1': 1, 'after_2_3': 0, 'after_4_10': 0, 'after_11': 0},
+    'stopped_last': {'refused': 1},
+    'first': {'deal': 3, 'refused': 1},
+    'first_bad_gone': 1,
+    'style': {'haggles': 40, 'typed': 30, 'tapped': 90, 'together': 2, 'hard': 1},
+    'stalls': [
+      {
+        'id': 'mei',
+        'name': 'Auntie Mei',
+        'haggles': 20,
+        'deals': 19,
+        'walked': 1,
+        'refused': 0,
+        'stars': 50,
+        'moves': 80,
+      },
+      {'id': 'lim', 'name': 'Uncle Lim', 'haggles': 10, 'deals': 3, 'walked': 2, 'refused': 5, 'stars': 4, 'moves': 70},
+      {'id': 'raj', 'name': 'Mr Raj', 'haggles': 0, 'deals': 0, 'walked': 0, 'refused': 0, 'stars': 0, 'moves': 0},
+    ],
+    'ai_today': 12,
+  };
   var n = 1;
 
   Map<String, Object?> pub(Map u) => {
@@ -153,6 +179,9 @@ class Market {
           'ai_today': 0,
           'default_password': who!['default'] == true,
         });
+      case '/ai/admin/stats':
+        if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
+        return out(200, stats);
       case '/ai/admin/decide':
         if (who?['admin'] != true) return out(403, {'detail': 'Admin only'});
         final u = users.values.firstWhere((u) => u['id'] == body['id']);
@@ -209,6 +238,7 @@ void main() {
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
     Sfx.available = false;
+    MumGuide.enabled = false;
   });
 
   test('server addresses are tidied: no scheme, trailing slash or relay path needed', () {
@@ -625,6 +655,12 @@ void main() {
           },
         ],
         'gossip': <Object>[],
+        'hagglers': [
+          {'name': 'Arella', 'stars': 9, 'items': 4, 'deals': 6, 'you': false, 'place': 1},
+          for (var i = 2; i <= 10; i++)
+            {'name': 'Player $i', 'stars': 9 - i ~/ 2, 'items': 3, 'deals': 3, 'you': false, 'place': i},
+          {'name': 'jingqi', 'stars': 1, 'items': 1, 'deals': 1, 'you': true, 'place': 14},
+        ],
       };
     final api = apiWith(m, accountServer: 'https://market.example.com');
     await api.signIn(server: api.accountServer, username: 'jingqi', password: 'kopi1234', signUp: true);
@@ -635,11 +671,72 @@ void main() {
     expect(find.byKey(const ValueKey('board_open')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('board_open')));
     await settle(tester, 1000);
+    // top hagglers first: the stars, and you at the end even outside the top 10
+    expect(find.text('Arella'), findsOneWidget);
+    expect(find.text('9 ⭐'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('haggler_14')),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    expect(find.text('jingqi (you)'), findsOneWidget);
+    expect(find.text('#14'), findsOneWidget);
+    expect(find.text('⋯'), findsOneWidget); // a gap before you
+    await tester.tap(find.byKey(const ValueKey('tab_prices')));
+    await settle(tester, 800);
     expect(find.text('🥇 Arella  \$11'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('beat_mei_mango')));
     await settle(tester, 1500);
     expect(find.text("🏆 Beat Arella's \$11!"), findsOneWidget);
     await settle(tester, 3000);
+  });
+
+  testWidgets('an older market server has no top hagglers yet: the tab says so', (tester) async {
+    final m = Market();
+    final api = apiWith(m, accountServer: 'https://market.example.com');
+    await api.signIn(server: api.accountServer, username: 'jingqi', password: 'kopi1234', signUp: true);
+    await tester.pumpWidget(HawkerHaggleApp(api: api));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('tab_friends')));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('board_open')));
+    await settle(tester, 1000);
+    expect(find.textContaining('being updated'), findsOneWidget);
+  });
+
+  testWidgets('admin: 📊 how players play, from the Players screen', (tester) async {
+    final m = Market();
+    final api = apiWith(m, accountServer: 'https://relay.example');
+    await api.signIn(server: api.accountServer, username: 'admin', password: 'admin');
+    await tester.pumpWidget(MaterialApp(home: PlayersScreen(api: api)));
+    await settle(tester, 1000);
+    await tester.tap(find.byKey(const ValueKey('stats_open')));
+    await settle(tester, 1000);
+    expect(find.text('📊 How players play'), findsOneWidget);
+    expect(find.text('3  (60%)'), findsOneWidget); // played 3 or more: 3 of 5 players
+    expect(find.text('AI calls today (everyone)'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('stats_stall_lim')),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    expect(find.text('Uncle Lim  😣 hard?'), findsOneWidget);
+    expect(find.text('Auntie Mei  😴 easy?'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.textContaining('Only players with an account'),
+      find.byType(ListView).last,
+      const Offset(0, -300),
+    );
+    expect(find.text('Nobody has haggled here yet.'), findsOneWidget);
+    expect(find.text('25%'), findsOneWidget); // typed: 30 of 120 moves
+  });
+
+  test('only the admin can ask for the stats', () async {
+    final m = Market();
+    final a = apiWith(m, accountServer: 'https://relay.example');
+    await expectLater(a.stats(), throwsA(isA<AccountError>()));
+    await a.signIn(server: 'market.example.com', username: 'jingqi', password: 'kopi1234', signUp: true);
+    await expectLater(a.stats(), throwsA(isA<AccountError>()));
   });
 
   test("the admin's AI goes through the market it logged in to, like a player's; logging out goes back", () async {

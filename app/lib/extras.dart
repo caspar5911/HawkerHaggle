@@ -1242,40 +1242,146 @@ class _BoardScreenState extends State<BoardScreen> {
   @override
   Widget build(BuildContext context) {
     final items = (_b?['items'] as List? ?? const []).cast<Map>();
-    return Scaffold(
-      appBar: AppBar(title: const Text("🏆 This week's best prices"), backgroundColor: Palette.cream),
-      backgroundColor: Palette.cream,
-      body: _b == null
-          ? Center(
-              child: _failed
-                  ? const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text("Couldn't reach the market server. Try again later.", textAlign: TextAlign.center),
-                    )
-                  : const CircularProgressIndicator(),
-            )
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-              children: [
-                const Text(
-                  'The lowest price each player paid this week (Monday to Sunday), from everyone with an approved '
-                  'account on this market. Beat a friend\'s price to take the top spot!',
-                  style: TextStyle(color: Palette.soft, height: 1.35),
-                ),
-                const SizedBox(height: 12),
-                if (items.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 40),
-                    child: Text(
-                      'No deals yet this week. Close one and it shows here!',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
-                    ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('🏆 This week'),
+          backgroundColor: Palette.cream,
+          bottom: const TabBar(
+            tabs: [
+              Tab(key: ValueKey('tab_hagglers'), text: '🥇 Top hagglers'),
+              Tab(key: ValueKey('tab_prices'), text: '🏷️ Best prices'),
+            ],
+          ),
+        ),
+        backgroundColor: Palette.cream,
+        body: _b == null
+            ? Center(
+                child: _failed
+                    ? const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text("Couldn't reach the market server. Try again later.", textAlign: TextAlign.center),
+                      )
+                    : const CircularProgressIndicator(),
+              )
+            : TabBarView(
+                children: [
+                  _hagglers(),
+                  ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    children: [
+                      const Text(
+                        'The lowest price each player paid this week (Monday to Sunday), from everyone with an approved '
+                        'account on this market. Beat a friend\'s price to take the top spot!',
+                        style: TextStyle(color: Palette.soft, height: 1.35),
+                      ),
+                      const SizedBox(height: 12),
+                      if (items.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 40),
+                          child: Text(
+                            'No deals yet this week. Close one and it shows here!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
+                          ),
+                        ),
+                      for (final it in items)
+                        if (_find('${it['stall']}', '${it['item']}') case final f?) _row(it, f.stall, f.item),
+                    ],
                   ),
-                for (final it in items)
-                  if (_find('${it['stall']}', '${it['item']}') case final f?) _row(it, f.stall, f.item),
-              ],
+                ],
+              ),
+      ),
+    );
+  }
+
+  /// The week's best hagglers: stars, counting each player's best on each item once.
+  Widget _hagglers() {
+    final top = (_b?['hagglers'] as List?)?.cast<Map>();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        const Text(
+          'Stars this week (Monday to Sunday). Your best on each item counts once, so haggling well at many stalls '
+          'beats playing one item over and over. Starts again every Monday!',
+          style: TextStyle(color: Palette.soft, height: 1.35),
+        ),
+        const SizedBox(height: 12),
+        if (top == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 40),
+            child: Text(
+              'The market server is being updated. Try again in a little while.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
             ),
+          )
+        else if (top.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 40),
+            child: Text(
+              'No deals yet this week. Close one and you\'re on top!',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
+            ),
+          )
+        else
+          for (final (i, x) in top.indexed) ...[
+            if (i > 0 && (x['place'] as num) > (top[i - 1]['place'] as num) + 1)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 2),
+                child: Center(
+                  child: Text('⋯', style: TextStyle(color: Palette.soft, fontSize: 18)),
+                ),
+              ),
+            _haggler(x),
+          ],
+      ],
+    );
+  }
+
+  Widget _haggler(Map x) {
+    final place = (x['place'] as num).toInt();
+    final you = x['you'] == true;
+    final items = (x['items'] as num).toInt();
+    return Container(
+      key: ValueKey('haggler_$place'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: you ? const Color(0xFFFFF1C9) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: you ? Border.all(color: Palette.gold, width: 1.5) : null,
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 40,
+            child: Text(
+              place <= 3 ? const ['🥇', '🥈', '🥉'][place - 1] : '#$place',
+              style: TextStyle(fontSize: place <= 3 ? 24 : 16, fontWeight: FontWeight.w700, color: Palette.ink),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              '${x['name']}${you ? ' (you)' : ''}',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Palette.ink, fontWeight: you ? FontWeight.w700 : FontWeight.w500, fontSize: 16),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${x['stars']} ⭐',
+                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink, fontSize: 16),
+              ),
+              Text('$items item${items == 1 ? '' : 's'}', style: const TextStyle(color: Palette.soft, fontSize: 12)),
+            ],
+          ),
+        ],
+      ),
     );
   }
 

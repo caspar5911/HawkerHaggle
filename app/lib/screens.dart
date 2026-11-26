@@ -7,7 +7,9 @@ import 'account_screens.dart';
 import 'accounts.dart' show AccountError;
 import 'api.dart';
 import 'character.dart';
+import 'challenge_link.dart';
 import 'extras.dart';
+import 'guide.dart';
 import 'juice.dart';
 import 'music.dart';
 import 'sfx.dart';
@@ -17,6 +19,10 @@ import 'web_update.dart';
 import 'widgets.dart';
 
 // ======================================================================= market
+/// The address the game was opened with (the web version: a friend's challenge link). Swappable for tests.
+@visibleForTesting
+String Function() startAddress = pageAddress;
+
 class MarketScreen extends StatefulWidget {
   const MarketScreen({super.key, required this.api});
   final Api api;
@@ -36,7 +42,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _load();
+    _load().then((_) => _checkLink());
     _checkVersion();
   }
 
@@ -83,10 +89,11 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   bool _asking = false;
   Map<String, dynamic>? _board;
   Map<String, dynamic>? _jar;
+  bool _linkChecked = false;
 
   String _boardLine() {
     final n = (_board?['items'] as List? ?? const []).length;
-    return n == 0 ? "This week's best prices: be the first!" : "This week's best prices · beat your friends";
+    return n == 0 ? "This week's top hagglers: be the first!" : "This week's top hagglers and best prices";
   }
 
   Future<void> _openBoard() async {
@@ -135,8 +142,8 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     if (stall != null && item != null) _open(stall, item);
   }
 
-  Future<void> _open(Map stall, Map item, {String surprise = '', Map? target}) async {
-    if (stall['locked'] == true) {
+  Future<void> _open(Map stall, Map item, {String surprise = '', Map? target, bool challenge = false}) async {
+    if (stall['locked'] == true && !challenge) {
       final days = (stall['unlock_days'] ?? 0) as num;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -152,8 +159,14 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     await Navigator.of(context).push(
       PageRouteBuilder(
         transitionDuration: const Duration(milliseconds: 450),
-        pageBuilder: (_, _, _) =>
-            HaggleScreen(api: widget.api, stall: stall, item: item, surprise: surprise, target: target),
+        pageBuilder: (_, _, _) => HaggleScreen(
+          api: widget.api,
+          stall: stall,
+          item: item,
+          surprise: surprise,
+          target: target,
+          challenge: challenge,
+        ),
         transitionsBuilder: (_, a, _, child) => SlideTransition(
           position: Tween(
             begin: const Offset(0, 1),
@@ -288,7 +301,9 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         key: const ValueKey('board_open'),
         emoji: '🏆',
         title: _boardLine(),
-        line: "The market's best prices this week. Beat one and the stallholders will gossip about it.",
+        line:
+            "Who got the most stars this week, and the best price on each item. Beat one and the stallholders "
+            'will gossip about it.',
         color: const Color(0xFFFFF1C9),
         onTap: _openBoard,
       ),
@@ -301,7 +316,79 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         color: const Color(0xFFEDE7F6),
         onTap: () => _push(SettingsScreen(api: widget.api)),
       ),
+    _Entry(
+      key: const ValueKey('challenge_paste'),
+      emoji: '🏃',
+      title: 'Got a challenge link?',
+      line: 'Paste a friend\'s "Can you beat me?" link to play the same haggle and beat their price.',
+      color: const Color(0xFFE3F4EC),
+      onTap: _pasteChallenge,
+    ),
   ];
+
+  Future<void> _pasteChallenge() async {
+    final box = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        backgroundColor: Palette.cream,
+        title: const Text('🏃 A friend\'s challenge'),
+        content: TextField(
+          key: const ValueKey('challenge_field'),
+          controller: box,
+          autofocus: true,
+          maxLines: 3,
+          minLines: 1,
+          decoration: const InputDecoration(hintText: 'Paste their link (or their whole message)'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+          TextButton(
+            key: const ValueKey('challenge_go'),
+            onPressed: () => Navigator.pop(c, box.text),
+            child: const Text('Play'),
+          ),
+        ],
+      ),
+    );
+    // (not disposed here: the dialog's closing animation still uses it)
+    if (text == null || text.trim().isEmpty || !mounted) return;
+    final c = parseChallenge(text);
+    if (c == null) {
+      _toastMarket("That doesn't look like a challenge link. Ask your friend to share their deal again.");
+      return;
+    }
+    await _openChallenge(c);
+  }
+
+  void _toastMarket(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  /// A friend's challenge: their stall and item, with their price to beat (even at a stall you haven't unlocked yet).
+  Future<void> _openChallenge(Challenge c) async {
+    final stall = _stalls.cast<Map>().where((s) => s['id'] == c.stall).firstOrNull;
+    final item = (stall?['items'] as List?)?.cast<Map>().where((i) => i['id'] == c.item).firstOrNull;
+    if (stall == null || item == null) {
+      _toastMarket('That challenge is for something this market doesn\'t sell (yet). Update the game and try again.');
+      return;
+    }
+    if (c.price > (item['ask'] as num) * 1.3) {
+      _toastMarket("That challenge link looks broken. Ask your friend to share their deal again.");
+      return;
+    }
+    await _open(stall, item, target: {'name': c.name, 'price': c.price}, challenge: true);
+  }
+
+  /// The web version opened from a friend's challenge link: play it once the market is ready.
+  Future<void> _checkLink() async {
+    if (_linkChecked) return;
+    _linkChecked = true;
+    final c = parseChallenge(startAddress());
+    if (c == null) return;
+    forgetPageQuery(); // a reload doesn't start it again
+    if (mounted && _stalls.isNotEmpty) await _openChallenge(c);
+  }
 
   List<Widget> _mePage() => [
     const SizedBox(height: 8),
@@ -681,6 +768,58 @@ class _Tell extends StatelessWidget {
   );
 }
 
+/// 👩 Mum's tip in a guided haggle (in the game only: the stallholder and the AI never see it).
+class MumTip extends StatelessWidget {
+  const MumTip({super.key, required this.text, required this.onSkip});
+  final String text;
+  final VoidCallback onSkip;
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('mum_tip'),
+    margin: const EdgeInsets.only(top: 4, bottom: 8),
+    padding: const EdgeInsets.fromLTRB(12, 10, 8, 4),
+    decoration: BoxDecoration(
+      color: const Color(0xFFFFF4D6),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Palette.gold, width: 1.5),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('👩', style: TextStyle(fontSize: 26)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'Mum: ',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    TextSpan(text: text),
+                  ],
+                ),
+                style: const TextStyle(color: Palette.ink, height: 1.35),
+              ),
+            ),
+          ],
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            key: const ValueKey('mum_skip'),
+            onPressed: onSkip,
+            child: const Text('No more tips', style: TextStyle(color: Palette.soft, fontSize: 12)),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 /// Whispers between two friends in a co-op haggle (the same set the server allows). The stallholder never hears them.
 const whispers = {
   'firm': '🧱 Go firm now!',
@@ -775,12 +914,14 @@ class HaggleScreen extends StatefulWidget {
     required this.item,
     this.surprise = '',
     this.target,
+    this.challenge = false,
   });
   final Api api;
   final Map stall;
   final Map item;
   final String surprise; // the daily challenge's Play button can ask for a market surprise
-  final Map? target; // "Beat it" from the friends' board: {name, price}
+  final Map? target; // "Beat it" from the friends' board, or a friend's challenge link: {name, price}
+  final bool challenge; // a friend's challenge link: any stall (even one not unlocked yet), no market surprise
   @override
   State<HaggleScreen> createState() => _HaggleScreenState();
 }
@@ -812,6 +953,11 @@ class _HaggleScreenState extends State<HaggleScreen> {
   Object? _twistAnswered; // the twist already answered (by its haggle state)
   final _savedLines = <String>{};
   final _tune = Music.enter('calm');
+  // 👩 Mum's tips (the first haggle ever, or asked for again in Settings)
+  bool? _guided; // decided once, when the screen opens
+  bool _wasGuided = false;
+  final _tipsSeen = <String>{};
+  String? _tip;
 
   @override
   void initState() {
@@ -987,12 +1133,20 @@ class _HaggleScreenState extends State<HaggleScreen> {
       _guessSkipped = false;
       _dilemmaDone = false;
       _msgs.clear();
+      _tip = null;
     });
     try {
+      if (_guided == null) {
+        final me = await widget.api.me();
+        _guided = _wasGuided = MumGuide.wanted(haggles: (me['haggles'] as num?)?.toInt() ?? 1);
+      } else {
+        _guided = false; // "play again": once is enough
+      }
       final g = await widget.api.start(
         widget.stall['id'] as String,
         widget.item['id'] as String,
-        widget.surprise.isEmpty ? null : widget.surprise,
+        widget.challenge ? '' : (widget.surprise.isEmpty ? null : widget.surprise),
+        widget.challenge,
       );
       _apply(g);
     } on ApiError catch (e) {
@@ -1038,6 +1192,19 @@ class _HaggleScreenState extends State<HaggleScreen> {
       _msgs.add(_Msg(g['line'] as String, false, sparkle: g['ai_line'] == true));
       _face = faceFor(g['event'] as String, (g['mood'] as num).toDouble());
       _react++;
+      _tip = null;
+      if (_guided == true && _friend.isEmpty) {
+        final t = mumTip(
+          g,
+          moves: _msgs.where((m) => m.mine).length,
+          seen: _tipsSeen,
+          canTap: (g['suggestions'] as List? ?? const []).isNotEmpty,
+        );
+        if (t != null) {
+          _tipsSeen.add(t.$1);
+          _tip = t.$2;
+        }
+      }
     });
     Sfx.forEvent(g['event'] as String);
     if (g['event'] == 'accept') HapticFeedback.heavyImpact();
@@ -1195,6 +1362,14 @@ class _HaggleScreenState extends State<HaggleScreen> {
                           if (g != null && !_busy)
                             for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
                           if (_aside.isNotEmpty && !_busy) _Tell(_aside),
+                          if (_tip != null && !_busy && g?['done'] != true)
+                            MumTip(
+                              text: _tip!,
+                              onSkip: () => setState(() {
+                                _guided = false;
+                                _tip = null;
+                              }),
+                            ),
                           // before the first move: a guess at the fair price (checked when the haggle ends)
                           if (g != null && g['done'] != true && _msgs.length == 1 && !_busy && !_guessSkipped)
                             GuessCard(
@@ -1309,6 +1484,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     if (g['closeness'] != null) g['closeness'],
                     ...(g['notes'] as List? ?? const []),
                     if (widget.target != null) _beatNote(g),
+                    if (_wasGuided) mumWellDone(g),
                   ],
                 },
                 stall: widget.stall,
@@ -2066,9 +2242,20 @@ class _ResultState extends State<_Result> {
   Future<void> _share() async {
     final g = widget.g;
     final saved = ((g['saved'] as num) * 100).round();
+    var name = '';
+    try {
+      name = '${(await widget.api.me())['name'] ?? ''}';
+    } catch (_) {}
+    final link = challengeLink(
+      stall: '${widget.stall['id']}',
+      item: '${widget.item['id']}',
+      price: g['deal'] as num,
+      name: name,
+    );
     final text =
         'I got the ${widget.item['name']} for ${money(g['deal'] as num)} at ${widget.stall['name']}\'s stall'
-        '${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} Can you beat me? #HawkerHaggle';
+        '${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} Can you beat me? '
+        'Try here: $link #HawkerHaggle';
     try {
       await shareBrag(text, await capturePng(_card));
     } catch (_) {
@@ -2358,6 +2545,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Icon(Icons.volume_up_rounded, color: Palette.soft),
               ],
             ),
+          ListTile(
+            key: const ValueKey('mum_again'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text("👩 Mum's tips again", style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('Mum gives tips in your next haggle, like the first time.'),
+            onTap: () {
+              MumGuide.again = true;
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text("👩 Mum's tips are on for your next haggle.")));
+            },
+          ),
           SwitchListTile(
             key: const ValueKey('reduce_motion'),
             contentPadding: EdgeInsets.zero,

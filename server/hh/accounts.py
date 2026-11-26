@@ -265,6 +265,8 @@ class Accounts:
                               "WHERE (a.status='approved' OR a.role='admin') AND s.data<>''").fetchall()
         best: dict[tuple[str, str], dict[int, dict]] = {}
         gossip: list[dict] = []
+        # top hagglers: each player's best stars on each item this week (so playing one item fifty times doesn't win)
+        stars: dict[int, dict] = {}
         for r in rows:
             try:
                 prof = json.loads(r["data"])
@@ -286,6 +288,11 @@ class Accounts:
                     mine = best.setdefault((st, it), {})
                     if r["id"] not in mine or price < mine[r["id"]]["price"]:
                         mine[r["id"]] = {"name": name, "price": price, "you": r["id"] == viewer["id"]}
+                    n = h.get("stars")
+                    n = n if isinstance(n, int) and not isinstance(n, bool) and 0 <= n <= 3 else 0
+                    p = stars.setdefault(r["id"], {"name": name, "you": r["id"] == viewer["id"], "best": {}, "deals": 0})
+                    p["best"][(st, it)] = max(p["best"].get((st, it), 0), n)
+                    p["deals"] += 1
                 if day >= recent and r["id"] != viewer["id"]:
                     gossip.append({"stall": st, "item": it, "name": name, "day": day})
         items = []
@@ -303,9 +310,85 @@ class Accounts:
             if (g["stall"], g["name"]) not in seen and sum(x["stall"] == g["stall"] for x in latest) < 2:
                 seen.add((g["stall"], g["name"]))
                 latest.append(g)
-        return {"week": week, "items": items, "gossip": latest}
+        ranked = sorted(({"name": p["name"], "stars": sum(p["best"].values()), "items": len(p["best"]),
+                          "deals": p["deals"], "you": p["you"]} for p in stars.values()),
+                        key=lambda x: (-x["stars"], -x["items"], -x["deals"], x["name"].lower()))
+        for i, x in enumerate(ranked):
+            x["place"] = i + 1
+        hagglers = ranked[:10] + [x for x in ranked[10:] if x["you"]]
+        return {"week": week, "items": items, "gossip": latest, "hagglers": hagglers}
 
     # ------------------------------------------------------------------ admin
+    def stats(self, stalls: dict, today: dt.date) -> dict:
+        """How the market's players play, for the admin: who keeps playing and where people stop, how each stall
+        goes. Counts only, from the progress the accounts keep here (players without an account aren't seen)."""
+        week_ago = (today - dt.timedelta(days=7)).isoformat()
+        with self._db() as db:
+            accs = db.execute("SELECT a.id, a.status, a.created_at, a.last_used, s.data FROM accounts a "
+                              "LEFT JOIN saves s ON s.account_id=a.id WHERE a.role<>'admin'").fetchall()
+
+        def num(x):
+            return x if isinstance(x, (int, float)) and not isinstance(x, bool) else 0
+
+        players = {"approved": 0, "pending": 0, "new_7d": 0, "active_7d": 0}
+        reach = {"1": 0, "3": 0, "10": 0, "30": 0, "days_2": 0, "days_7": 0}
+        stopped = {"after_1": 0, "after_2_3": 0, "after_4_10": 0, "after_11": 0}
+        stopped_last = {}
+        first = {}
+        first_bad_gone = 0
+        style = {"haggles": 0, "typed": 0, "tapped": 0, "together": 0, "hard": 0}
+        per = {sid: {"name": s.get("name", sid), "haggles": 0, "deals": 0, "walked": 0, "refused": 0, "stars": 0,
+                     "moves": 0} for sid, s in stalls.items()}
+        for a in accs:
+            if a["status"] in players:
+                players[a["status"]] += 1
+            if str(a["created_at"] or "")[:10] >= week_ago:
+                players["new_7d"] += 1
+            try:
+                prof = json.loads(a["data"] or "{}")
+                hs = [h for h in (prof.get("haggles") or []) if isinstance(h, dict)]
+            except (ValueError, AttributeError, TypeError):
+                hs = []
+            days = {str(h.get("day") or "")[:10] for h in hs} - {""}
+            last = max(days) if days else ""
+            if last >= week_ago:
+                players["active_7d"] += 1
+            n = len(hs)
+            for k in ("1", "3", "10", "30"):
+                reach[k] += n >= int(k)
+            reach["days_2"] += len(days) >= 2
+            reach["days_7"] += len(days) >= 7
+            if not hs:
+                continue
+            res0 = str(hs[0].get("result") or "other")
+            first[res0] = first.get(res0, 0) + 1
+            if res0 != "deal" and n == 1 and last < week_ago:
+                first_bad_gone += 1
+            if last < week_ago:   # not seen for a week: how far they got
+                stopped["after_1" if n == 1 else "after_2_3" if n <= 3 else "after_4_10" if n <= 10 else "after_11"] += 1
+                r = str(hs[-1].get("result") or "other")
+                stopped_last[r] = stopped_last.get(r, 0) + 1
+            for h in hs:
+                style["haggles"] += 1
+                style["typed"] += int(num(h.get("typed")))
+                style["tapped"] += int(num(h.get("tapped")))
+                style["together"] += h.get("coop") is True
+                style["hard"] += h.get("hard") is True
+                st = per.get(str(h.get("stall")))
+                if st is None:
+                    continue
+                st["haggles"] += 1
+                r = h.get("result")
+                if r == "deal":
+                    st["deals"] += 1
+                    st["stars"] += min(3, max(0, int(num(h.get("stars")))))
+                elif r in ("walked", "refused"):
+                    st[r] += 1
+                st["moves"] += min(99, max(0, int(num(h.get("moves")))))
+        return {"day": today.isoformat(), "players": players, "reach": reach, "stopped": stopped,
+                "stopped_last": stopped_last, "first": first, "first_bad_gone": first_bad_gone, "style": style,
+                "stalls": [{"id": sid, **v} for sid, v in per.items()], "ai_today": self.calls_today()}
+
     def list(self) -> list[dict]:
         day = dt.date.today().isoformat()
         with self._db() as db:

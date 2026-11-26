@@ -132,8 +132,8 @@ class Api {
 
   Future<Map<String, dynamic>> me() => _run((g) => Map<String, dynamic>.from(g.me()));
   Future<Map<String, dynamic>> stalls() => _run((g) => Map<String, dynamic>.from(g.stalls()));
-  Future<Map<String, dynamic>> start(String stall, String item, [String? surprise]) =>
-      _run((g) async => Map<String, dynamic>.from(await g.start(stall, item, surprise)));
+  Future<Map<String, dynamic>> start(String stall, String item, [String? surprise, bool anyStall = false]) =>
+      _run((g) async => Map<String, dynamic>.from(await g.start(stall, item, surprise, anyStall)));
   Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text, String? friend}) => _run(
     (g) async => Map<String, dynamic>.from(await g.move(id, pick: pick, move: move, text: text, friend: friend)),
   );
@@ -489,6 +489,13 @@ class Api {
     final a = _account;
     if (a == null || !a.admin) throw AccountError('Admin only.');
     return _accounts(a.server).players(a.token);
+  }
+
+  /// 📊 How the market's players play (the admin only).
+  Future<Map<String, dynamic>> stats() async {
+    final a = _account;
+    if (a == null || !a.admin) throw AccountError('Admin only.');
+    return _accounts(a.server).stats(a.token);
   }
 
   Future<Map<String, dynamic>> decide(int id, String action) async {

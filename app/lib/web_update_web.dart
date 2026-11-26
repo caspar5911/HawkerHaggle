@@ -20,3 +20,13 @@ Future<bool> newerWebVersion(int mine) async {
 }
 
 void reloadPage() => web.window.location.reload();
+
+/// This page's address (a friend's challenge link opens the game with it).
+String pageAddress() => web.window.location.href;
+
+/// Takes the challenge out of the address once it's used, so a reload doesn't start it again.
+void forgetPageQuery() {
+  try {
+    web.window.history.replaceState(null, '', web.window.location.pathname);
+  } catch (_) {}
+}

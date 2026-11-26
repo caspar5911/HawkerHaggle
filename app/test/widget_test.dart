@@ -5,10 +5,13 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
 import 'package:hawker_haggle/juice.dart';
+import 'package:hawker_haggle/challenge_link.dart';
 import 'package:hawker_haggle/character.dart';
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/extras.dart';
+import 'package:hawker_haggle/guide.dart';
 import 'package:hawker_haggle/main.dart';
+import 'package:hawker_haggle/screens.dart' show startAddress;
 import 'package:hawker_haggle/music.dart';
 import 'package:hawker_haggle/sfx.dart';
 import 'package:hawker_haggle/voice.dart';
@@ -104,8 +107,9 @@ class Fake extends Game {
     ],
   };
   @override
-  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise]) async {
+  Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise, bool anyStall = false]) async {
     lastSurprise = surprise;
+    lastAnyStall = anyStall;
     return first ?? game('Morning my dear! \$18 only.');
   }
 
@@ -180,6 +184,7 @@ class Fake extends Game {
   };
 
   String? lastSurprise;
+  bool lastAnyStall = false;
 
   @override
   List<Map<String, Object?>> history() => [
@@ -245,6 +250,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     Sfx.available = false;
     Music.reset();
+    MumGuide.enabled = false; // a new test player has never haggled: Mum's tips only in their own tests
   });
 
   testWidgets('market shows stalls; OK lah turns into Confirm; the second tap buys', (tester) async {
@@ -639,6 +645,8 @@ void main() {
     await tester.tap(find.text('Share'));
     await settle(tester, 1000);
     expect(shared.single, contains('33% off'));
+    // with a link that opens the same haggle for a friend, with this price to beat
+    expect(parseChallenge(shared.single), (stall: 'mei', item: 'mango', price: 12.0, name: fake.name));
     await settle(tester, 3000);
   });
 
@@ -758,12 +766,77 @@ void main() {
     expect(Music.wanted, 'stroll');
   });
 
+  testWidgets("👩 Mum's tips in the first haggle: the first offer, her counter, No more tips, and her last word", (
+    tester,
+  ) async {
+    MumGuide.enabled = true;
+    await openHaggle(tester, [
+      game('Aiyo, \$16 lah.', event: 'counter', ask: 16),
+      game('OK lah OK lah, \$16!', event: 'accept', result: 'deal', deal: 16, stars: 1),
+    ]);
+    expect(find.byKey(const ValueKey('mum_tip')), findsOneWidget);
+    expect(find.textContaining('Stallholders always start high'), findsOneWidget);
+    await tester.tap(find.text('\$11 can or not?'));
+    await settle(tester);
+    expect(find.textContaining('She came down!'), findsOneWidget);
+    expect(find.textContaining('Stallholders always start high'), findsNothing); // one tip at a time
+    await tester.tap(find.byKey(const ValueKey('mum_skip')));
+    await settle(tester, 300);
+    expect(find.byKey(const ValueKey('mum_tip')), findsNothing);
+    await tester.tap(find.text('OK lah, \$16'));
+    await settle(tester, 600);
+    await tester.tap(find.text('Confirm \$16'));
+    await settle(tester, 2500);
+    expect(find.textContaining('Mum: Well done!'), findsOneWidget); // she still says well done
+    await settle(tester, 3000);
+  });
+
+  testWidgets("a friend's challenge link opens their haggle, with their price to beat and no surprise", (tester) async {
+    startAddress = () => challengeLink(stall: 'mei', item: 'mango', price: 12.5, name: 'Melody');
+    addTearDown(() => startAddress = () => '');
+    final fake = Fake([]);
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2500);
+    expect(find.textContaining("Beat Melody's \$12.50"), findsOneWidget);
+    expect(fake.lastSurprise, '');
+    expect(fake.lastAnyStall, isTrue);
+  });
+
+  testWidgets('a challenge link can be pasted under Friends', (tester) async {
+    final fake = Fake([]);
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('tab_friends')));
+    await settle(tester, 600);
+    await tester.tap(find.byKey(const ValueKey('challenge_paste')));
+    await settle(tester, 600);
+    await tester.enterText(find.byKey(const ValueKey('challenge_field')), 'nothing here');
+    await tester.tap(find.byKey(const ValueKey('challenge_go')));
+    await settle(tester, 600);
+    expect(find.textContaining("doesn't look like a challenge link"), findsOneWidget);
+    await settle(tester, 4000);
+    await tester.tap(find.byKey(const ValueKey('challenge_paste')));
+    await settle(tester, 600);
+    final link = challengeLink(stall: 'mei', item: 'mango', price: 9, name: 'Ah Boy');
+    await tester.enterText(find.byKey(const ValueKey('challenge_field')), 'Can you beat me? $link');
+    await tester.tap(find.byKey(const ValueKey('challenge_go')));
+    await settle(tester, 1500);
+    expect(find.textContaining("Beat Ah Boy's \$9"), findsOneWidget);
+    expect(fake.lastAnyStall, isTrue);
+  });
+
   testWidgets('Reduce motion can be switched on in Settings', (tester) async {
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
     await settle(tester, 2000);
     await tester.tap(find.byIcon(Icons.settings_rounded));
     await settle(tester);
     expect(Motion.reduced, isFalse);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('reduce_motion')),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    await settle(tester, 300);
     await tester.tap(find.byKey(const ValueKey('reduce_motion')));
     await settle(tester, 400);
     expect(Motion.reduced, isTrue);

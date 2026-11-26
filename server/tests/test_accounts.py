@@ -367,3 +367,101 @@ def test_the_admin_can_delete_an_account_for_good(app):
     assert c.post("/ai/admin/decide", json={"id": ids["Arella"], "action": "delete"},
                   headers=bearer(tok, GATEWAY)).status_code == 403          # only the admin
 
+
+
+# ------------------------------------------------------------------ top hagglers and the admin's stats
+def _save_raw(c, tok, who, data):
+    import json as _json
+    rev = c.post("/ai/accounts/progress", headers=bearer(tok, who)).json()["rev"]
+    r = c.post("/ai/accounts/progress/save", json={"data": _json.dumps(data), "rev": rev}, headers=bearer(tok, who))
+    assert r.status_code == 200, r.text
+
+
+def _deal(stall, item, stars, day=None, **extra):
+    import datetime as _dt
+    from hh.api import STALLS
+    ask = next(i for i in STALLS[stall]["items"] if i["id"] == item)["ask"]
+    today = _dt.datetime.now(_dt.timezone(_dt.timedelta(hours=8))).date().isoformat()
+    return {"stall": stall, "item": item, "result": "deal", "deal": ask, "stars": stars, "day": day or today, **extra}
+
+
+def _approve(c, accounts, *names):
+    adm = admin_token(c)
+    ids = {p["username"]: p["id"] for p in accounts.list()}
+    for u in names:
+        c.post("/ai/admin/decide", json={"id": ids[u], "action": "approve"}, headers=bearer(adm, ME))
+    return adm
+
+
+def test_top_hagglers_count_the_best_stars_on_each_item_this_week(app):
+    c, accounts, _ = app
+    grinder, wide, cheat, pend = signup(c, "Grinder"), signup(c, "Wide"), signup(c, "Cheat"), signup(c, "Pend")
+    _approve(c, accounts, "Grinder", "Wide", "Cheat")
+    _save_raw(c, grinder, GATEWAY, {"name": "Grinder", "haggles": [_deal("mei", "durian", 3) for _ in range(50)]})
+    _save_raw(c, wide, GATEWAY, {"name": "Wide", "haggles": [
+        _deal("mei", "durian", 2), _deal("mei", "mango", 2), _deal("lim", "pomfret", 2),
+        _deal("lim", "prawns", 3, day="2020-01-06"),                       # an old week: not counted
+        {**_deal("raj", "case", 3), "result": "walked"}]})                  # no deal: no stars
+    _save_raw(c, cheat, GATEWAY, {"name": "Cheat", "haggles": [
+        _deal("mei", "durian", 99), _deal("mei", "mango", True), _deal("lim", "pomfret", "3")]})
+    _save_raw(c, pend, GATEWAY, {"name": "Pend", "haggles": [_deal("mei", "durian", 3)]})
+    board = c.post("/ai/accounts/board", headers=bearer(grinder, GATEWAY)).json()
+    top = board["hagglers"]
+    assert [(x["name"], x["stars"], x["items"], x["place"]) for x in top] == [
+        ("Wide", 6, 3, 1), ("Grinder", 3, 1, 2), ("Cheat", 0, 3, 3)]
+    assert [x["you"] for x in top] == [False, True, False]
+    assert top[1]["deals"] == 50
+    assert "Pend" not in str(top)
+
+
+def test_top_hagglers_show_the_first_ten_and_you(app):
+    c, accounts, _ = app
+    names = [f"Player{chr(65 + i)}" for i in range(12)]
+    toks = {n: signup(c, n) for n in names}
+    _approve(c, accounts, *names)
+    items = [("mei", "durian"), ("mei", "mango"), ("lim", "pomfret"), ("lim", "prawns")]
+    for i, n in enumerate(names):   # PlayerA has the most stars, PlayerL the fewest
+        _save_raw(c, toks[n], GATEWAY, {"name": n, "haggles": [
+            _deal(st, it, 3 if k < (12 - i) // 3 else 1) for k, (st, it) in enumerate(items)]})
+    top = c.post("/ai/accounts/board", headers=bearer(toks["PlayerL"], GATEWAY)).json()["hagglers"]
+    assert len(top) == 11 and top[-1]["name"] == "PlayerL" and top[-1]["you"] and top[-1]["place"] == 12
+    assert [x["place"] for x in top[:10]] == list(range(1, 11))
+
+
+def test_the_admin_sees_how_players_play(app):
+    c, accounts, _ = app
+    new, keen, gone = signup(c, "Newbie"), signup(c, "Keen"), signup(c, "Gone")
+    adm = _approve(c, accounts, "Keen", "Gone")
+    _save_raw(c, keen, GATEWAY, {"name": "Keen", "haggles": [
+        _deal("mei", "durian", 3, moves=6, typed=2, tapped=4),
+        {**_deal("mei", "mango", 0, moves=3, tapped=3), "result": "walked"},
+        _deal("lim", "pomfret", 2, day="2026-01-05", coop=True, hard=True),
+        {**_deal("mei", "durian", 3), "stall": "nowhere"}]})                                      # an unknown stall: skipped per stall
+    _save_raw(c, gone, GATEWAY, {"name": "Gone", "haggles": [
+        {**_deal("mei", "durian", 0, day="2020-01-01"), "result": "refused"}]})
+    r = c.post("/ai/admin/stats", headers=bearer(adm, ME))
+    assert r.status_code == 200, r.text
+    s = r.json()
+    assert s["players"] == {"approved": 2, "pending": 1, "new_7d": 3, "active_7d": 1}
+    assert s["reach"]["1"] == 2 and s["reach"]["3"] == 1 and s["reach"]["10"] == 0 and s["reach"]["days_2"] == 1
+    assert s["stopped"] == {"after_1": 1, "after_2_3": 0, "after_4_10": 0, "after_11": 0}
+    assert s["stopped_last"] == {"refused": 1} and s["first_bad_gone"] == 1
+    assert s["first"] == {"deal": 1, "refused": 1}
+    assert s["style"] == {"haggles": 5, "typed": 2, "tapped": 7, "together": 1, "hard": 1}
+    mei = next(x for x in s["stalls"] if x["id"] == "mei")
+    assert (mei["haggles"], mei["deals"], mei["walked"], mei["refused"], mei["stars"], mei["moves"]) == (3, 1, 1, 1, 3, 9)
+    assert "Keen" not in r.text and "Gone" not in r.text                   # counts only, no names
+    assert "nowhere" not in r.text
+    del new
+
+
+def test_only_the_admin_sees_the_stats(app):
+    c, accounts, _ = app
+    tok = signup(c, "Curious")
+    _approve(c, accounts, "Curious")
+    assert c.post("/ai/admin/stats", headers=bearer(tok, GATEWAY)).status_code == 403   # reaches it, not allowed
+    assert c.post("/ai/admin/stats", headers=bearer(tok, ME)).status_code == 403
+    assert c.post("/ai/admin/stats", headers=GATEWAY).status_code == 403
+    adm = admin_token(c)
+    assert c.post("/ai/admin/stats", headers=bearer(adm, GATEWAY)).status_code == 403  # default password: Tailscale only
+    assert c.post("/ai/admin/stats", headers=bearer(adm, ME)).status_code == 200

@@ -53,7 +53,7 @@ GATEWAY_LOGINS = {x.strip().lower() for x in os.environ.get("HH_GATEWAY_LOGINS",
 ADMIN_LOGINS = {x.strip().lower() for x in os.environ.get("HH_ADMIN_LOGINS", "").split(",") if x.strip()}
 PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/login", "/ai/accounts/me",
                 "/ai/accounts/logout", "/ai/accounts/password", "/ai/accounts/progress", "/ai/accounts/progress/save",
-                "/ai/accounts/progress/delete", "/ai/accounts/board", "/ai/admin/players", "/ai/admin/decide",
+                "/ai/accounts/progress/delete", "/ai/accounts/board", "/ai/admin/players", "/ai/admin/decide", "/ai/admin/stats",
                 "/ai/coop/create", "/ai/coop/join", "/ai/coop/send", "/ai/coop/pull", "/ai/coop/leave"}
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
@@ -558,6 +558,12 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         admin_only(request, authorization)
         return {"players": accounts.list(), "ai_today": accounts.calls_today(),
                 "default_password": bool(accounts.me(bearer(authorization))["default_password"])}
+
+    @app.post("/ai/admin/stats")
+    def admin_stats(request: Request, authorization: str = Header(default="")):
+        admin_only(request, authorization)
+        today = dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date()
+        return accounts.stats(STALLS, today)
 
     @app.post("/ai/admin/decide")
     def admin_decide(body: Decide, request: Request, authorization: str = Header(default="")):

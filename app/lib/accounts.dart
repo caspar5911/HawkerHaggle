@@ -146,6 +146,7 @@ class AccountClient {
 
   // admin
   Future<Map<String, dynamic>> players(String token) => _post('admin/players', token: token);
+  Future<Map<String, dynamic>> stats(String token) => _post('admin/stats', token: token);
   Future<Map<String, dynamic>> decide(String token, int id, String action) =>
       _post('admin/decide', token: token, body: {'id': id, 'action': action});
 }
