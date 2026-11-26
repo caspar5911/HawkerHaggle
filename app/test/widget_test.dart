@@ -1139,7 +1139,7 @@ void main() {
     await settle(tester, 2000);
     await tester.tap(find.byKey(const ValueKey('tab_stall')));
     await settle(tester);
-    expect(find.textContaining('Jar \$12'), findsOneWidget); // on the My stall tab
+    expect(find.textContaining('jar \$12'), findsOneWidget); // on the My stall tab (the shop strip)
     await tester.tap(find.byKey(const ValueKey('tab_market')));
     await settle(tester);
     await tester.ensureVisible(find.text('box of mangoes'));

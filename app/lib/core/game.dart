@@ -297,8 +297,12 @@ class Game {
   Map<String, Object?> me() {
     final done = _done;
     if (walletOn) progress.topUp(); // a new market day: Mum's pocket money
+    final morning = progress.newDay(wallet: walletOn); // and what your shop things do each new day
     return {
       if (walletOn) ...{'wallet': progress.wallet, 'pocket': progress.pocketToday()},
+      if (morning.length > 1) 'morning': morning,
+      if (progress.owns('wall')) 'crown': true, // 👑 your name on the hawker centre wall
+      if (progress.daysPlayed() >= 21) 'gold_name': true, // 🏅 Market Month day 21
       'name': _profile['name'],
       'named': _profile['named'] == true,
       'festival': festivalWeek?.toJson(),
@@ -336,9 +340,15 @@ class Game {
   Map<String, Object?> stalls() {
     final legend = legendaryToday(now(), events: legendEvents);
     final best = <String, int>{};
+    final bestPaid = <String, double>{};
+    final notebook = progress.owns('notebook');
     for (final h in _done) {
       final k = '${h['stall']}/${h['item']}';
       best[k] = math.max(best[k] ?? 0, ((h['stars'] ?? 0) as num).toInt());
+      if (notebook && h['result'] == 'deal' && h['deal'] is num) {
+        final d = (h['deal'] as num).toDouble();
+        bestPaid[k] = math.min(bestPaid[k] ?? d, d);
+      }
     }
     return {
       'stalls': [
@@ -362,6 +372,8 @@ class Game {
                   'emoji': i['emoji'],
                   'ask': i['ask'],
                   'stars': best['${s['id']}/${i['id']}'] ?? 0,
+                  // 📒 the price notebook: the best price you ever paid for it
+                  'best_paid': ?bestPaid['${s['id']}/${i['id']}'],
                   // 👛 her first price is more than you have (Mum pays for her list, so not those)
                   if (walletOn && (i['ask'] as num) > progress.wallet && !progress.mumPays('${s['id']}', '${i['id']}'))
                     'short': true,
@@ -628,6 +640,7 @@ class Game {
               'options': [for (final o in ss.twist!.options) o.$1],
             },
       'rival_left': h.s.rivalLeft,
+      if (progress.owns('watch')) 'watch': true, // ⌚ the discount so far, on the price tag
       if (walletOn) ...{
         'wallet': progress.wallet,
         'mum_pays': !ss.legendary && progress.mumPays('${ss.stall['id']}', '${ss.item['id']}'),
@@ -690,6 +703,7 @@ class Game {
     final stall = _stalls[stallId];
     if (stall == null) throw GameError(404, 'No such stall');
     if (walletOn) progress.topUp(); // a new market day: Mum's pocket money
+    progress.newDay(wallet: walletOn);
     // today's legendary item: open to everyone that day (even at a stall not unlocked yet), once
     final legend = legendaryToday(now(), events: legendEvents);
     final wantsLegend = itemId != null && isLegendary(itemId);
@@ -752,6 +766,9 @@ class Game {
     ss.festival = fest;
     // the very first haggle: a sure, friendly first win (no surprise, and she's in a good mood)
     if (haggleCount == 0 && !wantsLegend) ss.h.warm(1.0);
+    // from the shop: 🍀 more patience, 🌸 a better mood (session rules, like a friend's warmer start)
+    if (progress.owns('charm')) ss.h.s.patience += 10;
+    if (progress.owns('flowers')) ss.h.warm(0.5);
     if (wantsLegend) {
       ss.legendary = true;
       ss.legendKey = legend!.key;
@@ -1291,8 +1308,17 @@ class Game {
     return {...jar(), 'saved': v};
   }
 
-  Future<Map<String, Object?>> buyGoal(String id) async {
+  Future<Map<String, Object?>> buyGoal(String id, {bool fromWallet = false}) async {
     final fresh = <String>{};
+    final g = goals.where((x) => x.id == id).firstOrNull;
+    // "Save & buy": what the jar is missing comes from the wallet first (saved, then spent from the jar)
+    if (fromWallet && walletOn && g != null && !progress.owns(id) && progress.jar < g.cost) {
+      final missing = ((g.cost - progress.jar) * 100).ceil() / 100;
+      if (progress.wallet + 1e-9 < missing) {
+        throw GameError(400, 'Not enough yet: you need ${money(missing)} more than your jar has.');
+      }
+      progress.saveToJar(missing);
+    }
     try {
       final note = progress.buyGoal(id, fresh);
       await _save();
@@ -1403,7 +1429,10 @@ class Game {
       );
     }
     if (mine > 0 && progress.goesToStock(stall, item) && progress.stockRoom < mine) {
-      throw GameError(409, '📦 Your stock is full (10 things). Sell some at your own stall first, then come back.');
+      throw GameError(
+        409,
+        '📦 Your stock is full (${progress.stockLimit} things). Sell some at your own stall first, then come back.',
+      );
     }
   }
 
@@ -1513,10 +1542,21 @@ class Game {
       }
       product = products.firstWhere((p) => p.id == productId, orElse: () => products[n % products.length]);
     }
-    final customer = customers[_rnd.nextInt(customers.length)];
+    var customer = customers[_rnd.nextInt(customers.length)];
+    // 🪧 the shop sign: big spenders come more often
+    if (progress.owns('sign') && _rnd.nextInt(10) < 4) {
+      customer = customers.reduce((a, b) => a.most >= b.most ? a : b);
+    }
     final seed = _rnd.nextInt(1 << 31);
     final sale = Sale(product, customer, seed: seed);
-    if (progress.owns('awning')) sale.most = (sale.most * 1.05 * 2).round() / 2; // a nicer stall: they pay a bit more
+    // a nicer stall: they pay a bit more (⛱️ the awning, 💡 the neon sign, 🧊 the ice box for fresh things)
+    var more = 1.0;
+    if (progress.owns('awning')) more *= 1.05;
+    if (progress.owns('neon')) more *= 1.05;
+    if (progress.owns('icebox') && product.id.startsWith('stock:') && freshThings.contains(product.id.substring(6))) {
+      more *= 1.1;
+    }
+    if (more > 1) sale.most = (sale.most * more * 2).round() / 2;
     final id = 's${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
     _sales[id] = (sale: sale, chat: <Map<String, Object?>>[], seed: seed);
     return _shopSay(id, 'greet');
@@ -1615,7 +1655,7 @@ class Game {
             'free': '${x['key']}'.startsWith('free:'),
           },
       ],
-      'max': Progress.stockMax,
+      'max': progress.stockLimit,
       'treasures': [
         for (final h in _done.reversed)
           if (h['legendary'] == true && h['result'] == 'deal')
@@ -1675,6 +1715,7 @@ class Game {
         'from': _stockFrom(sale.product.id),
       },
       'stock': progress.stock.length,
+      if (progress.owns('golden')) 'golden': true, // ✨ the golden stall
       'offer': sale.offer,
       'ask': sale.ask,
       'suggestions': sale.done ? <double>[] : sale.suggestions(),

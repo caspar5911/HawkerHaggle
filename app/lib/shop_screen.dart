@@ -153,11 +153,14 @@ class _ShopScreenState extends State<ShopScreen> {
             Container(
               height: 228,
               width: double.infinity,
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Color(0xFFDDF1EC), Color(0xFFFFF6E5)],
+                  // ✨ the golden stall from the shop
+                  colors: s?['golden'] == true
+                      ? const [Color(0xFFFFE08A), Color(0xFFFFF6D5)]
+                      : const [Color(0xFFDDF1EC), Color(0xFFFFF6E5)],
                 ),
               ),
               child: customer == null

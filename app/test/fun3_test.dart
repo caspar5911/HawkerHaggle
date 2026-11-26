@@ -55,7 +55,7 @@ void main() {
     expect('${r['note']}', contains('birthday cake'));
     expect(r['new_stickers'], contains('saver'));
     await expectLater(g.buyGoal('cake'), throwsA(isA<GameError>())); // only once
-    expect(((g.jar()['goals'] as List).first as Map)['owned'], isTrue);
+    expect((g.jar()['goals'] as List).cast<Map>().firstWhere((x) => x['id'] == 'cake')['owned'], isTrue);
   });
 
   test('your stall profit goes in the jar; the awning can be bought', () async {

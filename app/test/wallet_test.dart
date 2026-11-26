@@ -260,6 +260,17 @@ void main() {
     expect(find.text('\$10'), findsWidgets); // the jar
     expect(g.progress.jar, 10);
     await tester.pump(const Duration(seconds: 5)); // the note goes away
+    // 🛍️ the shop: every item, by tier; the notebook (\$25) is a "Save & buy" with \$10 in the jar and \$40 in the wallet
+    expect(find.text('Starter'), findsOneWidget);
+    expect(find.byKey(const ValueKey('goal_notebook')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('savebuy_notebook')));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pumpAndSettle();
+    expect(g.progress.owns('notebook'), isTrue);
+    expect(g.progress.wallet, 25);
+    expect(find.text('✅ Yours'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   test('a month with the wallet: Mum\'s list, the daily challenge and the stories still come, never stuck', () async {

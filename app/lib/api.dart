@@ -154,7 +154,8 @@ class Api {
       _run((g) async => Map<String, dynamic>.from(await g.sellNext(index)));
   Future<Map<String, dynamic>> saveToJar(double amount) =>
       _run((g) async => Map<String, dynamic>.from(await g.saveToJar(amount)));
-  Future<Map<String, dynamic>> buyGoal(String id) => _run((g) async => Map<String, dynamic>.from(await g.buyGoal(id)));
+  Future<Map<String, dynamic>> buyGoal(String id, {bool fromWallet = false}) =>
+      _run((g) async => Map<String, dynamic>.from(await g.buyGoal(id, fromWallet: fromWallet)));
   Future<List<Map<String, dynamic>>> quotes() =>
       _run((g) => [for (final q in g.quotes()) Map<String, dynamic>.from(q)]);
   Future<bool> saveQuote(String stall, String text) => _run((g) => g.saveQuote(stall, text));

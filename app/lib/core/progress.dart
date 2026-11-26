@@ -503,28 +503,29 @@ class Progress {
   bool owns(String goal) => _map('goals')[goal] != null;
 
   List<Map<String, Object?>> goalsView() => [
-    for (final (id, emoji, name, cost, what) in goals)
+    for (final g in goals)
       {
-        'id': id,
-        'emoji': emoji,
-        'name': name,
-        'cost': cost,
-        'what': what,
-        'owned': owns(id),
-        'can': !owns(id) && jar >= cost,
+        'id': g.id,
+        'emoji': g.emoji,
+        'name': g.name,
+        'cost': g.cost,
+        'what': g.does,
+        'tier': g.tier,
+        'owned': owns(g.id),
+        'can': !owns(g.id) && jar >= g.cost,
       },
   ];
 
   /// Spend from the jar on a goal. Returns what happens.
   String buyGoal(String id, Set<String> fresh) {
-    final g = goals.where((x) => x.$1 == id).firstOrNull;
+    final g = goals.where((x) => x.id == id).firstOrNull;
     if (g == null) throw ArgumentError('no such goal');
     if (owns(id)) throw StateError('You already have it!');
-    if (jar < g.$4) throw StateError('Not enough in your jar yet: keep bargaining!');
-    addToJar(-g.$4);
+    if (jar < g.cost) throw StateError('Not enough in your jar yet: keep bargaining!');
+    addToJar(-g.cost);
     _map('goals')[id] = dayKey(now());
     _earn('saver', fresh);
-    return '${g.$2} ${g.$3}! ${g.$5}';
+    return '${g.emoji} ${g.name}! ${g.bought}';
   }
 
   // ---------------------------------------------------------------- freebies
@@ -546,7 +547,7 @@ class Progress {
       return null;
     }
     final list = (p['stock'] ??= <Object>[]) as List;
-    if (keepPaid && list.length >= stockMax) return null;
+    if (keepPaid && list.length >= stockLimit) return null;
     p['free_pity'] = 0;
     list.add({
       'key': 'free:$stall',
@@ -556,7 +557,7 @@ class Progress {
       'fair': f.$3,
       'from': _stalls[stall]?['name'],
     });
-    if (list.length > stockMax) list.removeRange(0, list.length - stockMax);
+    if (list.length > stockLimit) list.removeRange(0, list.length - stockLimit);
     _earn('lucky', fresh);
     return '🎁 ${_stalls[stall]?['name']} threw in a ${f.$1} ${f.$2} for free! (Sell it at your own stall.)';
   }
@@ -620,6 +621,50 @@ class Progress {
     return add;
   }
 
+  /// A new day you play: what your shop things do, once a day (Mum's cake, the piggy bank, deliveries). With no
+  /// wallet, money goes into the jar instead. Returns this morning's summary (also when already done today).
+  Map<String, Object?> newDay({required bool wallet}) {
+    final day = dayKey(now());
+    if (p['perks_day'] != day) {
+      p['perks_day'] = day;
+      void gain(double v) => wallet ? receive(v) : addToJar(v);
+      final m = <String, Object?>{'day': day};
+      if (owns('cake')) {
+        gain(5);
+        m['cake'] = 5.0;
+      }
+      if (owns('piggy') && jar > 0) {
+        final interest = (math.min(5.0, jar * 0.02) * 100).floor() / 100;
+        if (interest > 0) {
+          addToJar(interest);
+          m['interest'] = interest;
+        }
+      }
+      // deliveries: the oldest things in your stock, at 90% of the market's price (a gift from a stallholder: its
+      // fair price). More than you paid if you haggled well; less than a good customer at your own stall pays.
+      final n = (owns('scooter') ? 1 : 0) + (owns('van') ? 2 : 0) + (owns('stall2') ? 3 : 0);
+      final sent = <String>[];
+      var total = 0.0;
+      for (var i = 0; i < n && stock.isNotEmpty; i++) {
+        final x = stock.first;
+        final price = x['ask'] is num
+            ? (((x['ask'] as num) * 0.9 * 2).round() / 2)
+            : ((x['fair'] ?? x['cost'] ?? 0) as num).toDouble();
+        (p['stock'] as List).removeAt(0);
+        gain(price);
+        total += price;
+        sent.add('${x['emoji']} ${x['name']}');
+      }
+      if (sent.isNotEmpty) {
+        m['delivered'] = sent;
+        m['delivered_total'] = (total * 100).round() / 100;
+      }
+      p['morning'] = m;
+    }
+    final m = p['morning'];
+    return m is Map && m['day'] == day ? Map<String, Object?>.from(m) : const {};
+  }
+
   /// What Mum added this morning (0 if nothing, or not today).
   double pocketToday() {
     final x = p['pocket'];
@@ -676,7 +721,10 @@ class Progress {
   }
 
   // ---------------------------------------------------------------- stock for your own stall
-  static const stockMax = 10;
+  static const stockMax = 10; // to start with (a bigger shelf and a storeroom from the shop make room for more)
+
+  /// How many things your stock holds: 10, 15 with the bigger shelf, 25 with the storeroom.
+  int get stockLimit => owns('storeroom') ? 25 : (owns('shelf') ? 15 : stockMax);
 
   /// Would a deal on this item go into your stock? (Not a day's rental or a catering order, not a legendary item.)
   bool goesToStock(String stall, String item) =>
@@ -684,7 +732,7 @@ class Progress {
       (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().any((i) => i['id'] == item);
 
   /// Room left in your stock.
-  int get stockRoom => stockMax - stock.length;
+  int get stockRoom => stockLimit - stock.length;
 
   /// Things that can't be resold at your own stall (a day's rental; a catering order).
   static const notForResale = {'tan/bicycle', 'rosnah/tray'};
@@ -713,7 +761,7 @@ class Progress {
         'from': _stalls['${record['stall']}']?['name'],
       });
     }
-    if (list.length > stockMax) list.removeRange(0, list.length - stockMax);
+    if (list.length > stockLimit) list.removeRange(0, list.length - stockLimit);
   }
 
   /// "Sell this next": your stall sells the first thing in your stock, so this one goes to the front.

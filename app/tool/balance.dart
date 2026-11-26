@@ -81,6 +81,7 @@ Future<Map> lowballer(Game g, Map r, math.Random rnd) async {
 
 Future<void> main(List<String> args) async {
   final per = args.isEmpty ? 40 : int.parse(args.first);
+  final helpers = args.contains('helpers'); // own the haggling helpers from the shop
   final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
   final players = <String, Player>{
     'pays full price': payer,
@@ -106,8 +107,15 @@ Future<void> main(List<String> args) async {
             random: math.Random(rnd.nextInt(1 << 30)),
             unlockAll: true,
             surprises: true,
+            walletOn: false, // (how fair the haggling is: money doesn't come into it)
           );
           await g.load();
+          if (helpers) {
+            // 🍀 the lucky charm and 🌸 the flowers from the shop: more patience and a better mood from the start
+            g.progress.addToJar(140);
+            await g.buyGoal('charm');
+            await g.buyGoal('flowers');
+          }
           final r0 = await g.start('${st['id']}', '${it['id']}');
           final r = await play(g, r0, rnd);
           n++;
