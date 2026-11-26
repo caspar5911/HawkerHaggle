@@ -311,6 +311,14 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
       color: const Color(0xFFFDE2D8),
       onTap: () => _push(ShopScreen(api: widget.api)),
     ),
+    _Entry(
+      key: const ValueKey('inventory_open'),
+      emoji: '📦',
+      title: 'My things',
+      line: 'What you have to sell, your treasures, and your money.',
+      color: const Color(0xFFE6F4EA),
+      onTap: () => _push(InventoryScreen(api: widget.api)),
+    ),
     if (_jar != null)
       JarStrip(
         jar: _jar!,

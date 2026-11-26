@@ -1460,15 +1460,12 @@ class Game {
     final Product product;
     if (productId == null && stock.isNotEmpty) {
       final x = stock.first;
-      final fair = (x['fair'] as num).toDouble();
       product = Product(
         'stock:${x['key']}',
         '${x['name']}',
         '${x['emoji']}',
         (x['cost'] as num).toDouble(),
-        // 👛 at your own stall the usual price is the market's asking price: buy it well at the market and sell it
-        // well at your stall, and the difference is yours
-        walletOn && x['ask'] is num ? (x['ask'] as num).toDouble() : fair,
+        _stallPrice(x),
       );
     } else {
       // 👛 with a wallet, the wholesaler lets you have three a day (you pay them their price out of the sale)
@@ -1557,6 +1554,61 @@ class Game {
       await _save();
     }
     return out;
+  }
+
+  /// The usual price of a stock item at your own stall. 👛 With a wallet it's the market's asking price: buy it well
+  /// at the market and sell it well at your stall, and the difference is yours.
+  double _stallPrice(Map x) =>
+      walletOn && x['ask'] is num ? (x['ask'] as num).toDouble() : (x['fair'] as num).toDouble();
+
+  /// 📦 My things: your money, what's in your stock to sell (in the order your stall sells it), your treasures
+  /// (legendary finds, jar goals) and what you bought for Mum today.
+  Map<String, Object?> inventory() {
+    final stock = progress.stock;
+    final today = progress.today();
+    return {
+      if (walletOn) 'wallet': progress.wallet,
+      'jar': progress.jar,
+      'stock': [
+        for (final x in stock)
+          {
+            'emoji': x['emoji'],
+            'name': x['name'],
+            'from': x['from'],
+            'paid': x['cost'],
+            'price': _stallPrice(x),
+            'free': '${x['key']}'.startsWith('free:'),
+          },
+      ],
+      'max': Progress.stockMax,
+      'treasures': [
+        for (final h in _done.reversed)
+          if (h['legendary'] == true && h['result'] == 'deal')
+            {
+              'emoji': h['emoji'] ?? '✨',
+              'name': h['item_name'] ?? 'legendary find',
+              'from': _stalls['${h['stall']}']?['name'],
+              'paid': h['deal'],
+              'day': h['day'],
+            },
+      ],
+      'goals': [
+        for (final g in progress.goalsView())
+          if (g['owned'] == true) {'emoji': g['emoji'], 'name': g['name']},
+      ],
+      'for_mum': [
+        for (final i in (today['items'] as List).cast<Map>())
+          if (i['done'] == true) {'emoji': i['emoji'], 'name': i['name'], 'paid': i['paid']},
+      ],
+    };
+  }
+
+  /// "Sell this next": the stock item at [index] goes to the front, so your stall's next customer wants it.
+  Future<Map<String, Object?>> sellNext(int index) async {
+    if (index < 0 || index >= progress.stock.length) throw GameError(400, 'No such thing in your stock');
+    progress.stockToFront(index);
+    await _save();
+    return inventory();
   }
 
   /// Wholesale goods a day (when your stock is empty), with a wallet.

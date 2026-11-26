@@ -1644,6 +1644,187 @@ class JarStrip extends StatelessWidget {
   }
 }
 
+/// 📦 My things: your money, what's in your stock (in the order your stall sells it, with "sell this next"), your
+/// treasures, and what you bought for Mum today.
+class InventoryScreen extends StatefulWidget {
+  const InventoryScreen({super.key, required this.api});
+  final Api api;
+  @override
+  State<InventoryScreen> createState() => _InventoryScreenState();
+}
+
+class _InventoryScreenState extends State<InventoryScreen> {
+  Map<String, dynamic>? _inv;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final inv = await widget.api.inventory();
+      if (mounted) setState(() => _inv = inv);
+    } on ApiError catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _sellNext(int i) async {
+    try {
+      final inv = await widget.api.sellNext(i);
+      if (mounted) setState(() => _inv = inv);
+    } on ApiError catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  static const _heading = TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Palette.ink);
+
+  Widget _card({required Key key, required String emoji, required List<Widget> lines, Widget? trailing}) => Container(
+    key: key,
+    margin: const EdgeInsets.only(bottom: 8),
+    padding: const EdgeInsets.all(12),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+    child: Row(
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 30)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: lines),
+        ),
+        ?trailing,
+      ],
+    ),
+  );
+
+  Widget _empty(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(text, style: const TextStyle(color: Palette.soft, height: 1.35)),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final inv = _inv;
+    final stock = (inv?['stock'] as List? ?? const []).cast<Map>();
+    final treasures = [
+      ...(inv?['treasures'] as List? ?? const []).cast<Map>(),
+      ...(inv?['goals'] as List? ?? const []).cast<Map>(),
+    ];
+    final forMum = (inv?['for_mum'] as List? ?? const []).cast<Map>();
+    return Scaffold(
+      appBar: AppBar(title: const Text('📦 My things'), backgroundColor: Palette.cream),
+      backgroundColor: Palette.cream,
+      body: inv == null
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (inv['wallet'] is num)
+                      Pill(
+                        key: const ValueKey('inv_wallet'),
+                        text: 'Wallet ${money(inv['wallet'] as num)}',
+                        icon: '👛',
+                        color: Colors.white,
+                      ),
+                    Pill(
+                      key: const ValueKey('inv_jar'),
+                      text: 'Jar ${money(inv['jar'] as num)}',
+                      icon: '🫙',
+                      color: Colors.white,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text('🧺 To sell at your stall (${stock.length} of ${inv['max']})', style: _heading),
+                const SizedBox(height: 4),
+                if (stock.isEmpty)
+                  _empty("Nothing yet. What you buy at the market (not Mum's list) comes here, to sell at your stall.")
+                else
+                  _empty('Your stall sells them from the top. Tap "Sell next" to choose.'),
+                for (final (i, x) in stock.indexed)
+                  _card(
+                    key: ValueKey('stock_$i'),
+                    emoji: '${x['emoji']}',
+                    lines: [
+                      Text(
+                        '${x['name']}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                      ),
+                      Text(
+                        x['free'] == true
+                            ? 'A gift from ${x['from'] ?? 'a stallholder'}'
+                            : 'From ${x['from'] ?? 'the market'} · you paid ${money(x['paid'] as num)}',
+                        style: const TextStyle(color: Palette.soft, fontSize: 13),
+                      ),
+                      Text(
+                        'Usually ${money(x['price'] as num)} at your stall',
+                        style: const TextStyle(color: Palette.teal, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                    trailing: i == 0
+                        ? const Text(
+                            'Next to sell',
+                            key: ValueKey('stock_next'),
+                            style: TextStyle(color: Palette.soft, fontSize: 12, fontWeight: FontWeight.w700),
+                          )
+                        : Bouncy(
+                            key: ValueKey('sell_next_$i'),
+                            onTap: () => _sellNext(i),
+                            child: const Pill(text: 'Sell next', color: Palette.cream),
+                          ),
+                  ),
+                const SizedBox(height: 14),
+                const Text('✨ Treasures', style: _heading),
+                const SizedBox(height: 4),
+                if (treasures.isEmpty) _empty('Legendary finds and the things you get with your jar show up here.'),
+                for (final (i, t) in treasures.indexed)
+                  _card(
+                    key: ValueKey('treasure_$i'),
+                    emoji: '${t['emoji']}',
+                    lines: [
+                      Text(
+                        '${t['name']}',
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                      ),
+                      if (t['from'] != null)
+                        Text(
+                          'From ${t['from']}${t['paid'] is num ? ' · ${money(t['paid'] as num)}' : ''}',
+                          style: const TextStyle(color: Palette.soft, fontSize: 13),
+                        ),
+                    ],
+                  ),
+                if (forMum.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  const Text('👩 For Mum today', style: _heading),
+                  const SizedBox(height: 4),
+                  for (final (i, m) in forMum.indexed)
+                    _card(
+                      key: ValueKey('mum_$i'),
+                      emoji: '${m['emoji']}',
+                      lines: [
+                        Text(
+                          '${m['name']}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                        ),
+                        Text(
+                          m['paid'] is num ? 'Gone home to Mum · ${money(m['paid'] as num)}' : 'Gone home to Mum',
+                          style: const TextStyle(color: Palette.soft, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
 /// What you're saving for, and buying it.
 class JarScreen extends StatefulWidget {
   const JarScreen({super.key, required this.api});
