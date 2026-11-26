@@ -13,7 +13,7 @@ import 'sfx.dart';
 class Music {
   Music._();
 
-  static const volumes = {'stroll': 0.48, 'calm': 0.4};
+  static const volumes = {'stroll': 0.32, 'calm': 0.27};
 
   /// The player's volume, 0 to 1. The middle is the normal level; all the way up is twice as loud.
   static double level = 0.5;
