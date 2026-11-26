@@ -51,15 +51,16 @@ Future<Map<String, Object?>> buyNow(Game g, String stall, String item) async {
 }
 
 void main() {
-  setUp(() => Game.testWallet = null); // the real default
+  setUp(() => Game.testWallet = true); // (the pre-wallet branch has it off: its rules, tested with it on)
   tearDown(() => Game.testWallet = false);
 
   final day1 = DateTime(2026, 12, 2, 10);
   final day2 = DateTime(2026, 12, 3, 10);
 
-  test('the app has the wallet on', () async {
+  test('the pre-wallet branch has the wallet off', () async {
+    Game.testWallet = null;
     final g = Game(content: content, store: MemoryKeyValue());
-    expect(g.walletOn, isTrue);
+    expect(g.walletOn, isFalse);
   });
 
   test('pocket money: \$50 to start, then \$20 each new market day (once a day)', () async {

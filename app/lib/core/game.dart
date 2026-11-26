@@ -189,7 +189,7 @@ class Game {
     this.unlockAll = false,
     this.surprises = true,
     bool? walletOn,
-  }) : walletOn = walletOn ?? testWallet ?? true,
+  }) : walletOn = walletOn ?? testWallet ?? false, // the pre-wallet branch: unlimited buying, as before
        ai = ai ?? AiClient(const AiConfig()),
        _rnd = random ?? math.Random.secure(),
        now = now ?? DateTime.now;
@@ -197,7 +197,7 @@ class Game {
   final DateTime Function() now;
   final bool unlockAll; // tests: every stall open
   final bool surprises; // tests: no random market surprises
-  final bool walletOn; // 👛 buying costs money from your wallet (on in the app)
+  final bool walletOn; // 👛 buying costs money from your wallet (OFF on this pre-wallet branch)
 
   /// Tests only: the wallet's default for games made without saying (test/flutter_test_config.dart switches it off
   /// for the tests about other things; test/wallet_test.dart puts it back).
