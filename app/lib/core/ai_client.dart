@@ -16,7 +16,8 @@ import 'voice.dart';
 
 /// She mustn't call a price final on these moments: she can still come down.
 const notFinal = [
-  'counter', 'plead', 'flattered', 'regular', 'competitor_drop', 'pity', 'bulk', 'smalltalk', 'unsure', 'clarify', //
+  'counter', 'plead', 'flattered', 'regular', 'competitor_drop', 'pity', 'bulk', 'only_one', 'back_to_one', //
+  'smalltalk', 'unsure', 'clarify', //
 ];
 final finalWords = pyRe(
   r"\b(final|last price|lowest|rock bottom|cannot go lower|can't go lower|cannot lower|no lower)\b",

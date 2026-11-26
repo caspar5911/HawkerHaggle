@@ -176,12 +176,14 @@ class Pill extends StatelessWidget {
   }
 }
 
-/// The price tag: flips to the new price with a little bounce, the opening price crossed out above it.
+/// The price tag: flips to the new price with a little bounce, the opening price crossed out above it. Buying two,
+/// the price is per piece, with the total for both under it.
 class PriceTag extends StatelessWidget {
-  const PriceTag({super.key, required this.ask, required this.opening, this.deal});
+  const PriceTag({super.key, required this.ask, required this.opening, this.deal, this.qty = 1});
   final num ask;
   final num opening;
   final num? deal;
+  final int qty;
   @override
   Widget build(BuildContext context) {
     final shown = deal ?? ask;
@@ -210,6 +212,11 @@ class PriceTag extends StatelessWidget {
             format: money,
             style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Palette.ink),
           ),
+          if (qty > 1)
+            Text(
+              'each · $qty for ${money(shown * qty)}',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Palette.ink.withValues(alpha: 0.7)),
+            ),
         ],
       ),
     );

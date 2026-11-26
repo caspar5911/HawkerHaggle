@@ -11,7 +11,17 @@ final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()
 
 const eventsAll = {
   'greet', 'counter', 'final', 'insulted', 'accept', 'flattered', 'flattery_tired', 'competitor_drop',
-  'competitor_annoyed', 'bulk', 'regular', 'smalltalk', 'rude', 'callback', 'letgo', 'refuse', 'confused', 'plead',
+  'competitor_annoyed',
+  'bulk',
+  'only_one',
+  'regular',
+  'smalltalk',
+  'rude',
+  'callback',
+  'letgo',
+  'refuse',
+  'confused',
+  'plead',
   'plead_no', 'clarify', 'confirm', 'unsure', 'budget_best', 'pity', 'pity_tired', 'deflect', 'rival_bought', //
 };
 

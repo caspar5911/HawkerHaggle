@@ -1232,6 +1232,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
               'walk' => '(walks away)',
               'buy' || 'confirm' => 'Deal!',
               'cancel' => 'Wait, let me think first.',
+              'one' => '${g['one_text'] ?? 'Just one.'}',
               _ => 'OK lah.',
             };
       await _send(
@@ -1261,6 +1262,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
         'surprise_note',
         'accept_text',
         'walk_text',
+        'one_text',
         'tells',
         'combo',
         'combos',
@@ -1780,6 +1782,7 @@ class _Scene extends StatelessWidget {
                 ask: (g!['pending'] ?? g!['ask']) as num,
                 opening: g!['opening'] as num,
                 deal: g!['deal'] as num?,
+                qty: ((g!['qty'] ?? 1) as num).toInt(),
               ),
             ),
           ],
@@ -1817,6 +1820,8 @@ class _Controls extends StatelessWidget {
   Widget build(BuildContext context) {
     final sugs = g['suggestions'] as List;
     final pending = g['pending'] as num?;
+    // buying two: a "just one" button at the end of the row (in hard mode too: it's a choice, not a hint)
+    final oneText = g['done'] == true ? null : g['one_text'] as String?;
     final icons = {
       'offer': '💰',
       'compliment': '😍',
@@ -1838,28 +1843,39 @@ class _Controls extends StatelessWidget {
           if (pending != null) ...[
             _ConfirmDeal(price: pending, busy: busy, send: send),
             const SizedBox(height: 8),
-          ] else if (sugs.isNotEmpty) ...[
+          ] else if (sugs.isNotEmpty || oneText != null) ...[
             // the suggestions sit in one row you can swipe, so the chat keeps its room
             SizedBox(
               height: 52,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 clipBehavior: Clip.none,
-                itemCount: sugs.length,
+                itemCount: sugs.length + (oneText != null ? 1 : 0),
                 separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (_, i) => Center(
-                  child: Bouncy(
-                    enabled: !busy,
-                    onTap: () => send(pick: i, mine: sugs[i]['text'] as String),
-                    // hold to make it your own: it goes into the typing box to edit before sending
-                    onLongPress: () => _openTypeBox(context, prefill: sugs[i]['text'] as String),
-                    child: Pill(
-                      text: sugs[i]['text'] as String,
-                      icon: icons[sugs[i]['move']] ?? '💬',
-                      color: Palette.cream,
-                    ),
-                  ),
-                ),
+                itemBuilder: (_, n) {
+                  // "Just one" comes first, where it's seen; the suggestions keep their own numbers
+                  final i = oneText != null ? n - 1 : n;
+                  return Center(
+                    child: i < 0
+                        ? Bouncy(
+                            key: const ValueKey('just_one'),
+                            enabled: !busy,
+                            onTap: () => send(move: 'one', mine: oneText!),
+                            child: const Pill(text: 'Just one', icon: '☝️', color: Palette.cream),
+                          )
+                        : Bouncy(
+                            enabled: !busy,
+                            onTap: () => send(pick: i, mine: sugs[i]['text'] as String),
+                            // hold to make it your own: it goes into the typing box to edit before sending
+                            onLongPress: () => _openTypeBox(context, prefill: sugs[i]['text'] as String),
+                            child: Pill(
+                              text: sugs[i]['text'] as String,
+                              icon: icons[sugs[i]['move']] ?? '💬',
+                              color: Palette.cream,
+                            ),
+                          ),
+                  );
+                },
               ),
             ),
             const SizedBox(height: 8),
@@ -2451,7 +2467,7 @@ class _ResultState extends State<_Result> {
             name: name,
           );
     final text =
-        'I got the ${legendary ? '✨ legendary ' : ''}${widget.item['name']} for ${money(g['deal'] as num)} at '
+        'I got the ${legendary ? '✨ legendary ' : ''}${widget.item['name']} for ${money(g['deal'] as num)}${_each(g)} at '
         '${widget.stall['name']}\'s stall${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} '
         '${legendary ? 'Only today!' : 'Can you beat me? Try here: $link'} #HawkerHaggle';
     try {
@@ -3244,7 +3260,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                         children: [
                           Text(
                             g['result'] == 'deal'
-                                ? '🤝 Deal at ${money(g['deal'] as num)} together!'
+                                ? '🤝 Deal at ${money(g['deal'] as num)}${_each(g)} together!'
                                 : 'No deal this time.',
                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Palette.ink),
                           ),
@@ -3341,3 +3357,6 @@ Future<void> joinFriend(BuildContext context, Api api, List<Map> stalls) async {
     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
   }
 }
+
+/// " each (2 pcs)" when the haggle was for two (prices are per piece), else nothing.
+String _each(Map g) => ((g['qty'] ?? 1) as num) > 1 ? ' each (${g['qty']} pcs)' : '';

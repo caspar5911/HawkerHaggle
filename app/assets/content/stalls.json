@@ -101,6 +101,14 @@
           "Buy two ah? OK, {price} each, happy?",
           "Wah, buy more! Then {price} each lah."
         ],
+        "only_one": [
+          "Aiyo my dear, only got this one! {price} for it.",
+          "Two? Only one left lah, my dear. {price}."
+        ],
+        "back_to_one": [
+          "Just one ah? OK lah my dear, one is {price}.",
+          "Aiyo, change mind already? One is {price} then."
+        ],
         "regular": [
           "Eh, I remember your face! OK, {price} for regular.",
           "Regular customer must take care. {price} lah."
@@ -313,6 +321,14 @@
           "Two ah. {price} each.",
           "Take two, {price} each. OK?"
         ],
+        "only_one": [
+          "Only got one. {price}.",
+          "One only. Two, no have. {price}."
+        ],
+        "back_to_one": [
+          "One only? Then {price}.",
+          "OK, one. {price}."
+        ],
         "regular": [
           "Hmm, you come before. {price}.",
           "Regular. OK, {price}."
@@ -522,6 +538,14 @@
           "Two ah! Boss very generous! {price} each!",
           "Bundle deal boss, {price} each!"
         ],
+        "only_one": [
+          "Boss, only one in stock! Very rare! {price}!",
+          "Two? Only one left boss, that's why so special. {price}!"
+        ],
+        "back_to_one": [
+          "One only boss? No problem! One is {price}.",
+          "Aiyo boss, bundle gone! One is {price}."
+        ],
         "regular": [
           "Boss! Long time no see! {price} for you.",
           "Old friend price, boss: {price}."
@@ -661,6 +685,7 @@
           "fair": 20,
           "ask": 35,
           "floor": 16,
+          "single": true,
           "facts": [
             "Hand-drawn batik (batik tulis) she makes herself",
             "Pure cotton, soft, the colours won't run",
@@ -731,6 +756,14 @@
         "bulk": [
           "Buy two, adik? Then {price} each.",
           "Wah, two! {price} each lah."
+        ],
+        "only_one": [
+          "Adik, only got one like this. Each one I make different. {price}.",
+          "Two? Only this one, adik. {price} can."
+        ],
+        "back_to_one": [
+          "One also can, adik. One is {price}.",
+          "OK adik, just one. {price}."
         ],
         "regular": [
           "Eh adik, you came last week right? {price} for you.",
@@ -963,6 +996,14 @@
           "Two? Then {price} each.",
           "For two, {price} each."
         ],
+        "only_one": [
+          "There is only one. {price}.",
+          "Two? I have only this one. {price}."
+        ],
+        "back_to_one": [
+          "One? Then {price}. The two-piece price was for two.",
+          "Just one. {price}."
+        ],
         "regular": [
           "Ah, I remember you. {price}.",
           "For a regular customer, {price}."
@@ -1158,6 +1199,14 @@
           "Two?! Bro generous! {price} each!",
           "Bundle deal sis, {price} each!"
         ],
+        "only_one": [
+          "Bro, only got one leh! {price}!",
+          "Two?! Sis, only one left sia. {price} lah!"
+        ],
+        "back_to_one": [
+          "Bro, one only? Can lah, {price}!",
+          "Sis change mind already! One is {price}."
+        ],
         "regular": [
           "Eh bro, you again! {price} for you.",
           "Regular customer! {price}."
@@ -1275,6 +1324,7 @@
           "fair": 45,
           "ask": 68,
           "floor": 38,
+          "single": true,
           "facts": [
             "A 1970s transistor radio, still plays",
             "Uncle Wong replaced the dial string himself",
@@ -1288,6 +1338,7 @@
           "fair": 28,
           "ask": 42,
           "floor": 23,
+          "single": true,
           "facts": [
             "Three-tier enamel tiffin carrier from the 1960s",
             "Hand-painted flowers, a small chip on the lid",
@@ -1353,6 +1404,14 @@
         "bulk": [
           "Two? Rare to find two. {price} each.",
           "Okay, two, {price} each."
+        ],
+        "only_one": [
+          "Two? Aiyo, this kind only one in the whole market. {price}.",
+          "Only one, last time also only one. {price}, can."
+        ],
+        "back_to_one": [
+          "Just one? Can. One is {price}.",
+          "Hmm, one only. Then {price}."
         ],
         "regular": [
           "Ah, I remember you, the one who likes radios. {price}.",
@@ -1549,6 +1608,14 @@
         "bulk": [
           "Two? Very good! {price} each.",
           "For two, {price} each, dear."
+        ],
+        "only_one": [
+          "Only this one, dear. {price}.",
+          "Two? Aiyo dear, I only have one. {price}."
+        ],
+        "back_to_one": [
+          "Just one, dear? Then {price}.",
+          "One also okay, dear. {price}."
         ],
         "regular": [
           "Ah, my curry friend! {price} for you.",
@@ -1756,6 +1823,14 @@
           "Two? Wah, big party! {price} each.",
           "Okay sayang, two, {price} each. Makcik happy."
         ],
+        "only_one": [
+          "Aduh sayang, only one! {price} lah.",
+          "Two? Makcik only got this one. {price}."
+        ],
+        "back_to_one": [
+          "Okay sayang, one only. {price}.",
+          "Aduh, one only? Never mind, {price}."
+        ],
         "regular": [
           "Ah, my regular! For you, {price}.",
           "I remember you, sayang! {price}, special."
@@ -1869,6 +1944,7 @@
           "fair": 45,
           "ask": 70,
           "floor": 38,
+          "single": true,
           "facts": [
             "Worn maybe five times, soles still thick",
             "Cleaned and deodorised",
@@ -1884,6 +1960,7 @@
           "fair": 25,
           "ask": 38,
           "floor": 20,
+          "single": true,
           "facts": [
             "Pre-loved, washed and ironed",
             "Size M",
@@ -1955,6 +2032,14 @@
         "bulk": [
           "Two? Steady! {price} each.",
           "Wah, double! {price} each, bro."
+        ],
+        "only_one": [
+          "Bro, pre-loved one, only got one! {price}.",
+          "Two? Only this one, bro. {price}."
+        ],
+        "back_to_one": [
+          "One only, bro? Steady, {price}.",
+          "Can, just one. {price}, bro."
         ],
         "regular": [
           "Eh, my kaki! {price} for you.",
@@ -2158,6 +2243,14 @@
           "Two? Good, good. {price} each.",
           "Two, okay. {price} each, my child."
         ],
+        "only_one": [
+          "Only one, my child. {price}.",
+          "Aiyah, only got this one. {price}."
+        ],
+        "back_to_one": [
+          "Just one, my child? {price}.",
+          "One is fine. {price}."
+        ],
         "regular": [
           "Ah, you came back! {price} for you.",
           "My regular! {price}, hor."
@@ -2262,6 +2355,11 @@
       "Two, can give discount?",
       "{who}, I take two, special price?",
       "Buy two, {who} give better price lah."
+    ],
+    "one": [
+      "Actually, just one lah.",
+      "{who}, one enough, no need two.",
+      "Sorry ah {who}, I take one only."
     ],
     "regular": [
       "I come every week one leh!",

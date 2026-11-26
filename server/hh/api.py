@@ -249,7 +249,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
             raise HTTPException(404, "No such haggle")
         stall = STALLS[sess["stall"]]
         item = next(i for i in stall["items"] if i["id"] == sess["item"])
-        h = Haggle(Item(**{k: item[k] for k in ("id", "name", "fair", "ask", "floor")}),
+        h = Haggle(Item(**{k: item[k] for k in ("id", "name", "fair", "ask", "floor")}, single=bool(item.get("single"))),
                    Personality(**stall["personality"]), state=State(**sess["state"]))
         h.rng.setstate(sess["rng"])
         return sess, stall, item, h
@@ -295,7 +295,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
             raise HTTPException(404, "No such stall")
         item = next((i for i in stall["items"] if i["id"] == body.item), None) or stall["items"][0]
         sid, seed = secrets.token_urlsafe(12), secrets.randbelow(2**31)
-        h = Haggle(Item(**{k: item[k] for k in ("id", "name", "fair", "ask", "floor")}),
+        h = Haggle(Item(**{k: item[k] for k in ("id", "name", "fair", "ask", "floor")}, single=bool(item.get("single"))),
                    Personality(**stall["personality"]), seed=seed)
         said = line(stall, item, "greet", h, seed=seed)
         store.save_session(sid, p["id"], stall["id"], item["id"], seed, asdict(h.s), h.rng.getstate(),

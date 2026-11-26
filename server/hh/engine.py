@@ -9,7 +9,8 @@ import math
 import random
 from dataclasses import asdict, dataclass, field
 
-MOVES = ("offer", "budget", "plead", "pity", "flirt", "compliment", "competitor", "bulk", "regular", "smalltalk", "rude", "walk", "accept")
+MOVES = ("offer", "budget", "plead", "pity", "flirt", "compliment", "competitor", "bulk", "one", "regular", "smalltalk", "rude", "walk",
+         "accept")
 ONCE = ("competitor", "bulk", "regular")    # tactics that only work once per haggle
 MAX_ROUNDS = 12
 # A firm price gets their real lowest only when earned by both goodwill and bargaining (see Haggle.firm_line).
@@ -34,6 +35,7 @@ class Item:
     fair: float         # a fair price; 2 stars at or below
     ask: float          # opening asking price
     floor: float        # the stallholder's secret lowest price; 3 stars near it
+    single: bool = False    # one of a kind (an antique, a pre-loved pair, a legendary item): "buy two" can't happen
 
 
 @dataclass
@@ -55,6 +57,7 @@ class State:
     result: str = ""            # "deal", "walked", "refused"
     deal: float | None = None
     pending: float | None = None    # the stallholder agreed at this price; waiting for the player to confirm
+    bulk_gave: float = 0.0          # what buying two took off the price per piece (back on if they want just one)
 
 
 @dataclass
@@ -291,12 +294,30 @@ class Haggle:
 
     def _bulk(self, price: float | None = None) -> Outcome:
         self.s.used.append("bulk")
+        if self.item.single:
+            # There's only one: no two-piece price. Asked again, it's a plain offer (or chat), like any used tactic.
+            self._tire(3)
+            return self._out("only_one")
         self.s.qty = 2
+        before = self.s.ask
         self._concede(self.floor_now(), 0.35 * (1.2 - self.p.stubborn))
+        self.s.bulk_gave = before - self.s.ask
         self._tire(4)
         if price is not None:
             return self._offer(price)        # "2 for $40": $20 each, judged against the two-piece price
         return self._out("bulk")
+
+    def _one(self, _=None) -> Outcome:
+        """"Actually, just one": back to a single piece. What buying two took off goes back on the price (never
+        below their lowest for one), so switching back and forth wins nothing. They may still ask about two later."""
+        if self.s.qty == 1:
+            return self._smalltalk()
+        self.s.qty = 1
+        self.s.used.remove("bulk")
+        self.s.ask = min(self.s.opening, max(nice(self.s.ask + self.s.bulk_gave), nice(self.floor_now())))
+        self.s.bulk_gave = 0.0
+        self._tire(4)
+        return self._out("back_to_one")
 
     def _flirt(self, _=None) -> Outcome:
         """Flirting or creepy talk: they laugh it off and steer back to business. It doesn't help."""
@@ -375,6 +396,7 @@ class Haggle:
             safer = nice(a - (0.5 if a < 20 else 1))
         out = [{"move": "offer", "price": bold}, {"move": "offer", "price": safer}]
         tactics = [m for m in ("compliment", "competitor", "bulk", "regular")
-                   if m not in self.s.used and not (m == "compliment" and self.s.compliments >= 2)]
+                   if m not in self.s.used and not (m == "compliment" and self.s.compliments >= 2)
+                   and not (m == "bulk" and self.item.single)]
         out.append({"move": self.rng.choice(tactics) if tactics else "smalltalk", "price": None})
         return out

@@ -7,8 +7,8 @@ import 'dart:math' as math;
 import 'py.dart';
 
 const engineMoves = [
-  'offer', 'budget', 'plead', 'pity', 'flirt', 'compliment', 'competitor', 'bulk', 'regular', 'smalltalk', 'rude',
-  'walk', 'accept', //
+  'offer', 'budget', 'plead', 'pity', 'flirt', 'compliment', 'competitor', 'bulk', 'one', 'regular', 'smalltalk',
+  'rude', 'walk', 'accept', //
 ];
 const once = ['competitor', 'bulk', 'regular']; // tactics that only work once per haggle
 const maxRounds = 12;
@@ -36,16 +36,25 @@ class Personality {
 }
 
 class Item {
-  const Item({required this.id, required this.name, required this.fair, required this.ask, required this.floor});
+  const Item({
+    required this.id,
+    required this.name,
+    required this.fair,
+    required this.ask,
+    required this.floor,
+    this.single = false,
+  });
   factory Item.fromJson(Map m) => Item(
     id: m['id'] as String,
     name: m['name'] as String,
     fair: (m['fair'] as num).toDouble(),
     ask: (m['ask'] as num).toDouble(),
     floor: (m['floor'] as num).toDouble(),
+    single: m['single'] == true,
   );
   final String id, name;
   final double fair, ask, floor; // floor: the secret lowest price
+  final bool single; // one of a kind (an antique, a pre-loved pair, a legendary item): "buy two" can't happen
 }
 
 class HaggleState {
@@ -65,6 +74,7 @@ class HaggleState {
   String result = ''; // deal / walked / refused
   double? deal;
   double? pending; // agreed, waiting for the player's yes
+  double bulkGave = 0; // what buying two took off the price per piece (back on if they want just one)
   // Extras (all neutral by default, so the base rules match the Python reference exactly):
   String event = ''; // market surprise: rain / closing / festival / rival
   int friend = 0; // friendship level with this stallholder, 0..3
@@ -73,7 +83,7 @@ class HaggleState {
   Map<String, Object?> toJson() => {
     'ask': ask, 'opening': opening, 'patience': patience, 'mood': mood, 'rounds': rounds, 'qty': qty, 'used': used,
     'compliments': compliments, 'pleads': pleads, 'pities': pities, 'budget': budget, 'best_given': bestGiven,
-    'last_offer': lastOffer, 'done': done, 'result': result, 'deal': deal, 'pending': pending, //
+    'last_offer': lastOffer, 'done': done, 'result': result, 'deal': deal, 'pending': pending, 'bulk_gave': bulkGave, //
   };
 
   Map<String, Object?> extrasJson() => {'event': event, 'friend': friend, 'rival_left': rivalLeft};
@@ -249,6 +259,7 @@ class Haggle {
       'offer' => _offer(price),
       'budget' => _budget(price),
       'bulk' => _bulk(price),
+      'one' => _one(),
       'plead' => _plead(),
       'pity' => _pity(),
       'flirt' => _flirt(),
@@ -371,11 +382,30 @@ class Haggle {
 
   Outcome _bulk(double? price) {
     s.used.add('bulk');
+    if (item.single) {
+      // There's only one: no two-piece price. Asked again, it's a plain offer (or chat), like any used tactic.
+      _tire(3);
+      return _out('only_one');
+    }
     s.qty = 2;
+    final before = s.ask;
     _concede(floorNow(), 0.35 * (1.2 - p.stubborn));
+    s.bulkGave = before - s.ask;
     _tire(4);
     if (price != null) return _offer(price); // "2 for $40": $20 each
     return _out('bulk');
+  }
+
+  /// "Actually, just one": back to a single piece. What buying two took off goes back on the price (never below
+  /// their lowest for one), so switching back and forth wins nothing. They may still ask about two later.
+  Outcome _one() {
+    if (s.qty == 1) return _smalltalk();
+    s.qty = 1;
+    s.used.remove('bulk');
+    s.ask = math.min(s.opening, math.max(nice(s.ask + s.bulkGave), nice(floorNow())));
+    s.bulkGave = 0;
+    _tire(4);
+    return _out('back_to_one');
   }
 
   Outcome _flirt() {
@@ -463,7 +493,7 @@ class Haggle {
     if (safer >= a) safer = nice(a - (a < 20 ? 0.5 : 1));
     final tactics = [
       for (final m in const ['compliment', 'competitor', 'bulk', 'regular'])
-        if (!s.used.contains(m) && !(m == 'compliment' && s.compliments >= 2)) m,
+        if (!s.used.contains(m) && !(m == 'compliment' && s.compliments >= 2) && !(m == 'bulk' && item.single)) m,
     ];
     return [
       {'move': 'offer', 'price': bold},

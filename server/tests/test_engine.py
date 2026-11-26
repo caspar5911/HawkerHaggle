@@ -78,6 +78,28 @@ def test_tactics_work_once_then_count_as_smalltalk():
     assert h.move("bulk").event == "smalltalk"
 
 
+RADIO = Item("radio", "old transistor radio", fair=52.0, ask=68.0, floor=46.0, single=True)
+
+
+def test_one_of_a_kind_items_never_sell_as_two():
+    for seed in range(40):
+        h = Haggle(RADIO, SOFT, seed=seed)
+        for _ in range(8):
+            assert all(s["move"] != "bulk" for s in h.suggestions())      # never suggested
+            h.move("smalltalk")
+    h = Haggle(RADIO, SOFT, seed=1)
+    out = h.move("bulk", 30)                       # "2 for $60": there's only one
+    assert out.event == "only_one" and h.s.qty == 1 and out.ask == 68.0 and h.s.pending is None
+    assert h.move("bulk").event == "smalltalk"     # asked again: just chat, like any used tactic
+    assert h.s.qty == 1 and h.floor_now() == pytest.approx(RADIO.floor * (1 - 0.02 * h.s.mood))   # no two-piece discount
+
+
+def test_ordinary_items_still_default_to_two_being_possible():
+    assert not FISH.single
+    h = Haggle(FISH, SOFT, seed=2)
+    assert h.move("bulk").event == "bulk" and h.s.qty == 2
+
+
 def test_compliments_wear_off():
     h = Haggle(FISH, SOFT)
     assert h.move("compliment").event == "flattered"
@@ -301,3 +323,22 @@ def test_a_refusal_never_comes_with_a_better_price():
                 assert out.event == "refuse" and out.ask == last, (seed, last, out.ask)
                 break
             last = out.ask
+
+
+def test_changing_back_to_one_puts_the_two_piece_discount_back():
+    for seed in range(20):
+        h = Haggle(FISH, SOFT, seed=seed)
+        h.move("compliment")
+        before = h.s.ask
+        assert h.move("bulk").ask < before and h.s.qty == 2
+        out = h.move("one")
+        assert out.event == "back_to_one" and h.s.qty == 1 and out.ask == before   # switching wins nothing
+        assert h.move("bulk").event == "bulk" and h.s.qty == 2                       # two again is still allowed
+    h = Haggle(FISH, SOFT, seed=3)
+    assert h.move("one").event == "smalltalk"          # already one: nothing to change
+    h.move("bulk")
+    for _ in range(4):
+        h.move("offer", 12)
+    out = h.move("one")
+    assert out.ask >= nice(h.floor_now()) and out.ask <= FISH.ask
+

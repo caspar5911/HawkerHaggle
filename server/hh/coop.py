@@ -16,7 +16,7 @@ MAX_ROOMS = 200
 MAX_MESSAGES = 300           # per room (older ones are dropped)
 MAX_MESSAGE_BYTES = 8 * 1024
 CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no 0/O or 1/I
-FRIEND_MOVES = {"walk", "buy", "accept", "confirm", "cancel"}
+FRIEND_MOVES = {"walk", "buy", "accept", "confirm", "cancel", "one"}    # "one": back to one piece
 # Whispers between the two friends (the stallholder never hears them): a fixed set, so there's no free text to police.
 WHISPERS = {"firm", "sweet", "wait", "walk", "deal", "yours"}
 

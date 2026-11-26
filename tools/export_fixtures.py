@@ -20,6 +20,7 @@ content = json.loads((ROOT / "content" / "stalls.json").read_text())
 messages = sorted({m for m, *_ in CASES} | set(TYPED) | {
     "便宜15", "15块", "15块可以吗", "$1.50", "$ 15", "15.5 can", "1,000", "😂", "👍 deal", "ok", "OK LAH", "can can",
     "  ok lah  ", "deal!!", "no deal", "I only have $16", "wallet only left $20", "16 is all I got", "my budget 18.50",
+    "actually just one", "one enough lah", "don't want two", "no need two", "only 1 can?", "just one, $20 can?",
     "2 for 40", "two for $30", "2=40", "I buy 3", "give me 2", "take 2 for 30", "$2 less", "3 dollars off", "minus 1.50",
     "half half lah", "split the difference", "remove the cents", "round it down", "I love you 15 please", "marry me",
     "go on a date", "stupid uncle", "you cheat", "boss you very nice, $12 can?", "regular customer, 20?",
@@ -70,13 +71,13 @@ out["opener_hint"] = [[hist[:n], ai.opener_hint(hist[:n])] for n in range(len(hi
 out["transcript"] = [[hist, "Auntie Mei", ai.transcript(hist, "Auntie Mei")], [[], "X", ai.transcript([], "X")]]
 
 # Engine traces (no randomness: competitor and walk use the RNG, so they are left out; suggestions' tactic too)
-KINDS = ["offer", "budget", "plead", "pity", "flirt", "compliment", "bulk", "regular", "smalltalk", "rude", "accept",
+KINDS = ["offer", "budget", "plead", "pity", "flirt", "compliment", "bulk", "one", "regular", "smalltalk", "rude", "accept",
          "confirm", "cancel", "buy", "side:compliment", "side:regular", "side:pity", "side:flirt", "side:rude"]
 traces, rnd = [], random.Random(11)
 for st in content["stalls"]:
     for it in st["items"]:
         for run in range(25):
-            h = engine.Haggle(engine.Item(**{k: it[k] for k in ("id", "name", "fair", "ask", "floor")}),
+            h = engine.Haggle(engine.Item(**{k: it[k] for k in ("id", "name", "fair", "ask", "floor")}, single=bool(it.get("single"))),
                               engine.Personality(**st["personality"]), seed=1)
             steps = []
             for _ in range(rnd.randint(3, 16)):

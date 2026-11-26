@@ -5,7 +5,8 @@ library;
 
 /// One tip for next time, from how this haggle went. The most useful one only, in plain words, no numbers from the
 /// stallholder's secret limit. [firstOffer] is the first offer as a share of the opening price; [kindWordNoted] is
-/// true when the closeness note already said "a kind word first" (so it isn't said twice).
+/// true when the closeness note already said "a kind word first" (so it isn't said twice); [single]: a one-of-a-kind
+/// item, so no "ask for a price for two".
 String coachTip({
   required String result,
   required int rounds,
@@ -17,6 +18,7 @@ String coachTip({
   required String who,
   double? firstOffer,
   bool kindWordNoted = false,
+  bool single = false,
 }) {
   final deal = result == 'deal';
   final sweet = tactics.contains('compliment') || tactics.contains('regular');
@@ -50,7 +52,9 @@ String coachTip({
     return 'Be nice first: a compliment 😍 or "I come here every week" makes $who softer before you talk price.';
   }
   if (deal && stars < 3 && !tactics.contains('competitor') && !tactics.contains('bulk')) {
-    return 'Try "the stall next door is cheaper" 👀, or ask for a price for two 🛍️. Some stallholders crack.';
+    return single // one of a kind: there's no second one to ask about
+        ? 'Try "the stall next door is cheaper" 👀. Some stallholders crack.'
+        : 'Try "the stall next door is cheaper" 👀, or ask for a price for two 🛍️. Some stallholders crack.';
   }
   if (deal && stars >= 3) {
     return 'A perfect haggle! Try a harder stall, a ✨ legendary item, or Hard mode in Settings.';
@@ -102,7 +106,8 @@ const tricks = <Trick>[
     'bulk',
     '🛍️',
     'Buy two',
-    'Asking for a price for two gets a better price for each one. Good when you need more than one anyway.',
+    'Asking for a price for two gets a better price for each one. Good when you need more than one anyway. '
+        'Not for one-of-a-kind things (antiques, pre-loved, legendary): there is only one!',
     '"If I take two, how much?"',
     'Ask about buying more than one.',
   ),

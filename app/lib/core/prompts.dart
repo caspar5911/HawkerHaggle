@@ -14,6 +14,10 @@ const events = <String, String>{
   "competitor_drop": "The customer says another stall is cheaper. You grumble but lower to {ask}.",
   "competitor_annoyed": "The customer says another stall is cheaper. You're annoyed and keep {ask}.",
   "bulk": "The customer will buy two. You give {ask} each.",
+  "only_one":
+      "The customer wants to buy two, but you only have this one. Tell them so; the price for it is still {ask}.",
+  "back_to_one":
+      "The customer changed their mind: they want just one now, not two. That's fine, but the price for one is {ask}.",
   "regular": "The customer says they're a regular. You warm up and say {ask}.",
   "smalltalk": "The customer is chatting. Chat back briefly; the price is still {ask}.",
   "plead": "The customer asks for a cheaper price. You sigh and come down a little to {ask}.",
@@ -48,6 +52,8 @@ plead      - they ask for cheaper / discount / best price WITHOUT naming a numbe
 compliment - they praise the goods or the stallholder.
 competitor - they say another stall or shop is cheaper.
 bulk       - they want to buy more than one for a better price, or ask the price for two ("how much for two?").
+one        - they were buying two but now want just one ("actually just one", "one enough lah", "don't want two"),
+             even if they also name a price ("just one, $20 can?").
 regular    - they say they're a regular / come every week.
 smalltalk  - chatting, jokes, stories about their day, and ANY clear question: the price ("how much?", "price
              please?"), the goods (sweet? fresh? where from?), payment (PayNow? card?), bags, delivery, the

@@ -390,6 +390,24 @@ void main() {
     await settle(tester, 3000);
   });
 
+  testWidgets('buying two: the tag says each, and "Just one" goes back to one', (tester) async {
+    final fake = await openHaggle(tester, [
+      {...game('Two ah? OK, \$14 each.', event: 'bulk', ask: 14, qty: 2), 'one_text': 'Actually, just one lah.'},
+      game('Just one ah? OK lah, one is \$18.', event: 'back_to_one'),
+    ]);
+    expect(find.byKey(const ValueKey('just_one')), findsNothing);
+    await tester.tap(find.text('Wah, looks so good!'));
+    await settle(tester);
+    expect(find.text('each · 2 for \$28'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('just_one')));
+    await settle(tester);
+    expect(fake.sent.last['move'], 'one', reason: '${fake.sent}');
+    expect(find.text('Actually, just one lah.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('just_one')), findsNothing);
+    expect(find.textContaining('each ·'), findsNothing);
+    await settle(tester, 3000);
+  });
+
   testWidgets('a two-piece deal says so, with the discount', (tester) async {
     await openHaggle(tester, [
       game('Two ah, \$14 each, confirm?', event: 'confirm', ask: 14, pending: 14, qty: 2),

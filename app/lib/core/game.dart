@@ -406,10 +406,18 @@ class Game {
   }) {
     final lines = stall['lines'] as Map;
     final options = [for (final o in (lines[event] ?? lines['smalltalk']) as List) '$o'];
-    final price = money(h.s.deal ?? h.s.pending ?? h.s.ask);
+    // buying two: every price is per piece, so say "each" (a line that already says it isn't doubled)
+    final each = h.s.qty > 1 ? ' each' : '';
+    final price = '${money(h.s.deal ?? h.s.pending ?? h.s.ask)}$each';
+    final yours = '${money(offer)}$each';
     final fmt = [
       for (final o in options)
-        o.replaceAll('{item}', '${item['name']}').replaceAll('{price}', price).replaceAll('{offer}', money(offer)),
+        o
+            .replaceAll('{item}', '${item['name']}')
+            .replaceAll('{price} each', price)
+            .replaceAll('{price}', price)
+            .replaceAll('{offer} each', yours)
+            .replaceAll('{offer}', yours),
     ];
     final said = {
       for (final m in chat)
@@ -420,11 +428,12 @@ class Game {
     return pool[math.Random(stableSeed('$seed-${h.s.rounds}-$event')).nextInt(pool.length)];
   }
 
-  String _playerText(String move, double? price, String seed, [String who = 'boss']) {
+  /// What the player says for a tapped move. Buying two, a price is per piece: "$12 each".
+  String _playerText(String move, double? price, String seed, _Session ss) {
     final options = (_playerLines[move] ?? _playerLines['smalltalk']) as List;
     return '${options[math.Random(stableSeed(seed)).nextInt(options.length)]}'
-        .replaceAll(r'${price}', money(price))
-        .replaceAll('{who}', who);
+        .replaceAll(r'${price}', '${money(price)}${ss.h.s.qty > 1 && price != null ? ' each' : ''}')
+        .replaceAll('{who}', _who(ss));
   }
 
   String _who(_Session ss) => '${ss.stall['address'] ?? 'boss'}';
@@ -445,7 +454,7 @@ class Game {
       {
         'move': s['move'],
         'price': s['price'],
-        'text': _playerText(s['move'] as String, s['price'] as double?, '${ss.id}-${ss.h.s.rounds}-$i', _who(ss)),
+        'text': _playerText(s['move'] as String, s['price'] as double?, '${ss.id}-${ss.h.s.rounds}-$i', ss),
       },
   ];
 
@@ -473,6 +482,10 @@ class Game {
       );
     } else {
       heard = heardByRules(text);
+    }
+    // "just one, $20 can?" while buying two: back to one first (she says her price for one, then they offer again)
+    if (h.s.qty > 1 && heard.move != 'walk' && justOne.hasMatch(text.toLowerCase())) {
+      return Heard('one', null, ai: heard.ai, reading: heard.reading, also: heard.also);
     }
     if (heard.relOp.isNotEmpty) {
       double? price;
@@ -506,7 +519,8 @@ class Game {
     if (heard.move == 'bulk' && heard.price != null && heard.price != 0) {
       if (heard.per == 'total') {
         heard = heard.copyWith(price: heard.price! / 2);
-      } else if (heard.per != 'each') {
+      } else if (heard.per != 'each' && !h.item.single) {
+        // (one of a kind: no question, she just says there's only one)
         return heard.copyWith(move: 'clarify', clearPrice: true, unclear: 'whether the price is for both or each');
       }
     }
@@ -570,8 +584,9 @@ class Game {
       'mum': ss.finish['mum'],
       'unlocked': ss.finish['unlocked'] ?? const <Object>[],
       'notes': ss.finish['notes'] ?? const <Object>[],
-      'accept_text': _playerText('accept', h.s.ask, ss.id, _who(ss)),
-      'walk_text': _playerText('walk', null, ss.id, _who(ss)),
+      'accept_text': _playerText('accept', h.s.ask, ss.id, ss),
+      'walk_text': _playerText('walk', null, ss.id, ss),
+      if (h.s.qty > 1) 'one_text': _playerText('one', null, ss.id, ss), // the "just one" button while buying two
     };
   }
 
@@ -668,7 +683,7 @@ class Game {
       stall,
       item,
       Haggle(
-        Item.fromJson(item),
+        Item.fromJson(wantsLegend ? {...item, 'single': true} : item), // a legendary item is one of a kind
         Personality.fromJson(stall['personality'] as Map),
         seed: seed,
         event: surprise,
@@ -818,13 +833,15 @@ class Game {
       you = t;
     } else if (move == 'confirm' || move == 'cancel') {
       kind = move!;
-      you = kind == 'confirm' && h.s.pending != null ? 'Deal! ${money(h.s.pending)}' : 'Wait, let me think first.';
+      you = kind == 'confirm' && h.s.pending != null
+          ? 'Deal! ${money(h.s.pending)}${h.s.qty > 1 ? ' each' : ''}'
+          : 'Wait, let me think first.';
     } else if (move == 'buy') {
       kind = 'buy';
-      you = _playerText('accept', h.s.pending ?? h.s.ask, '$id-${h.s.rounds}-x', _who(ss));
-    } else if (move == 'walk' || move == 'accept') {
-      kind = move!;
-      you = _playerText(kind, kind == 'accept' ? h.s.ask : null, '$id-${h.s.rounds}-x', _who(ss));
+      you = _playerText('accept', h.s.pending ?? h.s.ask, '$id-${h.s.rounds}-x', ss);
+    } else if (move == 'walk' || move == 'accept' || move == 'one') {
+      kind = move!; // 'one': the "just one" button while buying two
+      you = _playerText(kind, kind == 'accept' ? h.s.ask : null, '$id-${h.s.rounds}-x', ss);
     } else if (pick != null) {
       if (hard || pick < 0 || pick >= ss.shown.length) throw GameError(400, 'No such suggestion');
       final s = ss.shown[pick];
@@ -951,8 +968,10 @@ class Game {
         note: _notes(
           ss,
           [
-            if (heard.qty != null && heard.qty! > 2)
+            if (heard.qty != null && heard.qty! > 2 && !h.item.single)
               'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).',
+            if (h.s.qty > 1)
+              'They are buying two, so every price is per piece: say "each" after a price (for example "\$12 each").',
             if (ss.softSpot && ss.chat.where((m) => m['soft_spot'] == true).isEmpty)
               'They just talked about ${softSpots['${stall['id']}']!.topic}, your favourite subject: you warm up to them a lot.',
             if (ss.pitchScore != null && ss.chat.where((m) => m['pitch'] == true).isEmpty)
@@ -1073,6 +1092,7 @@ class Game {
         who: '${stall['name']}',
         firstOffer: ss.firstOffer,
         kindWordNoted: close.contains('kind word'),
+        single: h.item.single,
       );
       ss.finish = {
         'stickers': fresh.toList(),

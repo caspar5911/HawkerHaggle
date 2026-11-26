@@ -21,7 +21,7 @@ from hh.api import CONTENT, create_app
 from hh.store import Store
 
 EVENTS_ALL = {"greet", "counter", "final", "insulted", "accept", "flattered", "flattery_tired", "competitor_drop",
-              "competitor_annoyed", "bulk", "regular", "smalltalk", "rude", "callback", "letgo", "refuse", "confused",
+              "competitor_annoyed", "bulk", "only_one", "regular", "smalltalk", "rude", "callback", "letgo", "refuse", "confused",
               "plead", "plead_no", "clarify", "confirm", "unsure", "budget_best", "pity", "pity_tired", "deflect"}
 
 TYPED = ["15 can?", "$12 lah", "ok lah", "can cheaper?", "wah so nice", "next stall cheaper leh", "I buy two",

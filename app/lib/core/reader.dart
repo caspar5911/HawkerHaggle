@@ -5,8 +5,8 @@ library;
 import 'py.dart';
 
 const moves = [
-  'offer', 'budget', 'plead', 'pity', 'flirt', 'compliment', 'competitor', 'bulk', 'regular', 'smalltalk', 'rude',
-  'walk', 'accept', //
+  'offer', 'budget', 'plead', 'pity', 'flirt', 'compliment', 'competitor', 'bulk', 'one', 'regular', 'smalltalk',
+  'rude', 'walk', 'accept', //
 ];
 const alsoKinds = ['compliment', 'regular', 'pity', 'flirt', 'rude'];
 
@@ -59,7 +59,14 @@ class Heard {
   };
 }
 
+/// "Actually just one" (they were buying two). Also used by the game: with a price, it still means one.
+final justOne = pyRe(
+  r"\b(just (one|1)|only (want |need |take )?(one|1)|(one|1) (only|enough|is enough|can already)|"
+  r"(don'?t|do not|no) (want|need) (two|2)|not two)\b",
+);
+
 final _words = <(String, RegExp)>[
+  ('one', justOne),
   ('walk', pyRe(r"\b(never ?mind|forget it|bye|no need|nvm|i think first|walk)\b")),
   ('competitor', pyRe(r"\b(next stall|other stall|another stall|cheaper (there|elsewhere)|shopee|lazada)\b")),
   ('bulk', pyRe(r"\b(two|2 pcs|buy more|buy 2|bulk|both)\b")),

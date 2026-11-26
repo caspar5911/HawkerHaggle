@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/core/festivals.dart';
 import 'package:hawker_haggle/core/game.dart';
+import 'package:hawker_haggle/core/haggle_guide.dart';
 import 'package:hawker_haggle/core/legendary.dart';
 import 'package:hawker_haggle/core/progress.dart' show dayKey;
 import 'package:hawker_haggle/reminder.dart';
@@ -58,6 +59,108 @@ Future<Map> tapThrough(Game g, Map r) async {
 }
 
 void main() {
+  group('🛍️ buying two', () {
+    test('one-of-a-kind items: never suggested, and "two" gets "only got one"', () async {
+      for (final (stall, item) in const [
+        ('wong', 'radio'),
+        ('wong', 'tiffin'),
+        ('faiz', 'sneakers'),
+        ('siti', 'scarf'),
+      ]) {
+        for (var seed = 0; seed < 12; seed++) {
+          final g = await newGame(ordinaryDay(), unlockAll: true, seed: seed);
+          var r = await g.start(stall, item, 'none');
+          final id = r['id'] as String;
+          for (var i = 0; i < 6 && r['done'] != true; i++) {
+            expect((r['suggestions'] as List).map((s) => (s as Map)['move']), isNot(contains('bulk')));
+            r = await g.move(id, text: 'how is business today?');
+          }
+        }
+      }
+      final g = await newGame(ordinaryDay(), unlockAll: true);
+      final r = await g.start('wong', 'radio', 'none');
+      final two = await g.move(r['id'] as String, text: 'if I take two, how much?');
+      expect(two['event'], 'only_one');
+      expect(two['qty'], 1);
+      expect(two['ask'], r['ask']);
+      expect('${two['line']}'.toLowerCase(), contains('one'));
+      final twoFor = await g.move(r['id'] as String, text: '2 for \$80');
+      expect(twoFor['qty'], 1);
+    });
+
+    test('a legendary item is one of a kind too', () async {
+      final day = legendDay();
+      final l = legendaryOn(dayKey(day))!;
+      final g = await newGame(day);
+      final r = await g.start(l.stall, '${l.item['id']}', null);
+      final two = await g.move(r['id'] as String, text: 'can I buy two?');
+      expect(two['event'], 'only_one');
+      expect(two['qty'], 1);
+    });
+
+    test('buying two: every price says "each" (never twice), and the total is right', () async {
+      final g = await newGame(ordinaryDay(), unlockAll: true);
+      final r = await g.start('mei', 'mango', 'none');
+      final id = r['id'] as String;
+      var two = await g.move(id, text: 'if I take two, cheaper?');
+      expect(two['event'], 'bulk');
+      expect(two['qty'], 2);
+      expect('${two['line']}', contains(' each'));
+      expect('${two['line']}', isNot(contains('each each')));
+      for (final s in (two['suggestions'] as List).cast<Map>()) {
+        if (s['price'] != null) expect('${s['text']}', contains(' each'));
+      }
+      expect('${two['accept_text']}', contains(' each'));
+      two = await g.move(id, move: 'accept');
+      expect('${two['line']}', contains(' each'));
+      expect('${two['line']}', isNot(contains('each each')));
+      final done = await g.move(id, move: 'confirm');
+      expect(done['result'], 'deal');
+      expect(done['qty'], 2);
+    });
+
+    test('changing your mind: back to one, by typing or with the button, wins nothing', () async {
+      for (final way in const ['typed', 'button', 'typed with a price']) {
+        final g = await newGame(ordinaryDay(), unlockAll: true);
+        final r = await g.start('mei', 'mango', 'none');
+        final id = r['id'] as String;
+        final two = await g.move(id, text: 'if I take two, cheaper?');
+        expect(two['qty'], 2);
+        expect('${two['one_text']}', isNotEmpty);
+        final one = switch (way) {
+          'typed' => await g.move(id, text: 'actually just one lah'),
+          'button' => await g.move(id, move: 'one'),
+          _ => await g.move(id, text: 'just one, \$10 can?'),
+        };
+        expect(one['event'], 'back_to_one', reason: way);
+        expect(one['qty'], 1);
+        expect(one['ask'], r['ask'], reason: 'the two-piece discount goes back on ($way)');
+        expect(one.containsKey('one_text'), isFalse);
+        expect('${one['line']}', isNot(contains('each')));
+        for (final s in (one['suggestions'] as List).cast<Map>()) {
+          expect('${s['text']}', isNot(contains('each')));
+        }
+      }
+    });
+
+    test('the next-time tip never says "buy two" for a one-of-a-kind item', () {
+      String tip(bool single) => coachTip(
+        result: 'deal',
+        rounds: 4,
+        stars: 1,
+        tactics: {'compliment'},
+        events: const {},
+        walkedAway: false,
+        calledBack: false,
+        who: 'Uncle Wong',
+        firstOffer: 0.7,
+        single: single,
+      );
+      expect(tip(false), contains('two'));
+      expect(tip(true), isNot(contains('two')));
+    });
+  });
+
   group('✨ legendary items', () {
     test('about one day in four, the same stall and item for everyone; every item turns up within two years', () {
       var legendDays = 0;
