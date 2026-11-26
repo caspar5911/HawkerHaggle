@@ -263,6 +263,16 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     else if (_nextLegend != null)
       LegendTeaser(next: _nextLegend!),
     if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
+    // a brand-new player: Mum sends them to something cheap and friendly for a sure first win
+    if (_me != null && (_me!['haggles'] ?? 0) == 0)
+      _Entry(
+        key: const ValueKey('first_haggle'),
+        emoji: '👩',
+        title: 'Your first haggle!',
+        line: "Mum: Start with Auntie Mei's mangoes 🥭. She's friendly, and I'll help you.",
+        color: const Color(0xFFFFF2C7),
+        onTap: () => _openById('mei', 'mango'),
+      ),
     if (_today != null) TodayCard(today: _today!, onItem: _openById),
     if (_error != null) _Oops(message: _error!, retry: _load),
     if (_me == null && _error == null)
@@ -787,6 +797,7 @@ class _StallCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 6),
                           if (!locked) Hearts(((stall['hearts'] ?? 0) as num).toInt()),
+                          if (stall['new'] == true) ...[const SizedBox(width: 6), const _NewBadge()],
                         ],
                       ),
                       Text('${stall['stall']} · ${stall['place']}', style: const TextStyle(color: Palette.soft)),
@@ -3360,3 +3371,18 @@ Future<void> joinFriend(BuildContext context, Api api, List<Map> stalls) async {
 
 /// " each (2 pcs)" when the haggle was for two (prices are per piece), else nothing.
 String _each(Map g) => ((g['qty'] ?? 1) as num) > 1 ? ' each (${g['qty']} pcs)' : '';
+
+/// 🆕 on a stall that opened for you and you haven't visited yet.
+class _NewBadge extends StatelessWidget {
+  const _NewBadge();
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('new_stall'),
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+    decoration: BoxDecoration(color: Palette.teal, borderRadius: BorderRadius.circular(10)),
+    child: const Text(
+      'NEW',
+      style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
+    ),
+  );
+}

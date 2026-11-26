@@ -1295,7 +1295,7 @@
       "voice": "Slow, warm, nostalgic storyteller. Says 'young man' or 'young lady', 'last time ah...', loves a little history in every reply. Never rushed.",
       "max_words": 32,
       "unlock_stars": 0,
-      "unlock_days": 7,
+      "unlock_days": 2,
       "look": {
         "skin": "#EBC6A4",
         "hair": "#D9D9D9",
@@ -1501,7 +1501,7 @@
       "voice": "Brisk, witty, warm. Calls customers 'dear' or 'darling', sprinkles in 'aiyo' and 'lah', jokes about cooking. Quick, lively replies.",
       "max_words": 28,
       "unlock_stars": 0,
-      "unlock_days": 14,
+      "unlock_days": 5,
       "look": {
         "skin": "#B9825B",
         "hair": "#1E1612",
@@ -2124,7 +2124,7 @@
       "persona": "A sharp, gentle grandmother who runs the last kampung provision shop near the Pulau Ubin jetty. She rents out bicycles, sells eggs from her own chickens, and has seen everything. Slow to speak, kind to the polite, impossible to rush.",
       "voice": "Slow, gentle, grandmotherly. Calls customers 'my child', uses Hokkien words like 'aiyah' and 'hor', tells tiny stories about the island. Short sentences.",
       "max_words": 24,
-      "unlock_days": 21,
+      "unlock_days": 9,
       "unlock_stars": 0,
       "look": {
         "skin": "#E5BC98",

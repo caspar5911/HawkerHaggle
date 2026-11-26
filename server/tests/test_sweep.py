@@ -66,6 +66,16 @@ def play(c, h, stall, item, style, rnd, seen):
             body = {"move": "confirm"} if pending else {"move": "walk"}
         else:
             raise ValueError(style)
+        # after an offer there may be only one offer to suggest (then the tactic is second): "safe" is the last offer
+        # shown, "tactic" the last suggestion
+        sug = g.get("suggestions") or []
+        if "pick" in body and sug:
+            offers = [i for i, x in enumerate(sug) if x["move"] == "offer"]
+            if style in ("safe", "cancel_reoffer") and offers:
+                body = {"pick": offers[-1]}
+            elif style == "tactic":
+                body = {"pick": len(sug) - 1}
+            body = {"pick": min(body["pick"], len(sug) - 1)}
         r = c.post(f"/v1/haggle/{g['id']}/move", json=body, headers=h)
         assert r.status_code == 200, (style, body, r.text)
         g = r.json()

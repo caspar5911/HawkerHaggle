@@ -127,7 +127,7 @@ def test_suggestions_never_reveal_the_floor_and_skip_used_tactics():
     h = Haggle(FISH, SOFT, seed=4)
     sug = h.suggestions()
     assert len(sug) == 3 and [s["move"] for s in sug[:2]] == ["offer", "offer"]
-    assert sug[0]["price"] == nice(22 * 0.6) and sug[1]["price"] == nice(22 * 0.82)
+    assert sug[0]["price"] == nice(22 * 0.6) and sug[1]["price"] == nice(22 * 0.74)
     for t in ("competitor", "bulk", "regular"):
         h.move(t)
     h.move("compliment"); h.move("compliment")
@@ -342,3 +342,34 @@ def test_changing_back_to_one_puts_the_two_piece_discount_back():
     out = h.move("one")
     assert out.ask >= nice(h.floor_now()) and out.ask <= FISH.ask
 
+
+
+def test_following_the_safer_offer_always_ends_in_a_deal():
+    """The safer suggestion used to chase her price down and never meet it; now it closes the gap."""
+    for persona in (SOFT, HARD):
+        for seed in range(30):
+            h = Haggle(FISH, persona, seed=seed)
+            for _ in range(20):
+                if h.s.done:
+                    break
+                if h.s.pending is not None:
+                    h.move("confirm")
+                    break
+                sug = [s for s in h.suggestions() if s["move"] == "offer"]
+                before = h.s.last_offer
+                safer = sug[-1]["price"]
+                assert before is None or safer > before                     # never backwards, never the same
+                assert all(s["price"] <= h.s.ask for s in sug)
+                h.move("offer", safer)
+            assert h.s.result == "deal", (persona, seed)
+
+
+def test_two_stars_for_a_fifth_off_even_above_the_fair_price():
+    item = Item("case", "phone case", fair=8.0, ask=15.0, floor=6.0)   # fair is far below a fifth off
+    h = Haggle(item, SOFT)
+    h.s.deal, h.s.result = 12.0, "deal"         # exactly a fifth off
+    assert h.stars() == 2
+    h.s.deal = 12.5
+    assert h.stars() == 1
+    h.s.deal = 6.0
+    assert h.stars() == 3

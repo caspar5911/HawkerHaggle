@@ -188,7 +188,8 @@ class Haggle {
   int stars() {
     if (s.result != 'deal' || s.deal == null) return 0;
     if (s.deal! <= item.floor * 1.06) return 3;
-    return s.deal! <= item.fair ? 2 : 1;
+    // 2 stars: a fair price, or a real discount (a fifth off the item's price); 1: any deal, even at full price
+    return s.deal! <= item.fair || s.deal! <= item.ask * 0.8 + 1e-9 ? 2 : 1;
   }
 
   Outcome _out(String event, [double? offer]) {
@@ -489,15 +490,26 @@ class Haggle {
     // Amounts vary a little from turn to turn so they don't feel mechanical (never from the secret floor).
     final r = s.rounds % 5;
     final bold = nice(a * const [0.6, 0.57, 0.63, 0.55, 0.62][r]);
-    var safer = nice(a * const [0.82, 0.8, 0.85, 0.78, 0.84][r]);
+    var safer = nice(a * const [0.74, 0.72, 0.76, 0.7, 0.75][r]);
     if (safer >= a) safer = nice(a - (a < 20 ? 0.5 : 1));
+    var offers = [bold, safer];
+    final lo = s.lastOffer;
+    if (lo != null && lo < a) {
+      // After an offer of their own, the player never goes backwards, and the safer offer comes a third of the way to her price,
+      // so following it closes the gap (from her price, it chased her down and never met her). Never their last
+      // number exactly: the same number twice means a firm price.
+      final step = a < 20 ? 0.5 : 1.0;
+      safer = nice(lo + (a - lo) / 3);
+      if (safer <= lo || safer >= a) safer = a; // nothing left in between: her price
+      final b = math.max(bold, nice(lo + step));
+      offers = b < safer ? [b, safer] : [safer];
+    }
     final tactics = [
       for (final m in const ['compliment', 'competitor', 'bulk', 'regular'])
         if (!s.used.contains(m) && !(m == 'compliment' && s.compliments >= 2) && !(m == 'bulk' && item.single)) m,
     ];
     return [
-      {'move': 'offer', 'price': bold},
-      {'move': 'offer', 'price': safer},
+      for (final x in offers) {'move': 'offer', 'price': x},
       {'move': tactics.isEmpty ? 'smalltalk' : tactics[rng.nextInt(tactics.length)], 'price': null},
     ];
   }

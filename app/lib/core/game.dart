@@ -338,6 +338,7 @@ class Game {
             'look': s['look'],
             'hearts': progress.hearts(s['id'] as String),
             'locked': !progress.unlocked(s['id'] as String),
+            'new': progress.isNewStall(s['id'] as String), // 🆕 opened for you, never visited yet
             'unlock_at': progress.unlockAt(s['id'] as String),
             'unlock_days': progress.unlockDays(s['id'] as String),
             'items': [
@@ -655,7 +656,7 @@ class Game {
     }
     // About 1 haggle in 3 has a market surprise; in a festival week, festival days are much more common.
     final fest = festivalWeek;
-    if (!surprises) surprise ??= '';
+    if (!surprises || (haggleCount == 0 && !wantsLegend)) surprise ??= ''; // (the first haggle: no surprise)
     surprise ??= fest == null
         ? switch (_rnd.nextInt(100)) {
             < 9 => 'rain',
@@ -692,6 +693,8 @@ class Game {
       seed,
     );
     ss.festival = fest;
+    // the very first haggle: a sure, friendly first win (no surprise, and she's in a good mood)
+    if (haggleCount == 0 && !wantsLegend) ss.h.warm(1.0);
     if (wantsLegend) {
       ss.legendary = true;
       ss.legendKey = legend!.key;
@@ -707,7 +710,7 @@ class Game {
     }
     _sessions[id] = ss;
     String? said;
-    final heard = gossipNote(stallId);
+    final heard = [gossipNote(stallId), memoryGreet(stallId, seed)].where((x) => x.isNotEmpty).join(' ');
     if (ai.enabled &&
         (surprise.isNotEmpty || fest != null || heard.isNotEmpty || progress.hearts(stallId) > 0 || ss.legendary)) {
       // A friend, a surprise, a festival week or some gossip: worth a fresh greeting from the AI.
@@ -970,6 +973,11 @@ class Game {
           [
             if (heard.qty != null && heard.qty! > 2 && !h.item.single)
               'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).',
+            if (_again(ss, 'flirt', kind, heard.also))
+              'They keep flirting even after you brushed it off. React with comic exasperation (an eye-roll, a '
+                  'grumble), firmly NOT flirting back, then steer them back to the goods.',
+            if (_again(ss, 'rude', kind, heard.also))
+              'They are rude to you AGAIN. You are properly fed up now: say so, briefly and in character.',
             if (h.s.qty > 1)
               'They are buying two, so every price is per piece: say "each" after a price (for example "\$12 each").',
             if (ss.softSpot && ss.chat.where((m) => m['soft_spot'] == true).isEmpty)
@@ -1225,7 +1233,7 @@ class Game {
           .trim();
       final item = ((_stalls[stallId]?['items'] as List? ?? const []).cast<Map>())
           .where((i) => i['id'] == f['item'])
-          .map((i) => '${i['name']}')
+          .map((i) => plainName('${i['name']}'))
           .firstOrNull;
       if (name.isNotEmpty && item != null) {
         final today = dayKey(now());
@@ -1246,6 +1254,61 @@ class Game {
         'Word travels at the market: you heard this customer was rude to ${rudeAt.first} earlier today. '
         'Tease them about it a little.',
       );
+    }
+    return parts.join(' ');
+  }
+
+  /// A poke ([what]: flirt or rude) said again in this haggle, after the first time.
+  bool _again(_Session ss, String what, String kind, String also) =>
+      (kind == what || also == what) &&
+      ss.chat.any((m) => m['who'] == 'you' && (m['move'] == what || m['also'] == what));
+
+  /// What a stallholder remembers when you arrive, for the AI greeting only (never a number): your last visit here
+  /// (even before you're friends; friends get more from [Progress.memoryNote]), and now and then word of a hard
+  /// bargain you drove at another stall in the last couple of days. From this player's own history only.
+  String memoryGreet(String stallId, int seed) {
+    final mine = (_profile['haggles'] as List? ?? const []).cast<Map>();
+    final today = dayKey(now());
+    final yesterday = dayKey(now().subtract(const Duration(days: 1)));
+    String when(Object? day) => day == today
+        ? 'earlier today'
+        : day == yesterday
+        ? 'yesterday'
+        : 'some days ago';
+    final parts = <String>[];
+    final last = mine.lastWhere((h) => h['stall'] == stallId, orElse: () => const {});
+    if (last.isNotEmpty && progress.hearts(stallId) == 0) {
+      final w = when(last['day']);
+      if (last['rude'] == true) {
+        parts.add('This customer was rude to you $w; you remember, and say so cheekily before anything else.');
+      } else if (last['result'] == 'walked') {
+        parts.add('This customer walked away from your stall without buying $w; tease them that they came back.');
+      } else if (last['result'] == 'refused') {
+        parts.add('This customer haggled so long $w that you refused to sell; joke that you hope today is quicker.');
+      } else if (last['result'] == 'deal' && ((last['stars'] ?? 0) as num) >= 3) {
+        parts.add('This customer bargained you down very hard $w; say you remember and will be careful today.');
+      } else if (last['result'] == 'deal') {
+        parts.add('This customer bought from you $w; you recognise them.');
+      }
+    }
+    // gossip: about one greeting in two, a hard bargain at another stall in the last two days
+    if (stableSeed('$seed-gossip') % 2 == 0) {
+      final hard = mine.reversed
+          .where(
+            (h) =>
+                h['stall'] != stallId &&
+                h['result'] == 'deal' &&
+                ((h['stars'] ?? 0) as num) >= 3 &&
+                (h['day'] == today || h['day'] == yesterday),
+          )
+          .firstOrNull;
+      final who = hard == null ? null : _stalls['${hard['stall']}']?['name'];
+      if (who != null) {
+        parts.add(
+          'Word travels at the market: $who told you this customer bargained them down very hard ${when(hard!['day'])}. '
+          'Tease them about it in one short line (you will watch them carefully); never say what they paid.',
+        );
+      }
     }
     return parts.join(' ');
   }

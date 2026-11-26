@@ -236,7 +236,7 @@ class Challenges {
       Daily(
         'under_fair',
         'Fair price',
-        'Buy the ${it['name']} at a fair price or better (2 stars).',
+        'Buy the ${it['name']} at a good price (2 stars or more).',
         (t, l) => t.any((r) => _deal(r) && r['item'] == it['id'] && _n(r['stars']) >= 2),
         stall: st,
       ),

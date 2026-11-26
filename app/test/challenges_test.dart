@@ -203,8 +203,9 @@ void main() {
       lastStickers = stickers;
       // stalls open on schedule
       final open = {for (final s in (casual.stalls()['stalls'] as List).cast<Map>()) s['id']: s['locked'] != true};
-      expect(open['wong'], day >= 7, reason: 'Uncle Wong on day $day');
-      expect(open['kumar'], day >= 14, reason: 'Madam Kumar on day $day');
+      expect(open['wong'], day >= 2, reason: 'Uncle Wong on day $day');
+      expect(open['kumar'], day >= 5, reason: 'Madam Kumar on day $day');
+      expect(open['tan'], day >= 9, reason: 'Ah Ma Tan on day $day');
       cc.nextDay();
     }
     expect(casual.progress.daysPlayed(), 30);

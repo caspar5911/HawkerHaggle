@@ -33,7 +33,7 @@ final arcs = <String, List<Chapter>>{
     Chapter(
       2,
       'The wedding dinner',
-      'She wants Uncle Lim\'s prawns for the dinner, but he\'s stubborn. Get them at a fair price or better (2 stars).',
+      'She wants Uncle Lim\'s prawns for the dinner, but he\'s stubborn. Get them at a good price (2 stars or more).',
       'Uncle Lim grumbles, then adds a few extra prawns "for the auntie".',
       (r, _) => _deal(r, 'lim', 'prawns') && ((r['stars'] ?? 0) as num) >= 2,
     ),

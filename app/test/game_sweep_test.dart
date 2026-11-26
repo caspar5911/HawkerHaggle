@@ -131,12 +131,16 @@ Future<(Map, int)> play(
       default:
         throw ArgumentError(style);
     }
-    g = await game.move(
-      g['id'] as String,
-      pick: body['pick'] as int?,
-      move: body['move'] as String?,
-      text: body['text'] as String?,
-    );
+    // after an offer there may be only one offer to suggest (then the tactic is second): "safe" is the last offer
+    // shown, "tactic" the last suggestion
+    var pick = body['pick'] as int?;
+    final sug = (g['suggestions'] as List? ?? const []).cast<Map>();
+    if (pick != null && sug.isNotEmpty) {
+      if (style == 'safe' || style == 'cancel_reoffer') pick = sug.lastIndexWhere((s) => s['move'] == 'offer');
+      if (style == 'tactic') pick = sug.length - 1;
+      if (pick >= sug.length) pick = sug.length - 1;
+    }
+    g = await game.move(g['id'] as String, pick: pick, move: body['move'] as String?, text: body['text'] as String?);
     check(g, seen);
     final nowAsk = (g['ask'] as num).toDouble();
     expect(nowAsk <= lastAsk + 1e-9, isTrue, reason: '$style: price went up $lastAsk -> $nowAsk');

@@ -375,6 +375,9 @@ void main() {
       expect(g.festivalWeek?.name, 'Chinese New Year');
       expect((g.me()['festival'] as Map)['emoji'], '🧧');
       var festive = 0;
+      // (the very first haggle never has a surprise: finish one first)
+      final first = await g.start('mei', 'mango');
+      await g.move(first['id'] as String, move: 'walk');
       for (var i = 0; i < 200; i++) {
         final r = await g.start('mei', 'mango');
         if (r['surprise'] == 'festival') {
@@ -408,7 +411,7 @@ void main() {
     };
     final note = g.gossipNote('mei');
     expect(note, contains('"Arella"'));
-    expect(note, contains('durian (1 kg)'));
+    expect(note, contains('the durian here'));
     expect(note, contains('earlier today'));
     expect(RegExp(r'\d').hasMatch(note.replaceAll('(1 kg)', '')), isFalse); // no numbers for the AI
     expect(g.gossipNote('lim'), isEmpty);

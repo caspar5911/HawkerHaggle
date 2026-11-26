@@ -95,7 +95,8 @@ for st in content["stalls"]:
                 steps.append({"kind": kind, "price": price, "out": o,
                               "state": {k: v for k, v in asdict(h.s).items()},
                               "floor_now": h.floor_now(), "stars": h.stars(),
-                              "suggest": [[s["move"], s["price"]] for s in sug[:2]], "n_suggest": len(sug)})
+                              "suggest": [[s["move"], s["price"]] for s in sug if s["move"] == "offer"],  # the tactic: RNG
+                          "n_suggest": len(sug)})
                 if h.s.done:
                     break
             traces.append({"stall": st["id"], "item": it["id"], "steps": steps})

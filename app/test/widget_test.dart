@@ -284,6 +284,14 @@ void main() {
     await settle(tester, 4000);
   });
 
+  testWidgets('a brand-new player is sent to Auntie Mei\'s mangoes for a first win', (tester) async {
+    final fake = Fake([]);
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.byKey(const ValueKey('first_haggle')), findsOneWidget);
+    expect(find.textContaining("Auntie Mei's mangoes"), findsOneWidget);
+  });
+
   testWidgets('first launch asks for a name (random one ready); the 👋 chip and Settings change it', (tester) async {
     final fake = Fake([])..named = false;
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));

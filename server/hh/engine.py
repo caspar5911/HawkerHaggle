@@ -135,7 +135,8 @@ class Haggle:
             return 0
         if self.s.deal <= self.item.floor * 1.06:
             return 3
-        return 2 if self.s.deal <= self.item.fair else 1
+        # 2 stars: a fair price, or a real discount (a fifth off the item's price); 1: any deal, even at full price
+        return 2 if self.s.deal <= self.item.fair or self.s.deal <= self.item.ask * 0.8 + 1e-9 else 1
 
     def _out(self, event: str, offer: float | None = None) -> Outcome:
         saved = 1 - self.s.deal / self.s.opening if self.s.deal else 0.0
@@ -391,10 +392,22 @@ class Haggle:
         a = self.s.ask
         # Amounts vary a little from turn to turn so they don't feel mechanical (never from the secret floor).
         r = self.s.rounds % 5
-        bold, safer = nice(a * (0.6, 0.57, 0.63, 0.55, 0.62)[r]), nice(a * (0.82, 0.8, 0.85, 0.78, 0.84)[r])
+        bold, safer = nice(a * (0.6, 0.57, 0.63, 0.55, 0.62)[r]), nice(a * (0.74, 0.72, 0.76, 0.7, 0.75)[r])
         if safer >= a:
             safer = nice(a - (0.5 if a < 20 else 1))
-        out = [{"move": "offer", "price": bold}, {"move": "offer", "price": safer}]
+        offers = [bold, safer]
+        lo = self.s.last_offer
+        if lo is not None and lo < a:
+            # After an offer of their own, the player never goes backwards, and the safer offer comes a third of the
+            # way to her price, so following it closes the gap (from her price, it chased her down and never met).
+            # Never their last number exactly: the same number twice means a firm price.
+            step = 0.5 if a < 20 else 1.0
+            safer = nice(lo + (a - lo) / 3)
+            if safer <= lo or safer >= a:
+                safer = a                       # nothing left in between: her price
+            bold = max(bold, nice(lo + step))
+            offers = [bold, safer] if bold < safer else [safer]
+        out = [{"move": "offer", "price": x} for x in offers]
         tactics = [m for m in ("compliment", "competitor", "bulk", "regular")
                    if m not in self.s.used and not (m == "compliment" and self.s.compliments >= 2)
                    and not (m == "bulk" and self.item.single)]

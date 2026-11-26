@@ -165,7 +165,7 @@ class Progress {
     final lastItem = (_stalls[stall]?['items'] as List? ?? const [])
         .cast<Map>()
         .where((i) => i['id'] == f['last_item'])
-        .map((i) => '${i['name']}')
+        .map((i) => plainName('${i['name']}'))
         .firstOrNull;
     final name = playerName.replaceAll(RegExp(r'\d+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim(); // number-free
     return [
@@ -192,6 +192,18 @@ class Progress {
   int unlockDays(String stall) => ((_stalls[stall]?['unlock_days'] ?? 0) as num).toInt();
   int daysPlayed() => _map('days').length;
   bool unlocked(String stall) => bestStars() >= unlockAt(stall) && daysPlayed() >= unlockDays(stall);
+
+  /// The first stalls are open from the start; the others open with stars or days of play.
+  bool isBaseStall(String stall) => unlockAt(stall) == 0 && unlockDays(stall) == 0;
+
+  /// 🆕 A stall that has opened for this player and they haven't haggled at yet.
+  bool isNewStall(String stall) =>
+      !isBaseStall(stall) && unlocked(stall) && ((_friend(stall)['visits'] ?? 0) as num).toInt() == 0;
+
+  /// A stall that opens on the player's next market day (only its day count is missing), or null.
+  String? opensNextDay() => _stalls.keys
+      .where((s) => !unlocked(s) && unlockDays(s) == daysPlayed() + 1 && bestStars() >= unlockAt(s))
+      .firstOrNull;
 
   // ---------------------------------------------------------------- Mum's daily list
   /// Today's list: two items from two different first stalls, the same for everyone today. The budget is based on
@@ -235,6 +247,9 @@ class Progress {
       'under': done && spent <= budget,
       'streak': streak(),
       'tip': tips.isEmpty ? '' : tips[h % tips.length],
+      // Mum's nudge to a stall that opened for you and you haven't tried (the list itself stays everyone's)
+      if (_stalls.keys.where(isNewStall).firstOrNull case final s?)
+        'try': {'stall': s, 'name': _stalls[s]?['name'], 'item': ((_stalls[s]?['items'] as List).first as Map)['id']},
     };
   }
 
@@ -390,7 +405,14 @@ class Progress {
         if (unlocked(s)) s,
     ];
     if (newly.isNotEmpty) _earn('new_stall', fresh);
-    return (stickers: fresh.toList(), mum: mum, unlocked: newly, notes: [...story, ...notes]);
+    // after the very first haggle: something to come back for
+    final soon = (p['haggles'] as List).length == 1 ? opensNextDay() : null;
+    return (
+      stickers: fresh.toList(),
+      mum: mum,
+      unlocked: newly,
+      notes: [...story, ...notes, if (soon != null) "🆕 Come back tomorrow: ${_stalls[soon]?['name']}'s stall opens!"],
+    );
   }
 
   // ---------------------------------------------------------------- past haggles (chat history)
@@ -643,3 +665,8 @@ class Progress {
     return notes;
   }
 }
+
+/// An item's name without numbers, for notes to the AI (which may only say the game's own numbers):
+/// "tray of kampung eggs (10)" -> "tray of kampung eggs".
+String plainName(String name) =>
+    name.replaceAll(RegExp(r'\s*\([^)]*\)'), '').replaceAll(RegExp(r'\d+'), '').replaceAll(RegExp(r'\s+'), ' ').trim();

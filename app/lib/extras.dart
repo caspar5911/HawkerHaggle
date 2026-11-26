@@ -89,6 +89,17 @@ class TodayCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text('💡 Mum\'s tip: ${today['tip']}', style: const TextStyle(color: Palette.soft, fontSize: 13)),
           ],
+          if (today['try'] is Map) ...[
+            const SizedBox(height: 8),
+            Bouncy(
+              key: const ValueKey('mum_try'),
+              onTap: () => onItem('${today['try']['stall']}', '${today['try']['item']}'),
+              child: Text(
+                "🆕 Mum: ${today['try']['name']}'s stall is open now. Go and say hello!",
+                style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w700, height: 1.3),
+              ),
+            ),
+          ],
         ],
       ),
     );
