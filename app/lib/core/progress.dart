@@ -6,6 +6,7 @@ import 'dart:math' as math;
 
 import 'arcs.dart';
 import 'challenges.dart';
+import 'legendary.dart';
 import 'softspots.dart';
 import 'treats.dart';
 
@@ -47,10 +48,15 @@ const stickerDefs = <(String, String, String, String)>[
   ('lucky', '🎁', 'Lucky customer', 'Get a freebie from a stallholder'),
   ('quotes5', '💬', 'Quote collector', 'Save 5 favourite lines'),
   ('teamwork', '👥', 'Teamwork', 'Close a deal together with a friend (live co-op)'),
+  ('combo', '🤜', 'Tag team', 'Pull off a tag-team combo with a friend: one sweet-talks, the other offers'),
+  ('legend', '✨', 'Legendary find', 'Buy a legendary item on the one day it shows up'),
 ];
 
 String dayKey(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// A stable number from text, the same on every phone (for things everyone shares on a day).
+int stableHash(String s) => _hash(s);
 
 /// A stable number from text (FNV-1a), so the daily list is the same on every phone.
 int _hash(String s) {
@@ -290,6 +296,13 @@ class Progress {
 
   void earn(String id, Set<String> fresh) => _earn(id, fresh);
 
+  /// Today's legendary item was bought (sold out for this player until the next one).
+  bool legendBought(String day) => _map('legend')['bought'] == day;
+  void buyLegend(String day) => _map('legend')['bought'] = day;
+
+  /// Played (finished a haggle) on [day]?
+  bool playedOn(String day) => _map('days').containsKey(day);
+
   void _earn(String id, Set<String> fresh) {
     if (_stickers.containsKey(id)) return;
     _stickers[id] = dayKey(now());
@@ -399,8 +412,10 @@ class Progress {
   /// Past haggles, newest first (without the chat, for the list).
   List<Map<String, Object?>> history() {
     final items = {
-      for (final s in content['stalls'] as List)
+      for (final s in content['stalls'] as List) ...{
         for (final i in (s as Map)['items'] as List) '${s['id']}/${(i as Map)['id']}': (s, i),
+        if (legendaryItems[s['id']] case final l?) '${s['id']}/${l['id']}': (s, l as Map),
+      },
     };
     return [
       for (final h in ((p['history'] as List?) ?? const []).reversed.cast<Map>())

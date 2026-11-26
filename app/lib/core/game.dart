@@ -10,6 +10,7 @@ import 'ai_client.dart';
 import 'challenges.dart';
 import 'engine.dart';
 import 'festivals.dart';
+import 'legendary.dart';
 import 'progress.dart';
 import 'reader.dart';
 import 'shop.dart';
@@ -135,7 +136,15 @@ class _Session {
   bool twisted = false; // at most one a haggle
   String twistNote = ''; // what happened, for the AI's next reply
   Map<String, Object?> finish = const {}; // new stickers, Mum's note, unlocks (when it ends)
+  bool legendary = false; // today's legendary item (rare, for one day)
+  int combos = 0; // co-op tag-team combos this haggle (at most two)
+  final comboStickers = <String>{}; // the Tag team sticker, when the first combo earns it
+  bool comboNow = false; // the move just played was a combo (for the screen)
+  String lastEvent = ''; // the stallholder's last reaction (no combo right after she's been made cross)
 }
+
+/// Sweet-talk: what one friend says before the other makes the offer, for a tag-team combo.
+const _sweet = {'compliment', 'smalltalk', 'regular'};
 
 /// The short banner shown during a haggle with a market surprise.
 String surpriseNote(String event, String name, int rivalLeft) => switch (event) {
@@ -283,10 +292,12 @@ class Game {
       'stickers': progress.stickers().where((x) => x['earned'] != null).length,
       'rank': Challenges(progress).rank(),
       'days_played': progress.daysPlayed(),
+      'played_today': progress.playedOn(dayKey(now())),
     };
   }
 
   Map<String, Object?> stalls() {
+    final legend = legendaryToday(now());
     final best = <String, int>{};
     for (final h in _done) {
       final k = '${h['stall']}/${h['item']}';
@@ -314,11 +325,26 @@ class Game {
                   'ask': i['ask'],
                   'stars': best['${s['id']}/${i['id']}'] ?? 0,
                 },
+              // today's legendary item, at its stall (for this day only)
+              if (legend != null && legend.$1 == s['id']) _legendView(legend.$2),
             ],
           },
       ],
+      'legendary': legend == null
+          ? null
+          : {'stall': legend.$1, 'stall_name': _stalls[legend.$1]?['name'], ..._legendView(legend.$2)},
     };
   }
+
+  Map<String, Object?> _legendView(Map item) => {
+    'id': item['id'],
+    'name': item['name'],
+    'emoji': item['emoji'],
+    'ask': item['ask'],
+    'stars': 0,
+    'legendary': true,
+    'sold_out': progress.legendBought(dayKey(now())),
+  };
 
   /// Delete my data: everything this app kept on the phone.
   Future<void> deleteAll() async {
@@ -365,6 +391,9 @@ class Game {
   /// What the AI should know beyond the chat: the market surprise and how well she knows this customer.
   String _notes(_Session ss, [String extra = '']) => [
     ss.festival?.wish ?? '',
+    if (ss.legendary)
+      'This is a rare legendary item that you only have today. You are very proud of it and in no hurry to sell it '
+          'cheap; it is worth every cent.',
     surpriseForAi(ss.h.s.event, ss.h.s.rivalLeft),
     progress.memoryNote('${ss.stall['id']}', '${_profile['name']}'),
     extra,
@@ -491,6 +520,9 @@ class Game {
               'options': [for (final o in ss.twist!.options) o.$1],
             },
       'rival_left': h.s.rivalLeft,
+      'combo': ss.comboNow,
+      'combos': ss.combos,
+      'legendary': ss.legendary,
       'hearts': progress.hearts('${ss.stall['id']}'),
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
       'mum': ss.finish['mum'],
@@ -543,6 +575,19 @@ class Game {
   Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise, bool anyStall = false]) async {
     final stall = _stalls[stallId];
     if (stall == null) throw GameError(404, 'No such stall');
+    // today's legendary item: open to everyone that day (even at a stall not unlocked yet), once
+    final legend = legendaryToday(now());
+    final wantsLegend = itemId != null && isLegendary(itemId);
+    if (wantsLegend) {
+      if (legend == null || legend.$1 != stallId || legend.$2['id'] != itemId) {
+        throw GameError(410, "That legendary item is gone: it was only here for a day. Watch for the next one!");
+      }
+      if (progress.legendBought(dayKey(now()))) {
+        throw GameError(409, "Sold out! You already got today's legendary item. Another one shows up soon.");
+      }
+      anyStall = true;
+      surprise = ''; // no market surprise on a legendary day: it's hard enough
+    }
     if (!unlockAll && !anyStall && !progress.unlocked(stallId)) {
       throw GameError(
         403,
@@ -571,7 +616,9 @@ class Game {
           };
     if (surprise == 'none') surprise = ''; // tests: no surprise on purpose
     final items = stall['items'] as List;
-    final item = (items.firstWhere((i) => (i as Map)['id'] == itemId, orElse: () => items.first)) as Map;
+    final item = wantsLegend
+        ? legend!.$2 as Map
+        : (items.firstWhere((i) => (i as Map)['id'] == itemId, orElse: () => items.first)) as Map;
     final seed = _rnd.nextInt(1 << 31);
     final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
     final ss = _Session(
@@ -588,6 +635,10 @@ class Game {
       seed,
     );
     ss.festival = fest;
+    if (wantsLegend) {
+      ss.legendary = true;
+      ss.h.s.patience = 75; // proud of it, and in no mood for a long chat
+    }
     // now and then a friend has a small trouble (a choice with a cost); never in tests without surprises
     if (surprises &&
         surprise != 'rival' &&
@@ -599,7 +650,8 @@ class Game {
     _sessions[id] = ss;
     String? said;
     final heard = gossipNote(stallId);
-    if (ai.enabled && (surprise.isNotEmpty || fest != null || heard.isNotEmpty || progress.hearts(stallId) > 0)) {
+    if (ai.enabled &&
+        (surprise.isNotEmpty || fest != null || heard.isNotEmpty || progress.hearts(stallId) > 0 || ss.legendary)) {
       // A friend, a surprise, a festival week or some gossip: worth a fresh greeting from the AI.
       said = await ai.say(
         stall: stall,
@@ -784,6 +836,23 @@ class Game {
           lastOffer: h.s.lastOffer,
         );
       }
+      // live co-op: a tag-team combo. One friend sweet-talked, the other follows with the offer: she can't help
+      // being charmed by the teamwork (a warmer mood, so a better counter). At most two a haggle, never right after
+      // she was made cross. Only between two different players, so solo haggles are exactly as before.
+      ss.comboNow = false;
+      final prev = ss.chat.lastWhere((m) => m['who'] == 'you', orElse: () => const {});
+      final prevBy = '${prev['friend'] ?? ''}';
+      if (prev.isNotEmpty &&
+          prevBy != friendName &&
+          ss.combos < 2 &&
+          const ['offer', 'bulk'].contains(kind) &&
+          (_sweet.contains(prev['move']) || _sweet.contains(prev['also'])) &&
+          !const ['insulted', 'rude', 'refuse', 'competitor_annoyed', 'flattery_tired'].contains(ss.lastEvent)) {
+        ss.combos++;
+        ss.comboNow = true;
+        h.warm(1.0);
+        progress.earn('combo', ss.comboStickers);
+      }
       out = h.move(kind, price, callBack);
       event = out.event;
       if (event == 'callback') ss.calledBack = true;
@@ -848,6 +917,9 @@ class Game {
               ][ss.pitchScore!],
             if (challengeNow) 'End your reply by challenging them, in one short sentence, to convince you why you should give them a better price.',
             if (ss.twistNote.isNotEmpty) '${ss.twistNote} React to it in character, briefly.',
+            if (ss.comboNow)
+              'The two friends are tag-teaming you: one of them just charmed you and the other followed with an offer. '
+                  'You are amused and impressed by their teamwork, and you soften a little; you may say so.',
             if (friendName.isNotEmpty)
               'Two friends are bargaining with you together. This message came from the customer\'s friend '
                   '(their name is "$friendName"); you may answer them by name.',
@@ -907,6 +979,8 @@ class Game {
           'called_back': ss.calledBack,
           'hard': hard,
           'rude': ss.rude,
+          if (ss.combos > 0) 'combos': ss.combos,
+          if (ss.legendary) 'legendary': true,
           if (ss.guess != null) 'guess': ss.guess,
           if (ss.festival != null) 'festival_week': ss.festival!.id,
         },
@@ -915,7 +989,12 @@ class Game {
         chat: ss.chat,
       );
       final extra = <String>[];
-      final fresh = <String>{...r.stickers};
+      final fresh = <String>{...r.stickers, ...ss.comboStickers};
+      if (ss.legendary && h.s.result == 'deal') {
+        progress.buyLegend(dayKey(now()));
+        progress.earn('legend', fresh);
+        extra.add('✨ A legendary ${item['name']}! Only today, and you got it.');
+      }
       if (h.s.result == 'deal' && h.s.deal != null) {
         // every dollar knocked off the first asking price goes into the savings jar
         final kept = ((h.s.opening - h.s.deal!) * h.s.qty * 100).round() / 100;
@@ -946,6 +1025,8 @@ class Game {
       await _save();
     }
     ss.tells = _tells(ss, before);
+    ss.lastEvent = event;
+    if (ss.comboStickers.isNotEmpty && !h.s.done) await _save(); // the Tag team sticker, kept at once
     return _view(ss, said, event, out, you, aiLine);
   }
 

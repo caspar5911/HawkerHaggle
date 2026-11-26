@@ -12,6 +12,7 @@ import 'extras.dart';
 import 'guide.dart';
 import 'juice.dart';
 import 'music.dart';
+import 'reminder.dart';
 import 'sfx.dart';
 import 'voice.dart';
 import 'shop_screen.dart';
@@ -71,12 +72,14 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
       setState(() {
         _me = r[0];
         _stalls = r[1]['stalls'] as List;
+        _legend = r[1]['legendary'] as Map?;
         _today = r[2];
         _challenges = r[3];
         _error = null;
       });
       final jar = await widget.api.jar();
       if (mounted) setState(() => _jar = jar);
+      widget.api.refreshReminders().ignore(); // a day played gets no reminder
       if (_me?['named'] != true && !_asking) await _editName(first: true);
       // friends: this week's board (also what the stallholders gossip about)
       final b = await widget.api.board();
@@ -90,6 +93,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   Map<String, dynamic>? _board;
   Map<String, dynamic>? _jar;
   bool _linkChecked = false;
+  Map? _legend; // today's legendary item (null on an ordinary day)
 
   String _boardLine() {
     final n = (_board?['items'] as List? ?? const []).length;
@@ -143,6 +147,13 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   }
 
   Future<void> _open(Map stall, Map item, {String surprise = '', Map? target, bool challenge = false}) async {
+    if (item['legendary'] == true) {
+      if (item['sold_out'] == true) {
+        _toastMarket("✨ You already got today's legendary ${item['name']}. Another legendary item shows up soon!");
+        return;
+      }
+      challenge = true; // open to everyone today, even at a stall not unlocked yet; no market surprise
+    }
     if (stall['locked'] == true && !challenge) {
       final days = (stall['unlock_days'] ?? 0) as num;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -244,6 +255,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
     if (_me != null) _Hello(me: _me!, onName: _editName),
     const SizedBox(height: 12),
+    if (_legend != null) LegendBanner(l: _legend!, onTap: _openLegend),
     if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
     if (_today != null) TodayCard(today: _today!, onItem: _openById),
     if (_error != null) _Oops(message: _error!, retry: _load),
@@ -363,6 +375,14 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
 
   void _toastMarket(String m) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
+  /// ✨ Today's legendary item (at a stall that may not be unlocked yet).
+  Future<void> _openLegend() async {
+    final l = _legend!;
+    final stall = _stalls.cast<Map>().where((s) => s['id'] == l['stall']).firstOrNull;
+    final item = (stall?['items'] as List?)?.cast<Map>().where((i) => i['legendary'] == true).firstOrNull;
+    if (stall != null && item != null) await _open(stall, item);
   }
 
   /// A friend's challenge: their stall and item, with their price to beat (even at a stall you haven't unlocked yet).
@@ -605,6 +625,55 @@ class _Rise extends StatelessWidget {
   );
 }
 
+/// ✨ Today's legendary item, at the top of the market.
+class LegendBanner extends StatelessWidget {
+  const LegendBanner({super.key, required this.l, required this.onTap});
+  final Map l;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) {
+    final sold = l['sold_out'] == true;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Bouncy(
+        key: const ValueKey('legend_banner'),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [Color(0xFFFFE7A3), Color(0xFFFFF6DA)]),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Palette.gold, width: 2),
+          ),
+          child: Row(
+            children: [
+              Text('${l['emoji']}', style: const TextStyle(fontSize: 38)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      sold ? '✨ You got today\'s legendary find!' : '✨ Legendary today only!',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Palette.ink),
+                    ),
+                    Text(
+                      sold
+                          ? 'The ${l['name']} from ${l['stall_name']} is yours. Another legendary item shows up soon.'
+                          : 'A ${l['name']} at ${l['stall_name']}\'s. Harder to haggle for, and gone tomorrow!',
+                      style: const TextStyle(color: Palette.ink, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _StallCard extends StatelessWidget {
   const _StallCard({required this.stall, required this.awning, required this.onItem, required this.onProfile});
   final Map stall;
@@ -660,10 +729,15 @@ class _StallCard extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Bouncy(
-                            onTap: () => onItem(stall, it as Map),
+                            key: (it as Map)['legendary'] == true ? const ValueKey('legend_item') : null,
+                            onTap: () => onItem(stall, it),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(14)),
+                              decoration: BoxDecoration(
+                                color: it['legendary'] == true ? const Color(0xFFFFF1C9) : Palette.cream,
+                                borderRadius: BorderRadius.circular(14),
+                                border: it['legendary'] == true ? Border.all(color: Palette.gold, width: 2) : null,
+                              ),
                               child: Row(
                                 children: [
                                   Text('${it['emoji']}', style: const TextStyle(fontSize: 24)),
@@ -677,13 +751,17 @@ class _StallCard extends StatelessWidget {
                                           style: const TextStyle(fontWeight: FontWeight.w600, color: Palette.ink),
                                         ),
                                         Text(
-                                          'asking ${money(it['ask'] as num)}',
+                                          it['legendary'] == true
+                                              ? (it['sold_out'] == true
+                                                    ? '✨ legendary · yours today!'
+                                                    : '✨ legendary · today only · asking ${money(it['ask'] as num)}')
+                                              : 'asking ${money(it['ask'] as num)}',
                                           style: const TextStyle(color: Palette.soft, fontSize: 12),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  Stars(count: (it['stars'] as num).toInt(), size: 14, animate: false),
+                                  Stars(count: ((it['stars'] ?? 0) as num).toInt(), size: 14, animate: false),
                                 ],
                               ),
                             ),
@@ -767,6 +845,9 @@ class _Tell extends StatelessWidget {
     ),
   );
 }
+
+/// A tag-team combo in co-op: one friend sweet-talked, the other made the offer.
+const comboLine = '🤜🤛 COMBO! One of you charmed her, the other made the offer: she softens a little.';
 
 /// 👩 Mum's tip in a guided haggle (in the game only: the stallholder and the AI never see it).
 class MumTip extends StatelessWidget {
@@ -954,6 +1035,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
   final _savedLines = <String>{};
   final _tune = Music.enter('calm');
   // 👩 Mum's tips (the first haggle ever, or asked for again in Settings)
+  bool _combo = false; // a tag-team combo just happened (the COMBO! stamp, for a moment)
   bool? _guided; // decided once, when the screen opens
   bool _wasGuided = false;
   final _tipsSeen = <String>{};
@@ -1107,7 +1189,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
     final view = {
       for (final k in const [
         'line', 'event', 'ask', 'opening', 'patience', 'mood', 'qty', 'done', 'result', 'deal', 'pending', //
-        'stars', 'saved', 'surprise', 'surprise_note', 'accept_text', 'walk_text', 'tells',
+        'stars', 'saved', 'surprise', 'surprise_note', 'accept_text', 'walk_text', 'tells', 'combo', 'legendary',
       ])
         k: g[k],
       'turn': _turn,
@@ -1167,6 +1249,14 @@ class _HaggleScreenState extends State<HaggleScreen> {
       Sfx.play('coin', volume: 0.45);
     }
     if (g['found'] != null) _toast('💡 You found ${widget.stall['name']}\'s soft spot: ${g['found']}!');
+    if (g['combo'] == true) {
+      HapticFeedback.heavyImpact();
+      Sfx.play('star', volume: 0.7);
+      _combo = true;
+      Timer(const Duration(milliseconds: 1400), () {
+        if (mounted) setState(() => _combo = false);
+      });
+    }
     if (_room != null && _friend.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _sendState();
@@ -1275,6 +1365,9 @@ class _HaggleScreenState extends State<HaggleScreen> {
     final t = widget.target;
     var note = '${g['surprise_note'] ?? ''}';
     if (g['challenge'] == true) note = '💬 ${widget.stall['name']} wants convincing! Type your best pitch.';
+    if (g['legendary'] == true && note.isEmpty) {
+      note = '✨ Legendary! Only today, and ${widget.stall['name']} knows what it\'s worth.';
+    }
     if (t == null) return note;
     final beat = '🏆 Beat ${t['name']}\'s ${money(t['price'] as num)}!';
     return note.isEmpty ? beat : '$beat  $note';
@@ -1362,6 +1455,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                           if (g != null && !_busy)
                             for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
                           if (_aside.isNotEmpty && !_busy) _Tell(_aside),
+                          if (g?['combo'] == true && !_busy) const _Tell(comboLine),
                           if (_tip != null && !_busy && g?['done'] != true)
                             MumTip(
                               text: _tip!,
@@ -1473,7 +1567,11 @@ class _HaggleScreenState extends State<HaggleScreen> {
             ),
             // the moment a deal closes: DEAL! stamped on the screen, then the result card
             if (g != null && g['done'] == true && g['result'] == 'deal' && !_showResult)
-              const Positioned.fill(child: DealStamp(text: 'DEAL!')),
+              const Positioned.fill(child: DealStamp(text: 'DEAL!'))
+            else if (_combo)
+              const Positioned.fill(
+                child: DealStamp(key: ValueKey('combo_stamp'), text: 'COMBO!'),
+              ),
             if (_showResult && g != null) ...[
               if (g['result'] == 'deal') const Positioned.fill(child: Confetti()),
               _Result(
@@ -1836,6 +1934,15 @@ class _TypeBoxState extends State<_TypeBox> {
   String _language = '';
   String _problem = '';
   String _voiced = ''; // what the 🎤 last put in the box
+  final _field = FocusNode();
+  bool _keyboardTip = false; // the player uses their keyboard's mic: say where it is
+
+  /// 🎤 with "Use my keyboard's mic": the keyboard comes up, and the player taps its mic.
+  void _keyboardMic() {
+    setState(() => _keyboardTip = true);
+    _field.requestFocus();
+    SystemChannels.textInput.invokeMethod('TextInput.show');
+  }
 
   TextEditingController get text => widget.text;
   String get lastLine => widget.lastLine;
@@ -1846,13 +1953,18 @@ class _TypeBoxState extends State<_TypeBox> {
   @override
   void initState() {
     super.initState();
-    // let the box finish opening first (so the tap isn't heard)
-    if (widget.listen) Timer(const Duration(milliseconds: 280), () => mounted ? _talk() : null);
+    if (widget.listen && Voice.useKeyboard) {
+      _keyboardTip = true; // the keyboard opens (autofocus): its own mic does the listening
+    } else if (widget.listen) {
+      // let the box finish opening first (so the tap isn't heard)
+      Timer(const Duration(milliseconds: 280), () => mounted ? _talk() : null);
+    }
   }
 
   @override
   void dispose() {
     Voice.instance.stop(); // never leave the microphone on
+    _field.dispose();
     super.dispose();
   }
 
@@ -1946,7 +2058,8 @@ class _TypeBoxState extends State<_TypeBox> {
                     TextField(
                       key: const ValueKey('reply_field'),
                       controller: text,
-                      autofocus: !widget.listen, // talking: no keyboard in the way
+                      focusNode: _field,
+                      autofocus: !widget.listen || Voice.useKeyboard, // talking: no keyboard in the way
                       maxLength: 300,
                       minLines: 1,
                       maxLines: 4,
@@ -1960,6 +2073,8 @@ class _TypeBoxState extends State<_TypeBox> {
                             : (_live ? 'Listening… say it like you mean it' : 'Getting ready…'),
                         helperText: _problem.isNotEmpty
                             ? _problem
+                            : _keyboardTip && !_listening
+                            ? "🎤 Tap the mic on your keyboard to talk (on Gboard it's at the top right)."
                             : (!_listening
                                   ? 'Tip: tap 🎤 to say it, or hold a suggestion to edit it.'
                                   : (_live
@@ -2011,7 +2126,7 @@ class _TypeBoxState extends State<_TypeBox> {
                         const SizedBox(width: 10),
                         Bouncy(
                           key: const ValueKey('mic_box'),
-                          onTap: _talk,
+                          onTap: Voice.useKeyboard ? _keyboardMic : _talk,
                           child: Pill(
                             text: _listening ? '■' : '🎤',
                             color: _listening ? Palette.red : Palette.cream,
@@ -2246,16 +2361,20 @@ class _ResultState extends State<_Result> {
     try {
       name = '${(await widget.api.me())['name'] ?? ''}';
     } catch (_) {}
-    final link = challengeLink(
-      stall: '${widget.stall['id']}',
-      item: '${widget.item['id']}',
-      price: g['deal'] as num,
-      name: name,
-    );
+    // a legendary item is gone tomorrow, so its link would lead nowhere
+    final legendary = g['legendary'] == true || widget.item['legendary'] == true;
+    final link = legendary
+        ? ''
+        : challengeLink(
+            stall: '${widget.stall['id']}',
+            item: '${widget.item['id']}',
+            price: g['deal'] as num,
+            name: name,
+          );
     final text =
-        'I got the ${widget.item['name']} for ${money(g['deal'] as num)} at ${widget.stall['name']}\'s stall'
-        '${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} Can you beat me? '
-        'Try here: $link #HawkerHaggle';
+        'I got the ${legendary ? '✨ legendary ' : ''}${widget.item['name']} for ${money(g['deal'] as num)} at '
+        '${widget.stall['name']}\'s stall${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} '
+        '${legendary ? 'Only today!' : 'Can you beat me? Try here: $link'} #HawkerHaggle';
     try {
       await shareBrag(text, await capturePng(_card));
     } catch (_) {
@@ -2428,11 +2547,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _reports = 0;
   bool _hard = false;
   String _name = '';
+  ({bool on, int hour, int minute}) _remind = (on: false, hour: 19, minute: 0);
 
   @override
   void initState() {
     super.initState();
     _reloadAll();
+    Reminder.settings().then((r) {
+      if (mounted) setState(() => _remind = r);
+    });
+  }
+
+  String get _remindAt => '${_remind.hour.toString().padLeft(2, '0')}:${_remind.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _setReminder({bool? on, TimeOfDay? at}) async {
+    final want = on ?? _remind.on;
+    if (want && on == true && !await Reminder.instance.allow()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              "Notifications are off for Hawker Haggle. Allow them in your phone's Settings > Apps > Hawker Haggle > "
+              'Notifications, then try again.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    final r = (on: want, hour: at?.hour ?? _remind.hour, minute: at?.minute ?? _remind.minute);
+    await Reminder.save(on: r.on, hour: r.hour, minute: r.minute);
+    if (mounted) setState(() => _remind = r);
+    if (on == true) {
+      await Reminder.instance.showNow(
+        '🔔 Reminder on!',
+        "We'll remind you every day at $_remindAt. See you at the market!",
+      );
+    }
+    await widget.api.refreshReminders();
   }
 
   /// Logging in or out switches whose progress this is: show its name and settings.
@@ -2545,6 +2697,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const Icon(Icons.volume_up_rounded, color: Palette.soft),
               ],
             ),
+          if (Reminder.supported) ...[
+            SwitchListTile(
+              key: const ValueKey('reminder_switch'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('🔔 Daily reminder', style: TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(
+                _remind.on
+                    ? 'Every day at $_remindAt (not on days you already played).'
+                    : 'One gentle nudge a day to visit the market.',
+              ),
+              value: _remind.on,
+              onChanged: (on) => _setReminder(on: on),
+            ),
+            if (_remind.on)
+              ListTile(
+                key: const ValueKey('reminder_time'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Remind me at'),
+                trailing: Text(_remindAt, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                onTap: () async {
+                  final t = await showTimePicker(
+                    context: context,
+                    initialTime: TimeOfDay(hour: _remind.hour, minute: _remind.minute),
+                  );
+                  if (t != null) await _setReminder(at: t);
+                },
+              ),
+          ],
+          SwitchListTile(
+            key: const ValueKey('keyboard_mic'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text("🎤 Use my keyboard's mic", style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text(
+              "The 🎤 opens your keyboard: tap its own mic to talk (Gboard's is at the top right). Some keyboards "
+              'hear Singlish better.',
+            ),
+            value: Voice.useKeyboard,
+            onChanged: (on) async {
+              await Voice.setUseKeyboard(on);
+              setState(() {});
+            },
+          ),
           ListTile(
             key: const ValueKey('mum_again'),
             contentPadding: EdgeInsets.zero,
@@ -2856,6 +3050,10 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
       }
     });
     if (clashed) _toast('👥 ${widget.room['host_name']} moved first: have another look, then try again.');
+    if (view['combo'] == true && newTurn) {
+      HapticFeedback.heavyImpact();
+      _toast('🤜🤛 COMBO! You two work well together.');
+    }
     Sfx.forEvent('${view['event']}');
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
@@ -2955,6 +3153,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                   if (g != null && !_busy)
                     for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
                   if (_aside.isNotEmpty && !_busy) _Tell(_aside),
+                  if (g?['combo'] == true && !_busy) const _Tell(comboLine),
                   if (_busy) const Typing(),
                   if (g != null && g['done'] == true)
                     Container(

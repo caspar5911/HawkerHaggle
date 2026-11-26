@@ -266,9 +266,10 @@ void main() {
     };
     // the month-long ones (days played, 7 dailies, a quest week, 30 days) are earned in challenges_test's month
     // (and finishing a whole story takes days of friendship: earned in the story test below)
-    // (saver, lucky and quotes5 are earned in fun3_test)
+    // (saver, lucky and quotes5 are earned in fun3_test; combo and legend in new_features_test)
     const monthLong = {
-      'days3', 'dailies7', 'week_done', 'month', 'storyteller', 'saver', 'lucky', 'quotes5', 'teamwork', //
+      'days3', 'dailies7', 'week_done', 'month', 'storyteller', 'saver', 'lucky', 'quotes5', 'teamwork', 'combo', //
+      'legend',
     };
     final missing = {for (final (id, _, _, _) in stickerDefs) id}.difference(earned).difference(monthLong);
     expect(missing, isEmpty, reason: 'never earned: $missing');

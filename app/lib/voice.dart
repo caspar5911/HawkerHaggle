@@ -5,6 +5,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -13,6 +14,24 @@ import 'music.dart';
 abstract class Voice {
   /// The phone's voice typing (tests swap in a pretend one).
   static Voice instance = PhoneVoice();
+
+  /// The player's choice: the 🎤 opens their keyboard instead, to use its own mic (e.g. Gboard's). Android doesn't
+  /// let one app press another app's mic, so the player taps it themselves.
+  static bool useKeyboard = false;
+  static const _storage = FlutterSecureStorage();
+
+  static Future<void> loadPrefs() async {
+    try {
+      useKeyboard = await _storage.read(key: 'keyboard_mic') == '1';
+    } catch (_) {}
+  }
+
+  static Future<void> setUseKeyboard(bool on) async {
+    useKeyboard = on;
+    try {
+      await _storage.write(key: 'keyboard_mic', value: on ? '1' : '0');
+    } catch (_) {}
+  }
 
   /// Starts listening. [onReady] says the phone is really listening now (words said before that are lost), with the
   /// language it listens in. [onWords] gets everything heard so far. [onEnd] is called once when listening stops,

@@ -6,6 +6,7 @@ import 'juice.dart';
 import 'music.dart';
 import 'screens.dart';
 import 'sfx.dart';
+import 'voice.dart';
 import 'widgets.dart';
 
 void main() {
@@ -13,6 +14,7 @@ void main() {
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   Sfx.init();
   Music.init();
+  Voice.loadPrefs();
   Motion.init();
   runApp(HawkerHaggleApp(api: Api()));
 }

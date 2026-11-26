@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The daily reminder's small icon: a market stall awning (white on transparent, as Android wants). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M3,4h18l1,5c0,1.4 -1.1,2.5 -2.5,2.5S17,10.4 17,9c0,1.4 -1.1,2.5 -2.5,2.5S12,10.4 12,9c0,1.4 -1.1,2.5 -2.5,2.5S7,10.4 7,9c0,1.4 -1.1,2.5 -2.5,2.5S2,10.4 2,9L3,4zM4,13h16v7H4v-7zM6,15v3h4v-3H6zM13,15v5h4v-5h-4z"/>
+</vector>

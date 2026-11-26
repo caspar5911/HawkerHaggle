@@ -1,3 +1,5 @@
+import 'reminder.dart' as reminders;
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -489,6 +491,18 @@ class Api {
     final a = _account;
     if (a == null || !a.admin) throw AccountError('Admin only.');
     return _accounts(a.server).players(a.token);
+  }
+
+  /// 🔔 Plans the daily reminders again (when the market opens, and after each haggle). Never fails.
+  Future<void> refreshReminders() async {
+    try {
+      final me = await this.me();
+      final stalls = (await this.stalls())['stalls'] as List;
+      await reminders.refreshReminders(
+        playedToday: me['played_today'] == true,
+        stallNames: {for (final s in stalls.cast<Map>()) '${s['id']}': '${s['name']}'},
+      );
+    } catch (_) {}
   }
 
   /// 📊 How the market's players play (the admin only).

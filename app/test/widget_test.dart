@@ -13,6 +13,7 @@ import 'package:hawker_haggle/guide.dart';
 import 'package:hawker_haggle/main.dart';
 import 'package:hawker_haggle/screens.dart' show startAddress;
 import 'package:hawker_haggle/music.dart';
+import 'package:hawker_haggle/reminder.dart';
 import 'package:hawker_haggle/sfx.dart';
 import 'package:hawker_haggle/voice.dart';
 
@@ -91,6 +92,8 @@ class Fake extends Game {
     return n;
   }
 
+  Map<String, Object?>? legend; // today's legendary item (a test sets it)
+
   @override
   Map<String, Object?> stalls() => {
     'stalls': [
@@ -102,9 +105,11 @@ class Fake extends Game {
         'look': look,
         'items': [
           {'id': 'mango', 'name': 'box of mangoes', 'emoji': '🥭', 'ask': 18, 'stars': 2},
+          ?legend,
         ],
       },
     ],
+    'legendary': legend == null ? null : {...legend!, 'stall': 'mei', 'stall_name': 'Auntie Mei'},
   };
   @override
   Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise, bool anyStall = false]) async {
@@ -251,6 +256,8 @@ void main() {
     Sfx.available = false;
     Music.reset();
     MumGuide.enabled = false; // a new test player has never haggled: Mum's tips only in their own tests
+    Reminder.instance = _Reminder();
+    Voice.useKeyboard = false;
   });
 
   testWidgets('market shows stalls; OK lah turns into Confirm; the second tap buys', (tester) async {
@@ -423,6 +430,26 @@ void main() {
     await settle(tester, 2500);
     expect(fake.sent.last['text'], '\$10 can or not auntie');
     expect(voice.stopped, isTrue); // closing the box always turns the microphone off
+    await settle(tester, 3000);
+  });
+
+  testWidgets("🎤 with \"Use my keyboard's mic\": the keyboard opens with a tip, the game doesn't listen", (
+    tester,
+  ) async {
+    final voice = _Voice(['should not be heard']);
+    Voice.instance = voice;
+    Voice.useKeyboard = true;
+    final fake = await openHaggle(tester, [game('Aiyo \$10 cannot lah, \$16.', event: 'counter', ask: 16)]);
+    await tester.tap(find.byKey(const ValueKey('mic')));
+    await settle(tester, 600);
+    expect(find.textContaining('Tap the mic on your keyboard'), findsOneWidget);
+    final field = tester.widget<TextField>(find.byKey(const ValueKey('reply_field')));
+    expect(field.controller!.text, isEmpty); // nothing heard by the game itself
+    expect(field.focusNode!.hasFocus, isTrue); // the keyboard is up
+    await tester.enterText(find.byKey(const ValueKey('reply_field')), '\$10 can or not auntie'); // what Gboard typed
+    await tester.tap(find.text('Send'));
+    await settle(tester, 2500);
+    expect(fake.sent.last['text'], '\$10 can or not auntie');
     await settle(tester, 3000);
   });
 
@@ -837,6 +864,116 @@ void main() {
     expect(fake.lastAnyStall, isTrue);
   });
 
+  testWidgets('🔔 the daily reminder: on (a test notification, a week planned), the time shows, off clears it', (
+    tester,
+  ) async {
+    final r = Reminder.instance as _Reminder;
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await settle(tester);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('reminder_switch')),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    await settle(tester, 300);
+    // said no to notifications: stays off, and says how to allow them
+    r.allowed = false;
+    await tester.tap(find.byKey(const ValueKey('reminder_switch')));
+    await settle(tester, 600);
+    expect(find.textContaining('Notifications are off'), findsOneWidget);
+    expect(r.shown, isEmpty);
+    await settle(tester, 4000);
+    r.allowed = true;
+    await tester.tap(find.byKey(const ValueKey('reminder_switch')));
+    await settle(tester, 800);
+    expect(r.shown, ['🔔 Reminder on!']);
+    expect(r.planned, isNotEmpty);
+    expect(r.planned!.every((x) => x.at.hour == 19), isTrue);
+    expect(find.text('19:00'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('reminder_switch')));
+    await settle(tester, 800);
+    expect(r.planned, isEmpty); // off: nothing planned
+  });
+
+  testWidgets("🎤 \"Use my keyboard's mic\" can be switched on in Settings", (tester) async {
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await settle(tester);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('keyboard_mic')),
+      find.byType(ListView).last,
+      const Offset(0, -200),
+    );
+    await settle(tester, 300);
+    await tester.tap(find.byKey(const ValueKey('keyboard_mic')));
+    await settle(tester, 400);
+    expect(Voice.useKeyboard, isTrue);
+  });
+
+  testWidgets('✨ a legendary item: the banner on the market opens it (any stall), and its shares have no link', (
+    tester,
+  ) async {
+    final shared = <String>[];
+    shareBrag = (text, png) async => shared.add(text);
+    capturePng = (_) async => null;
+    final fake = Fake([
+      game('Wah, you know good stuff. OK lah, \$60!', event: 'accept', result: 'deal', deal: 60, stars: 1)
+        ..addAll({'legendary': true}),
+    ])..legend = {'id': 'legend_mei', 'name': 'golden Musang King durian', 'emoji': '🍈', 'ask': 68, 'legendary': true};
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.text('✨ Legendary today only!'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('legend_banner')));
+    await settle(tester);
+    expect(fake.lastAnyStall, isTrue);
+    expect(fake.lastSurprise, '');
+    await tester.tap(find.text('OK lah, \$18'));
+    await settle(tester, 600);
+    await tester.tap(find.text('Confirm \$18'));
+    await settle(tester, 2500);
+    await tester.ensureVisible(find.text('Share'));
+    await tester.tap(find.text('Share'));
+    await settle(tester, 1000);
+    expect(shared.single, contains('legendary'));
+    expect(shared.single, isNot(contains('http'))); // gone tomorrow: no challenge link
+    await settle(tester, 3000);
+  });
+
+  testWidgets('✨ a legendary item already bought today says so and does not open', (tester) async {
+    final fake = Fake([])
+      ..legend = {
+        'id': 'legend_mei',
+        'name': 'golden Musang King durian',
+        'emoji': '🍈',
+        'ask': 68,
+        'legendary': true,
+        'sold_out': true,
+      };
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.text("✨ You got today's legendary find!"), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('legend_banner')));
+    await settle(tester, 600);
+    expect(find.textContaining('You already got today'), findsOneWidget);
+    expect(fake.lastAnyStall, isFalse);
+    await settle(tester, 4000);
+  });
+
+  testWidgets('🤜🤛 a tag-team combo: the COMBO! stamp and a line under her reply', (tester) async {
+    await openHaggle(tester, [
+      game('Wah, you two ah! OK lah, \$15.', event: 'counter', ask: 15)..addAll({'combo': true, 'combos': 1}),
+    ]);
+    await tester.tap(find.text('\$11 can or not?'));
+    await settle(tester, 500);
+    expect(find.byKey(const ValueKey('combo_stamp')), findsOneWidget);
+    expect(find.textContaining('COMBO! One of you charmed her'), findsOneWidget);
+    await settle(tester, 1500);
+    expect(find.byKey(const ValueKey('combo_stamp')), findsNothing); // just a moment
+  });
+
   testWidgets('Reduce motion can be switched on in Settings', (tester) async {
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
     await settle(tester, 2000);
@@ -1095,6 +1232,18 @@ void main() {
 }
 
 /// Pretend voice typing: "hears" [words] one after another, then stops.
+class _Reminder implements Reminder {
+  bool allowed = true;
+  final shown = <String>[];
+  List<Nudge>? planned;
+  @override
+  Future<bool> allow() async => allowed;
+  @override
+  Future<void> schedule(List<Nudge> plan) async => planned = plan;
+  @override
+  Future<void> showNow(String title, String body) async => shown.add(title);
+}
+
 class _Voice implements Voice {
   _Voice(this.words, {this.works = true});
   final List<String> words;
