@@ -337,7 +337,14 @@ class Game {
     };
   }
 
+  Future<bool> chooseWedding(String role) async {
+    if (!progress.chooseWedding(role)) return false;
+    await _save();
+    return true;
+  }
+
   Map<String, Object?> stalls() {
+    final wedding = progress.wedding;
     final legend = legendaryToday(now(), events: legendEvents);
     final best = <String, int>{};
     final bestPaid = <String, double>{};
@@ -351,6 +358,7 @@ class Game {
       }
     }
     return {
+      'wedding': wedding,
       'stalls': [
         for (final s in content['stalls'] as List)
           {
@@ -359,6 +367,7 @@ class Game {
             'stall': s['stall'],
             'place': s['place'],
             'look': s['look'],
+            if (s['id'] == 'mei' && wedding != null) 'wedding': wedding,
             'hearts': progress.hearts(s['id'] as String),
             'locked': !progress.unlocked(s['id'] as String),
             'new': progress.isNewStall(s['id'] as String), // 🆕 opened for you, never visited yet
@@ -632,6 +641,7 @@ class Game {
       if (ss.firmNote.isNotEmpty) 'firm_note': ss.firmNote,
       'closeness': h.s.done && h.s.result == 'deal' && h.s.deal != null ? _closeness(ss) : null,
       'tells': ss.tells,
+      if (h.style != BargainingStyle.standard) ...{'styled': true, if (event == 'greet') 'tactic_clue': h.style.clue},
       'dilemma': ss.dilemma == null
           ? null
           : {
@@ -657,6 +667,7 @@ class Game {
       'combos': ss.combos,
       'legendary': ss.legendary,
       'hearts': progress.hearts('${ss.stall['id']}'),
+      'wedding': ?(ss.stall['id'] == 'mei' ? progress.wedding : null),
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
       'mum': ss.finish['mum'],
       'unlocked': ss.finish['unlocked'] ?? const <Object>[],
@@ -699,7 +710,9 @@ class Game {
     if (ss.firmEarly && r > 1.06) {
       t += ' You went firm early: warm $who up and bargain a bit first next time.';
     } else if (ss.nice == 0 && r > 1.06) {
-      t += ' A kind word first makes $who easier to bargain with.';
+      t += ss.h.style == BargainingStyle.standard
+          ? ' A kind word first makes $who easier to bargain with.'
+          : ' ${ss.h.style.clue}';
     }
     return t;
   }
@@ -776,6 +789,7 @@ class Game {
         seed: seed,
         event: surprise,
         friend: progress.hearts(stallId),
+        style: wantsLegend ? BargainingStyle.standard : BargainingStyle.at(stallId),
       ),
       seed,
     );
@@ -818,6 +832,19 @@ class Game {
       final opener = _gossipOpener(stallId);
       if (opener != null) said = '$opener $said';
     }
+    final wedding = progress.wedding;
+    final memory = switch ((stallId, wedding?['stage'], wedding?['choice'])) {
+      ('mei', 1, _) => 'See the red paper? That one is for the wedding mangoes.',
+      ('mei', 2, 'table') => 'I kept a seat for you at the wedding table, my dear.',
+      ('mei', 2, 'stall') => 'Thank you for minding my stall while we celebrate.',
+      ('mei', 3, 'table') => 'See our wedding photo? We saved you a seat right there.',
+      ('mei', 3, 'stall') => 'Look at the wedding photo. I could relax because you had the stall covered.',
+      ('mei', 3, _) => 'Look, the wedding photo is up! Thank you for helping us.',
+      ('lim', 2, _) => 'Mei got the prawns for the wedding. Good.',
+      ('lim', 3, _) => 'Mei said the wedding prawns were a hit. Told you they were good.',
+      _ => '',
+    };
+    if (memory.isNotEmpty && !wantsLegend) said = '$memory $said';
     ss.chat.add({'who': 'them', 'text': said, 'ask': ss.h.s.ask, if (aiLine) 'ai': true});
     return _view(ss, said, 'greet', null, null, aiLine);
   }
@@ -1124,6 +1151,7 @@ class Game {
     if (surprises &&
         !ss.twisted &&
         !h.s.done &&
+        h.s.pending == null &&
         h.s.rounds == 3 &&
         h.s.event != 'rival' &&
         h.s.patience > 40 &&
@@ -1249,7 +1277,7 @@ class Game {
     } else if (ss.rude) {
       await _save();
     }
-    ss.tells = _tells(ss, before);
+    ss.tells = [if (kind != 'clarify' && h.tacticTell.isNotEmpty) h.tacticTell, ..._tells(ss, before)].take(2).toList();
     ss.lastEvent = event;
     ss.events.add(event);
     if (ss.comboStickers.isNotEmpty && !h.s.done) await _save(); // the Tag team sticker, kept at once

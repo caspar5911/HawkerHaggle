@@ -103,6 +103,20 @@ reply, on the phone; Settings → Your reports → Copy gives text to send to th
 above exist only in the app (`app/lib/core/progress.dart`, the surprise parts of `engine.dart`), tested by
 `progress_test.dart`, the forced-surprise sweep and the live check. Extra AI briefs live in `prompts_extra.dart`.
 
+## First visit and stall tactics (test 56)
+
+The welcome screen starts at Auntie Mei's mango stall. Players can browse or pick a nickname first.
+The guided haggle shows short controls and a deal receipt with optional details.
+
+Ordinary app haggles give three stallholders distinctive tactics. Mei responds strongly to the first compliment.
+Lim makes a better counter to an early, credible offer. Raj offers a bigger discount per item when buying two.
+The on-screen clues explain each style. The Python reference covers the standard rules, and Flutter tests exercise
+the tactics in actual haggles.
+
+Mei's existing wedding chapters change what you see on the market screen and at her stall. After the prawn deal,
+you can join the wedding table or offer to mind the stall. The wedding photo and her greeting remember your choice.
+Older completed stories get the photo automatically.
+
 ## A month of play (from test 18)
 - **Daily challenge:** 22 kinds (deal at a stall, 30% off, quick deal, typing only, buy two, final-final, beat Auntie
   Rose, rain/closing/festival, sweet talk, regular, next stall, budget, sad story, two stalls, three deals...), picked

@@ -139,6 +139,7 @@ class Api {
 
   Future<Map<String, dynamic>> me() => _run((g) => Map<String, dynamic>.from(g.me()));
   Future<Map<String, dynamic>> stalls() => _run((g) => Map<String, dynamic>.from(g.stalls()));
+  Future<bool> chooseWedding(String role) => _run((g) => g.chooseWedding(role));
   Future<Map<String, dynamic>> start(String stall, String item, [String? surprise, bool anyStall = false]) =>
       _run((g) async => Map<String, dynamic>.from(await g.start(stall, item, surprise, anyStall)));
   Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text, String? friend}) => _run(

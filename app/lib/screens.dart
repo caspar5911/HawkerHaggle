@@ -17,6 +17,7 @@ import 'sfx.dart';
 import 'voice.dart';
 import 'shop_screen.dart';
 import 'web_update.dart';
+import 'wedding.dart';
 import 'widgets.dart';
 
 // ======================================================================= market
@@ -75,6 +76,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         _stalls = r[1]['stalls'] as List;
         _legend = r[1]['legendary'] as Map?;
         _nextLegend = r[1]['next_legendary'] as Map?;
+        _wedding = r[1]['wedding'] as Map?;
         _today = r[2];
         _challenges = r[3];
         _error = null;
@@ -82,7 +84,6 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
       final jar = await widget.api.jar();
       if (mounted) setState(() => _jar = jar);
       widget.api.refreshReminders().ignore(); // a day played gets no reminder
-      if (_me?['named'] != true && !_asking) await _editName(first: true);
       // friends: this week's board (also what the stallholders gossip about)
       final b = await widget.api.board();
       if (mounted && b != null) setState(() => _board = b);
@@ -91,7 +92,9 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     }
   }
 
-  bool _asking = false;
+  bool _browseMarket = false;
+  bool get _showWelcome => _me?['haggles'] == 0 && !_browseMarket;
+  Map? _wedding;
   Map<String, dynamic>? _board;
   Map<String, dynamic>? _jar;
   bool _linkChecked = false;
@@ -120,11 +123,8 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     _load();
   }
 
-  /// First launch (or a tap on 👋): pick the name the stallholders call you.
-  Future<void> _editName({bool first = false}) async {
-    _asking = true;
-    final name = await askName(context, widget.api, current: '${_me?['name'] ?? ''}', first: first);
-    _asking = false;
+  Future<void> _editName() async {
+    final name = await askName(context, widget.api, current: '${_me?['name'] ?? ''}');
     if (name != null && mounted) setState(() => _me = {...?_me, 'name': name, 'named': true});
   }
 
@@ -143,13 +143,20 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     _load();
   }
 
-  void _openById(String stallId, String itemId) {
+  void _openById(String stallId, String itemId, {bool intro = false}) {
     final stall = _stalls.cast<Map>().where((x) => x['id'] == stallId).firstOrNull;
     final item = (stall?['items'] as List?)?.cast<Map>().where((x) => x['id'] == itemId).firstOrNull;
-    if (stall != null && item != null) _open(stall, item);
+    if (stall != null && item != null) _open(stall, item, intro: intro);
   }
 
-  Future<void> _open(Map stall, Map item, {String surprise = '', Map? target, bool challenge = false}) async {
+  Future<void> _open(
+    Map stall,
+    Map item, {
+    String surprise = '',
+    Map? target,
+    bool challenge = false,
+    bool intro = false,
+  }) async {
     if (item['legendary'] == true) {
       if (item['sold_out'] == true) {
         _toastMarket("✨ You already got today's legendary ${item['name']}. Another legendary item shows up soon!");
@@ -180,6 +187,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
           surprise: surprise,
           target: target,
           challenge: challenge,
+          intro: intro,
         ),
         transitionsBuilder: (_, a, _, child) => SlideTransition(
           position: Tween(
@@ -269,6 +277,55 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     );
   }
 
+  Future<void> _chooseWedding(String role) async {
+    try {
+      await widget.api.chooseWedding(role);
+      if (mounted) await _load();
+    } on ApiError catch (e) {
+      _toastMarket(e.message);
+    }
+  }
+
+  List<Widget> _welcomePage() {
+    final mei = _stalls.cast<Map>().where((s) => s['id'] == 'mei').firstOrNull;
+    if (mei == null) return _marketPage();
+    return [
+      const SizedBox(height: 16),
+      Container(
+        decoration: BoxDecoration(color: const Color(0xFFFFE8BB), borderRadius: BorderRadius.circular(26)),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            const Awning(colors: [Palette.red, Palette.cream], height: 36),
+            Stallholder(look: Map<String, dynamic>.from(mei['look'] as Map), size: 152),
+            const Text('🥭', style: TextStyle(fontSize: 34)),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+      const SizedBox(height: 16),
+      _Entry(
+        key: const ValueKey('first_haggle'),
+        emoji: '👩',
+        title: 'Your first haggle!',
+        line: "Help Mum pick up Auntie Mei's mangoes. See how much you can save.",
+        color: const Color(0xFFFFF2C7),
+        onTap: () => _openById('mei', 'mango', intro: true),
+      ),
+      Center(
+        child: TextButton(
+          key: const ValueKey('browse_market'),
+          onPressed: () => setState(() => _browseMarket = true),
+          child: const Text('Browse the market'),
+        ),
+      ),
+      if (_me?['named'] != true)
+        Center(
+          child: TextButton(onPressed: _editName, child: const Text('Choose a nickname')),
+        ),
+    ];
+  }
+
   List<Widget> _marketPage() => [
     if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
     if (_me != null) _Hello(me: _me!, onName: _editName),
@@ -296,7 +353,14 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         title: 'Your first haggle!',
         line: "Mum: Start with Auntie Mei's mangoes 🥭. She's friendly, and I'll help you.",
         color: const Color(0xFFFFF2C7),
-        onTap: () => _openById('mei', 'mango'),
+        onTap: () => _openById('mei', 'mango', intro: true),
+      ),
+    if (_wedding case final wedding?)
+      WeddingCard(
+        event: wedding,
+        onChoose: _chooseWedding,
+        onVisit: () =>
+            wedding['stage'] == 1 && wedding['ready'] == true ? _openById('lim', 'prawns') : _openById('mei', 'mango'),
       ),
     if (_today != null) TodayCard(today: _today!, onItem: _openById),
     if (_error != null) _Oops(message: _error!, retry: _load),
@@ -525,7 +589,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
             'shop' => [const SizedBox(height: 8), ShopPanel(key: const ValueKey('shop_panel'), api: widget.api)],
             'friends' => _friendsPage(),
             'me' => _mePage(),
-            _ => _marketPage(),
+            _ => _showWelcome ? _welcomePage() : _marketPage(),
           },
         ],
       ),
@@ -815,7 +879,12 @@ class _StallCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          Awning(colors: awning, height: 38),
+          Awning(colors: stall['wedding'] is Map ? const [Color(0xFFAB283B), Color(0xFFFFD680)] : awning, height: 38),
+          if (stall['wedding'] case final Map event)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 2, 12, 5),
+              child: WeddingTrim(event: event),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 14, 14),
             child: Row(
@@ -1119,6 +1188,7 @@ class HaggleScreen extends StatefulWidget {
     this.surprise = '',
     this.target,
     this.challenge = false,
+    this.intro = false,
   });
   final Api api;
   final Map stall;
@@ -1126,6 +1196,7 @@ class HaggleScreen extends StatefulWidget {
   final String surprise; // the daily challenge's Play button can ask for a market surprise
   final Map? target; // "Beat it" from the friends' board, or a friend's challenge link: {name, price}
   final bool challenge; // a friend's challenge link: any stall (even one not unlocked yet), no market surprise
+  final bool intro;
   @override
   State<HaggleScreen> createState() => _HaggleScreenState();
 }
@@ -1161,6 +1232,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
   bool _combo = false; // a tag-team combo just happened (the COMBO! stamp, for a moment)
   bool? _guided; // decided once, when the screen opens
   bool _wasGuided = false;
+  bool _intro = false;
   final _tipsSeen = <String>{};
   String? _tip;
 
@@ -1312,7 +1384,17 @@ class _HaggleScreenState extends State<HaggleScreen> {
     ];
     final view = {
       for (final k in const [
-        'line', 'event', 'ask', 'opening', 'patience', 'mood', 'qty', 'done', 'result', 'deal', 'pending', //
+        'line',
+        'event',
+        'ask',
+        'opening',
+        'patience',
+        'mood',
+        'qty',
+        'done',
+        'result',
+        'deal',
+        'pending', //
         'stars',
         'saved',
         'surprise',
@@ -1324,6 +1406,9 @@ class _HaggleScreenState extends State<HaggleScreen> {
         'combo',
         'combos',
         'legendary',
+        'styled',
+        'tactic_clue',
+        'wedding',
       ])
         k: g[k],
       'turn': _turn,
@@ -1343,20 +1428,25 @@ class _HaggleScreenState extends State<HaggleScreen> {
   }
 
   Future<void> _start() async {
+    final retryIntro = _intro && _g?['result'] != 'deal';
     setState(() {
       _busy = true;
       _showResult = false;
       _guessSkipped = false;
       _dilemmaDone = false;
       _msgs.clear();
+      _tipsSeen.clear();
       _tip = null;
     });
     try {
       if (_guided == null) {
         final me = await widget.api.me();
-        _guided = _wasGuided = MumGuide.wanted(haggles: (me['haggles'] as num?)?.toInt() ?? 1);
-      } else {
-        _guided = _wasGuided = false; // "play again": once is enough
+        final haggles = (me['haggles'] as num?)?.toInt() ?? 1;
+        _intro = widget.intro && haggles == 0;
+        _guided = _wasGuided = MumGuide.wanted(haggles: haggles);
+      } else if (!retryIntro) {
+        _guided = _wasGuided = false; // finished lessons are shown once
+        _intro = false;
       }
       final g = await widget.api.start(
         widget.stall['id'] as String,
@@ -1582,7 +1672,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     face: _face,
                     react: _react,
                     coop: _friend.isEmpty ? (_room == null ? '' : 'Code $_room') : _friend,
-                    onInvite: g == null || g['done'] == true ? null : _invite,
+                    onInvite: _intro || g == null || g['done'] == true ? null : _invite,
                   ),
                 ),
                 Expanded(
@@ -1608,8 +1698,15 @@ class _HaggleScreenState extends State<HaggleScreen> {
                                 _tip = null;
                               }),
                             ),
+                          if (!_intro)
+                            if (g?['tactic_clue'] case final String clue) _Tell(clue),
                           // before the first move: a guess at the fair price (checked when the haggle ends)
-                          if (g != null && g['done'] != true && _msgs.length == 1 && !_busy && !_guessSkipped)
+                          if (!_intro &&
+                              g != null &&
+                              g['done'] != true &&
+                              _msgs.length == 1 &&
+                              !_busy &&
+                              !_guessSkipped)
                             GuessCard(
                               item: '${widget.item['name']}',
                               guess: g['guess'] as num?,
@@ -1624,7 +1721,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                               onSkip: () => setState(() => _guessSkipped = true),
                             ),
                           if (_canFlag) _FlagChip(flagged: _msgs.last.flagged, onTap: _flag),
-                          if (!_busy && _msgs.isNotEmpty && !_msgs.last.mine)
+                          if (!_intro && !_busy && _msgs.isNotEmpty && !_msgs.last.mine)
                             _SaveLineChip(
                               saved: _savedLines.contains(_msgs.last.text),
                               onTap: () async {
@@ -1706,6 +1803,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     send: _send,
                     lastLine: g['line'] as String,
                     who: '${widget.stall['name']}',
+                    compact: _intro || g['styled'] == true,
                   ),
               ],
             ),
@@ -1733,6 +1831,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                 item: widget.item,
                 again: _start,
                 back: () => Navigator.of(context).pop(),
+                intro: _intro,
               ),
             ],
           ],
@@ -1765,6 +1864,7 @@ class _Scene extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final top = MediaQuery.of(context).padding.top;
+    final wedding = g == null && coop.isEmpty ? stall['wedding'] : g?['wedding'];
     return Container(
       height: 262 + top,
       decoration: const BoxDecoration(
@@ -1780,7 +1880,10 @@ class _Scene extends StatelessWidget {
             top: top,
             left: 0,
             right: 0,
-            child: const Awning(colors: [Palette.red, Colors.white], height: 50),
+            child: Awning(
+              colors: wedding is Map ? const [Color(0xFFAB283B), Color(0xFFFFD680)] : const [Palette.red, Colors.white],
+              height: 50,
+            ),
           ),
           // the stallholder behind the counter
           Positioned(
@@ -1817,6 +1920,12 @@ class _Scene extends StatelessWidget {
               ),
             ),
           ),
+          if (wedding is Map)
+            Positioned(
+              right: 15,
+              bottom: 8,
+              child: IgnorePointer(child: WeddingKeepsake(event: wedding)),
+            ),
           Positioned(
             top: top + 6,
             left: 4,
@@ -1873,6 +1982,23 @@ class _Scene extends StatelessWidget {
   }
 }
 
+class _CompactMoveStrip extends StatelessWidget {
+  const _CompactMoveStrip({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).height < 620) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(spacing: 6, children: children),
+      );
+    }
+    return Wrap(alignment: WrapAlignment.center, spacing: 6, runSpacing: 4, children: children);
+  }
+}
+
 class _Controls extends StatelessWidget {
   const _Controls({
     required this.g,
@@ -1881,7 +2007,9 @@ class _Controls extends StatelessWidget {
     required this.send,
     required this.lastLine,
     required this.who,
+    this.compact = false,
   });
+  final bool compact;
   final Map<String, dynamic> g;
   final String lastLine;
   final String who;
@@ -1915,6 +2043,30 @@ class _Controls extends StatelessWidget {
         children: [
           if (pending != null) ...[
             _ConfirmDeal(price: pending, busy: busy, send: send),
+            const SizedBox(height: 8),
+          ] else if (compact && (sugs.isNotEmpty || oneText != null)) ...[
+            _CompactMoveStrip(
+              children: [
+                if (oneText != null)
+                  OutlinedButton(
+                    onPressed: busy ? null : () => send(move: 'one', mine: oneText),
+                    child: const Text('Just one'),
+                  ),
+                for (final (i, s) in sugs.cast<Map>().indexed)
+                  OutlinedButton(
+                    onPressed: busy ? null : () => send(pick: i, mine: s['text'] as String),
+                    onLongPress: busy ? null : () => _openTypeBox(context, prefill: s['text'] as String),
+                    child: Text(switch (s['move']) {
+                      'offer' => 'Offer ${money(s['price'] as num)}${oneText != null ? ' each' : ''}',
+                      'compliment' => 'Compliment',
+                      'competitor' => 'Compare prices',
+                      'regular' => 'Be a regular',
+                      'bulk' => 'Ask for two',
+                      _ => 'Chat',
+                    }),
+                  ),
+              ],
+            ),
             const SizedBox(height: 8),
           ] else if (sugs.isNotEmpty || oneText != null) ...[
             // the suggestions sit in one row you can swipe, so the chat keeps its room
@@ -2499,7 +2651,9 @@ class _Result extends StatefulWidget {
     required this.item,
     required this.again,
     required this.back,
+    required this.intro,
   });
+  final bool intro;
   final Api api;
   final Map<String, dynamic> g;
   final Map stall;
@@ -2512,6 +2666,7 @@ class _Result extends StatefulWidget {
 
 class _ResultState extends State<_Result> {
   final _card = GlobalKey();
+  bool _showDetails = false;
   List<Map<String, dynamic>> _new = const [];
 
   @override
@@ -2612,81 +2767,101 @@ class _ResultState extends State<_Result> {
                       child: Text('📱 ${g['mum']}', style: const TextStyle(color: Palette.ink, height: 1.3)),
                     ),
                   ],
-                  for (final st in _new) ...[
-                    const SizedBox(height: 10),
-                    TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0.5, end: 1),
-                      duration: const Duration(milliseconds: 700),
-                      curve: Curves.elasticOut,
-                      builder: (_, t, child) => Transform.scale(scale: t, child: child),
-                      child: Text(
-                        'New sticker! ${st['emoji']} ${st['title']}',
-                        style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
-                      ),
-                    ),
-                  ],
-                  for (final n in (g['notes'] as List? ?? const []).cast<String>()) ...[
+                  if (widget.intro) ...[
+                    const SizedBox(height: 12),
+                    if (deal && g['mum'] == null) const Text("Mum: Well done! Now you know how to make an offer."),
                     const SizedBox(height: 8),
-                    Text(
-                      n,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                    FilledButton(
+                      onPressed: deal ? widget.back : widget.again,
+                      child: Text(deal ? 'Continue to market' : 'Try again'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _showDetails = !_showDetails),
+                      child: Text(_showDetails ? 'Hide details' : 'Deal details'),
                     ),
                   ],
-                  for (final u in unlocked) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      '🔓 A new stall opened: ${widget.api.stallName(u)}!',
-                      style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
-                    ),
-                  ],
-                  if (deal) ...[
-                    const SizedBox(height: 14),
-                    // the picture that gets shared
-                    RepaintBoundary(
-                      key: _card,
-                      child: Transform.scale(
-                        scale: 0.8,
-                        child: BragCard(stall: widget.stall, item: item, g: g),
-                      ),
-                    ),
-                    Bouncy(
-                      onTap: _share,
-                      child: const Pill(text: 'Share', icon: '📤'),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Bouncy(
-                    key: const ValueKey('share_chat'),
-                    onTap: () async {
-                      final past = await widget.api.history();
-                      if (past.isEmpty || !context.mounted) return;
-                      await Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => HistoryChatScreen(api: widget.api, id: '${past.first['id']}'),
-                        ),
-                      );
-                    },
-                    child: const Pill(text: 'Share the chat as a picture', icon: '📸'),
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Bouncy(
-                          onTap: widget.back,
-                          child: const Pill(text: 'Market', icon: '🏮'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Bouncy(
-                          onTap: widget.again,
-                          child: const Pill(text: 'Again!', icon: '🔁', color: Palette.gold),
+                  if (!widget.intro || _showDetails) ...[
+                    for (final st in _new) ...[
+                      const SizedBox(height: 10),
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.5, end: 1),
+                        duration: const Duration(milliseconds: 700),
+                        curve: Curves.elasticOut,
+                        builder: (_, t, child) => Transform.scale(scale: t, child: child),
+                        child: Text(
+                          'New sticker! ${st['emoji']} ${st['title']}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
                         ),
                       ),
                     ],
-                  ),
+                    for (final n in (g['notes'] as List? ?? const []).cast<String>()) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        n,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                      ),
+                    ],
+                    for (final u in unlocked) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        '🔓 A new stall opened: ${widget.api.stallName(u)}!',
+                        style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                      ),
+                    ],
+                    if (deal) ...[
+                      const SizedBox(height: 14),
+                      // the picture that gets shared
+                      RepaintBoundary(
+                        key: _card,
+                        child: Transform.scale(
+                          scale: 0.8,
+                          child: BragCard(stall: widget.stall, item: item, g: g),
+                        ),
+                      ),
+                      Bouncy(
+                        onTap: _share,
+                        child: const Pill(text: 'Share', icon: '📤'),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Bouncy(
+                      key: const ValueKey('share_chat'),
+                      onTap: () async {
+                        final past = await widget.api.history();
+                        if (past.isEmpty || !context.mounted) return;
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => HistoryChatScreen(api: widget.api, id: '${past.first['id']}'),
+                          ),
+                        );
+                      },
+                      child: const Pill(text: 'Share the chat as a picture', icon: '📸'),
+                    ),
+                  ],
+                  if (!widget.intro || !deal) ...[
+                    const SizedBox(height: 14),
+                    if (widget.intro)
+                      TextButton(onPressed: widget.back, child: const Text('Browse the market'))
+                    else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Bouncy(
+                              onTap: widget.back,
+                              child: const Pill(text: 'Market', icon: '🏮'),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Bouncy(
+                              onTap: widget.again,
+                              child: const Pill(text: 'Again!', icon: '🔁', color: Palette.gold),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -3320,6 +3495,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                   for (final m in _chat) Bubble(text: '${m['t']}', mine: m['m'] == true, sparkle: m['s'] == true),
                   if (g != null && !_busy)
                     for (final t in (g['tells'] as List? ?? const [])) _Tell('$t'),
+                  if (g?['tactic_clue'] case final String clue) _Tell(clue),
                   if (_aside.isNotEmpty && !_busy) _Tell(_aside),
                   if (g?['combo'] == true && !_busy) const _Tell(comboLine),
                   if (_busy) const Typing(),
@@ -3380,6 +3556,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
                 send: _send,
                 lastLine: '${g['line']}',
                 who: '${widget.stall['name']}',
+                compact: g['styled'] == true,
               ),
           ],
         ),

@@ -1075,7 +1075,10 @@ void main() {
       await api.signIn(server: api.accountServer, username: 'Melody', password: 'kopi1234', signUp: true);
       final code = await host.coopCreate('mei', 'mango');
       final room = await api.coopJoin(code);
-      final stall = (guest.stalls()['stalls'] as List).first as Map;
+      final stall = {
+        ...(guest.stalls()['stalls'] as List).first as Map,
+        'wedding': {'stage': 2, 'choice': 'table'},
+      };
       await tester.binding.setSurfaceSize(const Size(420, 1200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
@@ -1085,18 +1088,35 @@ void main() {
       );
       await host.coopSend(code, {
         'type': 'state',
-        'view': {...game('\$16 lah.', ask: 16), 'turn': 3, 'bounced': 0},
+        'view': {
+          ...game('\$16 lah.', ask: 16),
+          'turn': 3,
+          'bounced': 0,
+          'wedding': {'stage': 3, 'choice': 'stall'},
+          'styled': true,
+          'tactic_clue': 'Try a compliment first.',
+        },
         'chat': <Object>[],
       });
       await tester.pump(const Duration(milliseconds: 1600));
       await settle(tester, 800);
-      await tester.tap(find.text('\$11 can or not?'));
+      expect(find.bySemanticsLabel('Wedding photo with a thank-you card'), findsOneWidget);
+      expect(find.text('Try a compliment first.'), findsOneWidget);
+      await tester.tap(find.text('Offer \$11'));
       await settle(tester, 600);
       expect(roomMsgs(m, code, 'move').last, containsPair('at', 3));
-      // the host moved first: the friend's move bounced, they're told and can choose again
+      // A host update also clears the guest's local wedding decor on a small screen.
+      await tester.binding.setSurfaceSize(const Size(320, 480));
       await host.coopSend(code, {
         'type': 'state',
-        'view': {...game('\$15 lah.', ask: 15), 'turn': 4, 'bounced': 1},
+        'view': {
+          ...game('\$15 each lah.', ask: 15, qty: 2),
+          'turn': 4,
+          'bounced': 1,
+          'wedding': null,
+          'styled': true,
+          'one_text': 'Just one, please.',
+        },
         'chat': <Object>[],
       });
       await host.coopSend(code, {'type': 'whisper', 'say': 'deal'});
@@ -1104,6 +1124,10 @@ void main() {
       await settle(tester, 800);
       expect(find.textContaining('one at a time lah'), findsOneWidget);
       expect(find.textContaining('Take the deal!'), findsWidgets);
+      expect(find.bySemanticsLabel('Wedding table'), findsNothing);
+      expect(find.text('Just one'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.binding.setSurfaceSize(const Size(420, 1200));
       // the deal closes; the state may come twice, but the friend's share is counted once
       final done = {
         ...game('Deal!', result: 'deal', deal: 14, stars: 3, saved: 0.22),

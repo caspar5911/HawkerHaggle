@@ -121,10 +121,39 @@ double niceUp(double price) {
 
 double clamp(double x, double lo, double hi) => math.max(lo, math.min(hi, x));
 
+/// Optional stall rules layered on the reference engine by the app.
+enum BargainingStyle {
+  standard,
+  warm,
+  direct,
+  bundles;
+
+  static BargainingStyle at(String stall) => switch (stall) {
+    'mei' => warm,
+    'lim' => direct,
+    'raj' => bundles,
+    _ => standard,
+  };
+
+  String get clue => switch (this) {
+    warm => 'Auntie Mei loves a kind word about her fruit. Once is enough, ah.',
+    direct => 'Uncle Lim likes a straight offer. Start with a sensible price while he has time.',
+    bundles => 'Boss Raj makes better deals for two. Check the total before you buy.',
+    standard => '',
+  };
+}
+
 class Haggle {
-  Haggle(this.item, this.p, {int seed = 0, HaggleState? state, String event = '', int friend = 0})
-    : rng = math.Random(seed),
-      s = state ?? HaggleState(ask: item.ask, opening: item.ask) {
+  Haggle(
+    this.item,
+    this.p, {
+    int seed = 0,
+    HaggleState? state,
+    String event = '',
+    int friend = 0,
+    this.style = BargainingStyle.standard,
+  }) : rng = math.Random(seed),
+       s = state ?? HaggleState(ask: item.ask, opening: item.ask) {
     if (state != null) return;
     s.event = event;
     s.friend = friend.clamp(0, 3);
@@ -153,6 +182,10 @@ class Haggle {
   final Personality p;
   final math.Random rng;
   final HaggleState s;
+  final BargainingStyle style;
+  String tacticTell = '';
+
+  int get _complimentLimit => style == BargainingStyle.warm ? 1 : 2;
 
   double floorNow() {
     final f = item.floor * (1 - 0.02 * s.mood) * (s.qty > 1 ? 0.95 : 1.0);
@@ -211,6 +244,7 @@ class Haggle {
   }
 
   Outcome move(String kind, [double? price, bool? callBack]) {
+    tacticTell = '';
     if (s.done) return _out('over');
     final askStart = s.ask; // a no-sale ending keeps the price from before this move
     if (kind == 'buy') {
@@ -305,6 +339,7 @@ class Haggle {
     // it), holding firm gets a yes; otherwise she just holds her price. Only a stated limit ("I only have $16")
     // makes her name a best price for the rest of the haggle.
     final repeat = !firm && x == s.lastOffer;
+    final openingOffer = s.lastOffer == null && s.rounds <= 2;
     s.lastOffer = x;
     final f = floorNow();
     if (x >= s.ask) return _agree(s.ask, x);
@@ -338,8 +373,10 @@ class Haggle {
     final before = s.ask;
     // an offer that isn't an insult always moves her a little, however cross she is (crossness costs you, it never
     // freezes the haggle)
-    _concede(x, math.max(minGive, 0.25 + 0.08 * s.mood - 0.15 * p.stubborn + _eventGive));
-    _tire(7);
+    final direct = style == BargainingStyle.direct && openingOffer && x >= f * 0.85;
+    _concede(x, math.max(minGive, 0.25 + 0.08 * s.mood - 0.15 * p.stubborn + _eventGive + (direct ? 0.16 : 0)));
+    _tire(direct ? 5 : 7);
+    if (direct && s.ask < before) tacticTell = '🐟 Uncle Lim liked that straight offer.';
     return _out(s.ask >= before ? 'final' : 'counter', x);
   }
 
@@ -357,12 +394,13 @@ class Haggle {
 
   Outcome _compliment() {
     s.compliments += 1;
-    if (s.compliments > 2) {
+    if (s.compliments > _complimentLimit) {
       _tire(12);
       return _out('flattery_tired');
     }
-    s.mood = clamp(s.mood + 1.5 * p.flattery, -3, 3);
-    _concede(floorNow(), 0.12 * p.flattery);
+    final warm = style == BargainingStyle.warm;
+    s.mood = clamp(s.mood + (warm ? 2.0 : 1.5) * p.flattery, -3, 3);
+    _concede(floorNow(), (warm ? 0.18 : 0.12) * p.flattery);
     _tire(3);
     return _out('flattered');
   }
@@ -404,8 +442,10 @@ class Haggle {
     }
     s.qty = 2;
     final before = s.ask;
-    _concede(floorNow(), 0.35 * (1.2 - p.stubborn));
+    final bundle = style == BargainingStyle.bundles;
+    _concede(floorNow(), (bundle ? 0.55 : 0.35) * (1.2 - p.stubborn));
     s.bulkGave = before - s.ask;
+    if (bundle && s.bulkGave > 0) tacticTell = '📦 Boss Raj cut the price per item for both together.';
     _tire(4);
     if (price != null) return _offer(price); // "2 for $40": $20 each
     return _out('bulk');
@@ -440,9 +480,9 @@ class Haggle {
   /// The mood part of a second thing said in the same message ("so nice, 20 can?"), within the usual limits.
   void side(String kind) {
     if (s.done) return;
-    if (kind == 'compliment' && s.compliments < 2) {
+    if (kind == 'compliment' && s.compliments < _complimentLimit) {
       s.compliments += 1;
-      s.mood = clamp(s.mood + 1.0 * p.flattery, -3, 3);
+      s.mood = clamp(s.mood + (style == BargainingStyle.warm ? 1.4 : 1.0) * p.flattery, -3, 3);
     } else if (kind == 'regular' && !s.used.contains('regular')) {
       s.used.add('regular');
       s.mood = clamp(s.mood + 0.7, -3, 3);
@@ -520,11 +560,24 @@ class Haggle {
     }
     final tactics = [
       for (final m in const ['compliment', 'competitor', 'bulk', 'regular'])
-        if (!s.used.contains(m) && !(m == 'compliment' && s.compliments >= 2) && !(m == 'bulk' && item.single)) m,
+        if (!s.used.contains(m) &&
+            !(m == 'compliment' && s.compliments >= _complimentLimit) &&
+            !(m == 'bulk' && item.single))
+          m,
     ];
+    final preferred = switch (style) {
+      BargainingStyle.warm => 'compliment',
+      BargainingStyle.bundles => 'bulk',
+      _ => null,
+    };
+    final tactic = tactics.isEmpty
+        ? 'smalltalk'
+        : tactics.contains(preferred)
+        ? preferred!
+        : tactics[rng.nextInt(tactics.length)];
     return [
       for (final x in offers) {'move': 'offer', 'price': x},
-      {'move': tactics.isEmpty ? 'smalltalk' : tactics[rng.nextInt(tactics.length)], 'price': null},
+      {'move': tactic, 'price': null},
     ];
   }
 }

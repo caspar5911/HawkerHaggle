@@ -811,6 +811,26 @@ class Progress {
   // ---------------------------------------------------------------- story arcs
   Map _arc(String stall) => (_map('arcs')[stall] ??= <String, Object?>{'done': 0}) as Map;
 
+  /// Decoration and dialogue are derived from the existing chapters, including older saves.
+  Map<String, Object?>? get wedding {
+    final a = (p['arcs'] as Map?)?['mei'] as Map?;
+    final stage = (a?['done'] as num?)?.toInt() ?? 0;
+    if (stage < 1) return null;
+    return {
+      'stage': stage.clamp(1, 3),
+      'choice': a?['wedding_role'],
+      'ready': stage < 3 && hearts('mei') >= arcs['mei']![stage].hearts,
+    };
+  }
+
+  bool chooseWedding(String role) {
+    if (role != 'table' && role != 'stall') return false;
+    final event = wedding;
+    if (event?['stage'] != 2 || event?['choice'] != null) return false;
+    _arc('mei')['wedding_role'] = role;
+    return true;
+  }
+
   /// A regular's story: each chapter done, open (with what to do) or locked (until more hearts).
   Map<String, Object?> arc(String stall) {
     final chapters = arcs[stall]!;

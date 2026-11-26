@@ -81,7 +81,7 @@ const tricks = <Trick>[
     '😍',
     'Say something nice',
     'A kind word about their goods (or their stall) puts them in a better mood, and a happy stallholder comes down '
-        'more. Twice is charming; too much and they see through it.',
+        'more. Try one sincere compliment first. Auntie Mei catches on quickly if you repeat yourself.',
     '"Wah, your mangoes look so sweet today!"',
     'Be nice before you talk price.',
   ),
