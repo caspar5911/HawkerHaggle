@@ -1871,7 +1871,12 @@ class Game {
       'event': event,
       'line': said,
       'ai_line': aiLine,
-      'customer': {'id': sale.customer.id, 'name': sale.customer.name, 'look': sale.customer.look},
+      'customer': {
+        'id': sale.customer.id,
+        'name': sale.customer.name,
+        'look': sale.customer.look,
+        'clue': sale.customer.clue,
+      },
       'product': {
         'id': sale.product.id,
         'name': sale.product.name,

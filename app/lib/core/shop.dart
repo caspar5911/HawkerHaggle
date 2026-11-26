@@ -33,8 +33,10 @@ class Customer {
     required this.patience,
     required this.step,
     required this.lines,
+    this.clue = '',
   });
   final String id, name, persona, voice;
+  final String clue; // what you can tell by looking at them (shown at your stall)
   final Map<String, String> look;
   final double most; // the most they'll pay, as a share of the fair price (a little random around it)
   final double opens; // their first offer, as a share of the fair price
@@ -52,8 +54,9 @@ const customers = [
     {'skin': '#E6BF9C', 'hair': '#BDBDBD', 'shirt': '#90A4AE', 'apron': '#90A4AE', 'accessory': 'glasses'},
     most: 1.0,
     opens: 0.55,
-    patience: 4,
+    patience: 5,
     step: 0.35,
+    clue: '👴 Counts every cent',
     lines: {
       'greet': ['Boss, this {item}. {offer} can or not?', 'Aiyah, {item} how much? I give you {offer}.'],
       'raise': ['{ask}? So ex! Okay, {offer} lah.', 'Aiyah boss, {ask} cannot. {offer}.'],
@@ -73,8 +76,9 @@ const customers = [
     {'skin': '#F6D7C3', 'hair': '#D8A35D', 'shirt': '#4FC3F7', 'apron': '#FFFFFF', 'accessory': 'cap'},
     most: 1.35,
     opens: 0.75,
-    patience: 5,
+    patience: 6,
     step: 0.5,
+    clue: '📸 On holiday, happy to spend',
     lines: {
       'greet': ['Oh wow, a {item}! Would you take {offer}?', 'Hello! This {item} is lovely. {offer}, maybe?'],
       'raise': ['Hmm, {ask} is a bit much. How about {offer}?', 'Oh, {ask}? Could you do {offer}?'],
@@ -94,8 +98,9 @@ const customers = [
     {'skin': '#EBC2A0', 'hair': '#1B1B1B', 'shirt': '#FFB74D', 'apron': '#5C6BC0', 'accessory': 'headphones'},
     most: 0.85,
     opens: 0.5,
-    patience: 5,
+    patience: 6,
     step: 0.3,
+    clue: '🎒 A small allowance',
     lines: {
       'greet': ['Boss, {item} for my girlfriend. Student price {offer}?', 'Eh boss, {offer} for the {item} can?'],
       'raise': ['{ask}? Pls lah boss. {offer}?', 'Aiyo {ask}, my allowance cannot. {offer}?'],
@@ -115,8 +120,9 @@ const customers = [
     {'skin': '#F3D2B8', 'hair': '#5D4037', 'shirt': '#AD1457', 'apron': '#F8BBD0', 'accessory': 'perm'},
     most: 1.5,
     opens: 0.9,
-    patience: 3,
+    patience: 4,
     step: 0.6,
+    clue: '💎 Wants the best, money no problem',
     lines: {
       'greet': ['Darling, the {item}. {offer}, quickly ah.', '{item}, {offer}? I am in a hurry.'],
       'raise': ['{ask}? Fine, {offer}. Quickly.', 'Hmm, {ask}. I give {offer}, final.'],
@@ -152,17 +158,30 @@ class Sale {
   double? price;
 
   /// You name your price. Returns the customer's reaction: accept, raise, annoyed, walk.
+  ///
+  /// Close to their own offer, it's a yes. Nearer the most they'd pay, they bargain back ("raise": they come up, but
+  /// not all the way); ask the same price again (holding firm) and they give in. More than they'd ever pay: they come
+  /// up a little, never past their limit, and asking it again wears out their patience fast.
   String askFor(double x) {
     x = _half(x);
+    final again = ask != null && x == ask; // the same price again: you're holding firm
     ask = x;
-    if (x <= offer || x <= most) return _sell(x, 'accept');
+    if (x <= offer) return _sell(x, 'accept');
     if (x > most * 1.6) {
       patience -= 2;
       return patience <= 0 ? _walk() : 'annoyed';
     }
-    patience -= 1;
+    if (x <= most) {
+      if (again || x <= offer + (most - offer) * 0.35) return _sell(x, 'accept');
+      patience -= 1;
+      if (patience <= 0) return _walk();
+      offer = math.min(x - 0.5, math.max(offer + 0.5, _half(offer + customer.step * (x - offer))));
+      return 'raise';
+    }
+    patience -= again ? 2 : 1;
     if (patience <= 0) return _walk();
-    offer = math.min(most, math.max(offer + 0.5, _half(offer + customer.step * (x - offer))));
+    // (a small step towards their own limit, not a leap: asking far too much never fetches their best price)
+    offer = math.min(most, math.max(offer + 0.5, _half(offer + customer.step * 0.5 * (most - offer))));
     return 'raise';
   }
 
@@ -208,7 +227,7 @@ class Sale {
   List<double> suggestions() {
     final fair = product.fair;
     final a = _half(math.max(offer + 0.5, offer + (fair - offer) * 0.5));
-    return {a, _half(fair), _half(fair * 1.3)}.where((x) => x > offer).toList()..sort();
+    return {a, _half(fair), _half(fair * 1.15)}.where((x) => x > offer).toList()..sort();
   }
 }
 
