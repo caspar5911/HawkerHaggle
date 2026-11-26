@@ -88,9 +88,14 @@ class Challenges {
   Map<String, Object?> _map(String k) => (p[k] ??= <String, Object?>{}) as Map<String, Object?>;
 
   String _name(String stall) => '${_stalls[stall]?['name'] ?? stall}';
+
+  /// The item a challenge names: one that a day's pocket money can cover (a first price up to \$30), so today's
+  /// challenge is never out of reach.
   Map _item(String stall, int k) {
-    final items = _stalls[stall]!['items'] as List;
-    return items[k % items.length] as Map;
+    final all = (_stalls[stall]!['items'] as List).cast<Map>();
+    final items = all.where((i) => (i['ask'] as num) <= 30).toList();
+    final pool = items.isEmpty ? all : items;
+    return pool[k % pool.length];
   }
 
   // ---------------------------------------------------------------- daily challenge

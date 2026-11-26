@@ -73,6 +73,8 @@ class Fake extends Game {
   bool down = false;
   String name = 'Shiok Otter 123';
   bool named = true; // false: a first launch, which asks for a name
+  num? wallet; // 👛 (null: no wallet shown)
+  bool short = false; // the mangoes cost more than the wallet
   Map<String, Object?>? festival;
 
   @override
@@ -80,7 +82,16 @@ class Fake extends Game {
   @override
   Map<String, Object?> me() {
     if (down) throw GameError(0, "Can't reach the market. Check your internet.");
-    return {'name': name, 'named': named, 'haggles': 0, 'deals': 0, 'stars': 0, 'best_saved': 0, 'festival': festival};
+    return {
+      'name': name,
+      'named': named,
+      'haggles': 0,
+      'deals': 0,
+      'stars': 0,
+      'best_saved': 0,
+      'festival': festival,
+      if (wallet != null) ...{'wallet': wallet, 'pocket': 20},
+    };
   }
 
   @override
@@ -105,7 +116,7 @@ class Fake extends Game {
         'place': 'Wet market',
         'look': look,
         'items': [
-          {'id': 'mango', 'name': 'box of mangoes', 'emoji': '🥭', 'ask': 18, 'stars': 2},
+          {'id': 'mango', 'name': 'box of mangoes', 'emoji': '🥭', 'ask': 18, 'stars': 2, if (short) 'short': true},
           ?legend,
         ],
       },
@@ -282,6 +293,36 @@ void main() {
     expect(find.text('Deal! 🎉'), findsOneWidget);
     expect(find.textContaining('Full price'), findsOneWidget);
     await settle(tester, 4000);
+  });
+
+  testWidgets('👛 the wallet on screen: the chip, Mum\'s pocket money, "more than you have", and in a haggle', (
+    tester,
+  ) async {
+    final fake = Fake([])
+      ..wallet = 12.5
+      ..short = true
+      ..first = {...game('Morning my dear! \$18 only.'), 'wallet': 12.5, 'mum_pays': false};
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.text('👛 \$12.50'), findsOneWidget);
+    expect(find.textContaining('Mum gave you \$20 pocket money'), findsOneWidget);
+    expect(find.textContaining('more than you have'), findsOneWidget);
+    await tester.tap(find.textContaining('box of mangoes').last);
+    await settle(tester, 2000);
+    expect(find.textContaining('👛 \$12.50'), findsOneWidget); // under the stallholder's name
+    expect(tester.takeException(), isNull);
+    await settle(tester, 3000);
+  });
+
+  testWidgets('👩 on Mum\'s list, the haggle says Mum pays', (tester) async {
+    final fake = Fake([])
+      ..wallet = 12.5
+      ..first = {...game('Morning my dear! \$18 only.'), 'wallet': 12.5, 'mum_pays': true};
+    await openHaggle(tester, [], fake: fake);
+    expect(find.textContaining('Mum pays'), findsOneWidget);
+    expect(find.textContaining('👛 \$12.50'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await settle(tester, 3000);
   });
 
   testWidgets('a brand-new player is sent to Auntie Mei\'s mangoes for a first win', (tester) async {

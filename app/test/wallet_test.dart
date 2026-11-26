@@ -8,9 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/api.dart';
 import 'package:hawker_haggle/extras.dart' show JarScreen;
+import 'package:hawker_haggle/core/challenges.dart';
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/core/voice.dart' show money;
 import 'package:hawker_haggle/sfx.dart';
+
+import 'challenges_test.dart' as month show newGame, buy, playKind;
 
 final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
 
@@ -257,5 +260,54 @@ void main() {
     expect(find.text('\$10'), findsWidgets); // the jar
     expect(g.progress.jar, 10);
     await tester.pump(const Duration(seconds: 5)); // the note goes away
+  });
+
+  test('a month with the wallet: Mum\'s list, the daily challenge and the stories still come, never stuck', () async {
+    // the casual player from challenges_test, with real money: Mum's list, today's challenge, one more haggle
+    final (g, clock) = await month.newGame();
+    expect(g.walletOn, isTrue);
+    var blocked = 0, dailies = 0;
+    for (var day = 1; day <= 30; day++) {
+      g.me(); // opens the game: pocket money
+      for (final i in (g.today()['items'] as List).cast<Map>()) {
+        await month.buy(g, i['stall'] as String, i['item'] as String); // Mum pays
+      }
+      final d = Challenges(g.progress).daily();
+      final st = d.stall.isEmpty ? 'mei' : d.stall;
+      final items = ((content['stalls'] as List).firstWhere((s) => s['id'] == st)['items'] as List).cast<Map>();
+      // the item the challenge names, or (any deal will do) the cheapest one, like a kid with pocket money would
+      final cheapest = ([...items]..sort((a, b) => (a['ask'] as num).compareTo(b['ask'] as num))).first;
+      final item = items.firstWhere((i) => d.how.contains('${i['name']}'), orElse: () => cheapest)['id'] as String;
+      var short = false;
+      try {
+        if (d.id != 'final_final') await month.playKind(g, d, st, item);
+      } on GameError catch (e) {
+        expect(e.code, anyOf(402, 409), reason: 'only money or room stops a purchase');
+        short = true;
+      }
+      final done = Challenges(g.progress).dailyDone();
+      if (done) dailies++;
+      if (short && !done) {
+        blocked++; // the challenge really was missed for want of money
+        debugPrint('day $day ${d.id} at $st/$item missed: wallet \$${g.progress.wallet}');
+      }
+      // sells what they bought, a couple a day
+      for (var k = 0; k < 2 && g.progress.stock.isNotEmpty; k++) {
+        final s = await g.shopStart();
+        await g.shopMove(s['id'] as String, take: true);
+      }
+      expect(g.progress.wallet, greaterThanOrEqualTo(0));
+      clock.nextDay();
+    }
+    expect(g.progress.daysPlayed(), 30);
+    for (final id in ['days3', 'dailies7', 'week_done', 'month', 'list_done', 'streak3']) {
+      expect(g.stickers().firstWhere((s) => s['id'] == id)['earned'], isNotNull, reason: id);
+    }
+    expect(dailies, greaterThanOrEqualTo(20), reason: 'daily challenges done: $dailies of 30');
+    expect(blocked, lessThanOrEqualTo(3), reason: 'daily challenges missed for want of money: $blocked of 30');
+    debugPrint(
+      'wallet month: $dailies dailies done, $blocked days out of reach, '
+      'wallet \$${g.progress.wallet}, stock ${g.progress.stock.length}',
+    );
   });
 }
