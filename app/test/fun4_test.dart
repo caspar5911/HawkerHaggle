@@ -191,4 +191,77 @@ void main() {
       expect('${x['notes']}', isNot(contains('Come back tomorrow')));
     });
   });
+
+  group('🧱 a best price given too early', () {
+    Future<(Game, Map)> firmEarly() async {
+      final g = Game(
+        content: content,
+        store: MemoryKeyValue(),
+        random: math.Random(3),
+        surprises: false,
+        unlockAll: true,
+      );
+      await g.load();
+      // (finish one haggle first: the very first one is the gentle one)
+      final w = await g.start('mei', 'mango', 'none');
+      var x = await g.move(w['id'] as String, move: 'walk');
+      if (x['done'] != true) await g.move(w['id'] as String, move: 'walk');
+      final r = await g.start('raj', 'powerbank', 'none');
+      await g.move(r['id'] as String, text: '30 can?');
+      x = await g.move(r['id'] as String, text: 'I only have \$20'); // a stated limit, too early
+      return (g, x);
+    }
+
+    test('saying the same number twice is pressure, not a promise: nothing gets locked', () async {
+      final g = Game(
+        content: content,
+        store: MemoryKeyValue(),
+        random: math.Random(3),
+        surprises: false,
+        unlockAll: true,
+      );
+      await g.load();
+      final w = await g.start('mei', 'mango', 'none');
+      if ((await g.move(w['id'] as String, move: 'walk'))['done'] != true) {
+        await g.move(w['id'] as String, move: 'walk');
+      }
+      final r = await g.start('raj', 'powerbank', 'none');
+      final id = r['id'] as String;
+      final a = await g.move(id, text: '20 can?');
+      final b = await g.move(id, text: '20 can?');
+      expect(b['event'], 'same_offer');
+      expect(b['ask'], a['ask'], reason: 'she holds');
+      expect(b.containsKey('firm_note'), isFalse);
+      final c = await g.move(id, text: '24 can?');
+      expect(c['event'], isNot('final'), reason: 'coming up still bargains');
+      expect(c['ask'] as num, lessThan(b['ask'] as num));
+    });
+
+    test('a stated limit too early: a best price, and the game says why', () async {
+      final (_, x) = await firmEarly();
+      expect(x['event'], 'budget_best');
+      expect('${x['firm_note']}', contains('You gave \$20 as your limit'));
+      expect(x['ask'] as num, greaterThan(20 * 1.06)); // above her real lowest: it was too early
+    });
+
+    test('her soft spot reopens it once: she comes down, never below her real lowest', () async {
+      final (g, x) = await firmEarly();
+      final id = x['id'] as String;
+      final best = x['ask'] as num;
+      var y = await g.move(id, text: '21 can?');
+      expect(y['ask'], best, reason: 'still her best price');
+      expect(y.containsKey('firm_note'), isFalse, reason: 'the note shows once');
+      y = await g.move(id, text: 'boss you watch the cricket last night?');
+      expect(y['ask'] as num, lessThan(best));
+      expect(y['ask'] as num, greaterThanOrEqualTo(18)); // her real lowest is about $20 (never below 90% of it)
+      // bargaining works again
+      var last = y['ask'] as num;
+      for (final o in [21, 22, 22.5]) {
+        if (y['done'] == true || y['pending'] != null) break;
+        y = await g.move(id, text: '\$$o can?');
+        expect(y['ask'] as num, lessThanOrEqualTo(last));
+        last = y['ask'] as num;
+      }
+    });
+  });
 }

@@ -218,7 +218,10 @@ class Haggle:
             self._tire(6)
             return self._out("confused")
         x = nice(price)
-        firm = firm or x == self.s.last_offer       # saying the same number again means it
+        # Saying the same number again is pressure, not a promise: if they've earned it (her firm line is at or
+        # below it), holding firm gets a yes; otherwise she just holds her price. Only a stated limit ("I only have
+        # $16") makes her name a best price for the rest of the haggle.
+        repeat = not firm and x == self.s.last_offer
         self.s.last_offer = x
         f = self.floor_now()
         if x >= self.s.ask:
@@ -229,12 +232,15 @@ class Haggle:
         if self.s.best_given and x < self.s.ask:
             self._tire(9)
             return self._out("final", x)            # they already said their real best price
-        if x >= f and ((firm and x >= self.firm_line()) or x >= self.s.ask - give):
+        if x >= f and (((firm or repeat) and x >= self.firm_line()) or x >= self.s.ask - give):
             return self._agree(x, x)                # a firm limit they can live with: yes
         if x < f * 0.7:
             self._tire(22)
             self.s.mood = clamp(self.s.mood - 1, -3, 3)
             return self._out("insulted", x)
+        if repeat:
+            self._tire(9)                           # the same number again, too early: she holds, a bit impatient
+            return self._out("same_offer", x)
         if firm:
             # A real limit below what they'll do: no more $1 steps. Once, they say their best price (their real
             # lowest only if the customer has earned it), and it's final for this haggle.

@@ -132,6 +132,9 @@ class _Session {
   bool challenged = false; // they challenged the customer to convince them (the next typed message is the pitch)
   bool pitched = false; // a persuasion moment happened this haggle (at most one)
   int? pitchScore;
+  bool reopened = false; // a "best price" reopened by really winning them over (at most once a haggle)
+  bool reopenNow = false; // ...just now (the next reply says so)
+  String firmNote = ''; // why their price just became a "best price" (shown once)
   String? dilemma; // a stallholder's small trouble, offered at the start (help from your jar, or not)
   Twist? twist; // a silly twist in the middle of the haggle, waiting for the player's choice
   bool twisted = false; // at most one a haggle
@@ -559,6 +562,7 @@ class Game {
       'found': _takeFound(ss), // a soft spot found just now (once)
       'challenge': ss.challenged, // "convince me!": the next typed message is a pitch
       'pitch_score': ss.pitchScore,
+      if (ss.firmNote.isNotEmpty) 'firm_note': ss.firmNote,
       'closeness': h.s.done && h.s.result == 'deal' && h.s.deal != null ? _closeness(ss) : null,
       'tells': ss.tells,
       'dilemma': ss.dilemma == null
@@ -807,6 +811,7 @@ class Game {
     if (ss == null) throw GameError(404, 'No such haggle');
     final h = ss.h;
     if (h.s.done) throw GameError(409, 'This haggle is over');
+    ss.firmNote = '';
     final stall = ss.stall, item = ss.item;
     final useAi = ai.enabled; // every move, typed or tapped, is part of the conversation
     var readAi = false;
@@ -876,6 +881,7 @@ class Game {
       if (typed.isNotEmpty && !ss.softSpot && spot != null && spot.heardIn(typed) && kind != 'rude') {
         ss.softSpot = true;
         h.warm(1.2);
+        _reopen(ss);
         ss.nice++;
         if (progress.findSoftSpot('${stall['id']}')) ss.found = spot.topic;
       }
@@ -886,6 +892,7 @@ class Game {
           final score = await ai.judgePitch(stall: stall, item: item, pitch: typed) ?? 0;
           ss.pitchScore = score;
           h.warm(0.9 * score);
+          if (score >= 2) _reopen(ss);
           if (score > 0) ss.nice++;
         }
       }
@@ -922,7 +929,14 @@ class Game {
       out = h.move(kind, price, callBack);
       event = out.event;
       if (event == 'callback') ss.calledBack = true;
-      if (event == 'budget_best') ss.firmEarly = h.s.ask > h.item.floor * 1.06; // a firm price before it was earned
+      if (event == 'budget_best') {
+        ss.firmEarly = h.s.ask > h.item.floor * 1.06; // a firm price before it was earned
+        // say why, so the rule can be learned (and that it isn't hopeless)
+        final who = '${stall['name']}';
+        ss.firmNote =
+            '🧱 You gave ${price != null ? money(price) : 'a number'} as your limit, so $who named a best price. '
+            'Really win $who over (a soft spot, a great pitch) and it can move once more.';
+      }
       if (const ['compliment', 'regular', 'competitor', 'bulk', 'plead', 'pity', 'budget'].contains(kind)) {
         ss.tactics.add(kind);
       }
@@ -973,6 +987,9 @@ class Game {
           [
             if (heard.qty != null && heard.qty! > 2 && !h.item.single)
               'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).',
+            if (ss.reopenNow)
+              'They really won you over, so the best price you gave before is no longer final: you come down a '
+                  'little for them now, and say your new price warmly.',
             if (_again(ss, 'flirt', kind, heard.also))
               'They keep flirting even after you brushed it off. React with comic exasperation (an eye-roll, a '
                   'grumble), firmly NOT flirting back, then steer them back to the goods.',
@@ -1006,6 +1023,7 @@ class Game {
       }
     }
     ss.twistNote = '';
+    ss.reopenNow = false;
     // a silly twist now and then, a few moves in (never without surprises, with Auntie Rose, at low patience, or
     // while a pitch is pending); decided from the haggle's own seed, never the game's dice
     if (surprises &&
@@ -1170,7 +1188,8 @@ class Game {
     progress.addToJar(-cost);
     progress.helped(st);
     await _save();
-    return '💛 ${ss.stall['name']} is touched: "You\'re a good one."';
+    final more = _reopen(ss) ? ' Now we can talk price again.' : '';
+    return '💛 ${ss.stall['name']} is touched: "You\'re a good one.$more"';
   }
 
   /// The savings jar and what you can save up for.
@@ -1256,6 +1275,20 @@ class Game {
       );
     }
     return parts.join(' ');
+  }
+
+  /// Really winning them over (their soft spot, a great pitch, helping with their trouble) reopens a "best price"
+  /// given too early, once a haggle: they come down a little and bargain again, never below their real lowest.
+  /// (Session rules on top of the engine, like [Haggle.warm]; the Python reference never does this.)
+  bool _reopen(_Session ss) {
+    final h = ss.h;
+    if (!h.s.bestGiven || h.s.done || ss.reopened) return false;
+    ss.reopened = ss.reopenNow = true;
+    h.s.bestGiven = false;
+    h.s.pending = null;
+    final f = h.floorNow();
+    h.s.ask = math.min(h.s.ask, math.max(nice(h.s.ask - (h.s.ask - f) * 0.3), nice(f)));
+    return true;
   }
 
   /// A poke ([what]: flirt or rude) said again in this haggle, after the first time.

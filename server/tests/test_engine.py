@@ -205,7 +205,10 @@ def test_a_budget_she_can_live_with_is_a_yes():
 def test_being_firm_only_gets_her_real_lowest_price_once_it_is_earned():
     rushed = Haggle(FISH, SOFT)
     assert rushed.move("offer", 13).event == "counter"
-    out = rushed.move("offer", 13)                  # her lowest, twice, straight away: a higher "best price"
+    before = rushed.s.ask
+    out = rushed.move("offer", 13)                  # her lowest, twice, straight away: she just holds
+    assert out.event == "same_offer" and rushed.s.ask == before and not rushed.s.best_given
+    out = rushed.move("budget", 13)                 # "I only have 13", straight away: a higher "best price"
     assert out.event == "budget_best" and rushed.s.ask > FISH.floor * 1.06 and rushed.s.best_given
     assert rushed.move("offer", 13).event == "final"
     earned = Haggle(FISH, SOFT)
@@ -232,10 +235,18 @@ def test_a_budget_a_bit_too_small_gets_her_best_price_once_then_no_more_dollar_s
     assert h2.move("offer", h2.s.ask - 1).event == "final"     # her best really is her best
 
 
-def test_repeating_the_same_offer_counts_as_a_firm_limit():
+def test_repeating_the_same_offer_is_pressure_not_a_promise():
     h = Haggle(FISH, SOFT)
     h.move("offer", 12)
-    assert h.move("offer", 12).event in ("budget_best", "confirm")
+    out = h.move("offer", 12)                       # too early: she holds, nothing is locked
+    assert out.event == "same_offer" and not h.s.best_given
+    assert h.move("offer", 14).event in ("counter", "confirm")      # coming up still works
+    earned = Haggle(FISH, SOFT)                     # earned (her firm line is at or below it): holding firm is a yes
+    for kind, price in (("compliment", None), ("offer", 11), ("regular", None), ("compliment", None),
+                        ("offer", 12), ("offer", 13)):
+        earned.move(kind, price)
+    if earned.s.pending is None:
+        assert earned.move("offer", 13).event == "confirm"
 
 
 def test_pity_softens_kind_stallholders_more_and_wears_off():

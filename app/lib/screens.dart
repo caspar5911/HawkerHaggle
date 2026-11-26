@@ -1337,6 +1337,10 @@ class _HaggleScreenState extends State<HaggleScreen> {
       Sfx.play('coin', volume: 0.45);
     }
     if (g['found'] != null) _toast('💡 You found ${widget.stall['name']}\'s soft spot: ${g['found']}!');
+    if (g['firm_note'] != null && mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('${g['firm_note']}'), duration: const Duration(seconds: 8)));
+    }
     if (g['combo'] == true) {
       HapticFeedback.heavyImpact();
       Sfx.play('star', volume: 0.7);

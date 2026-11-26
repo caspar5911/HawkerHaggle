@@ -21,7 +21,7 @@ from hh.api import CONTENT, create_app
 from hh.store import Store
 
 EVENTS_ALL = {"greet", "counter", "final", "insulted", "accept", "flattered", "flattery_tired", "competitor_drop",
-              "competitor_annoyed", "bulk", "only_one", "regular", "smalltalk", "rude", "callback", "letgo", "refuse", "confused",
+              "competitor_annoyed", "bulk", "only_one", "same_offer", "regular", "smalltalk", "rude", "callback", "letgo", "refuse", "confused",
               "plead", "plead_no", "clarify", "confirm", "unsure", "budget_best", "pity", "pity_tired", "deflect"}
 
 TYPED = ["15 can?", "$12 lah", "ok lah", "can cheaper?", "wah so nice", "next stall cheaper leh", "I buy two",
@@ -152,7 +152,7 @@ def test_every_event_has_lines_for_every_stall_and_they_fill_in():
                 out = line.format(item="durian", price="$12", offer="$9")
                 assert "{" not in out and "}" not in out
                 if "{offer}" in line:
-                    assert ev in ("counter", "final", "insulted", "budget_best"), (s["id"], ev, line)   # only where an offer exists
+                    assert ev in ("counter", "final", "insulted", "budget_best", "same_offer"), (s["id"], ev, line)   # only where an offer exists
 
 
 def test_the_ai_has_a_brief_for_every_event():

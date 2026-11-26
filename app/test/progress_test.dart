@@ -377,7 +377,9 @@ void main() {
       var festive = 0;
       // (the very first haggle never has a surprise: finish one first)
       final first = await g.start('mei', 'mango');
-      await g.move(first['id'] as String, move: 'walk');
+      if ((await g.move(first['id'] as String, move: 'walk'))['done'] != true) {
+        await g.move(first['id'] as String, move: 'walk'); // she called them back: walk again
+      }
       for (var i = 0; i < 200; i++) {
         final r = await g.start('mei', 'mango');
         if (r['surprise'] == 'festival') {

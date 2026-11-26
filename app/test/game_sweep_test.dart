@@ -14,6 +14,7 @@ const eventsAll = {
   'competitor_annoyed',
   'bulk',
   'only_one',
+  'same_offer',
   'regular',
   'smalltalk',
   'rude',

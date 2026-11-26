@@ -300,7 +300,10 @@ class Haggle {
       return _out('confused');
     }
     final x = nice(price);
-    firm = firm || x == s.lastOffer; // saying the same number again means it
+    // Saying the same number again is pressure, not a promise: if they've earned it (her firm line is at or below
+    // it), holding firm gets a yes; otherwise she just holds her price. Only a stated limit ("I only have $16")
+    // makes her name a best price for the rest of the haggle.
+    final repeat = !firm && x == s.lastOffer;
     s.lastOffer = x;
     final f = floorNow();
     if (x >= s.ask) return _agree(s.ask, x);
@@ -309,11 +312,15 @@ class Haggle {
       _tire(9);
       return _out('final', x);
     }
-    if (x >= f && ((firm && x >= firmLine()) || x >= s.ask - give)) return _agree(x, x);
+    if (x >= f && (((firm || repeat) && x >= firmLine()) || x >= s.ask - give)) return _agree(x, x);
     if (x < f * 0.7) {
       _tire(22);
       s.mood = clamp(s.mood - 1, -3, 3);
       return _out('insulted', x);
+    }
+    if (repeat) {
+      _tire(9); // the same number again, too early: she holds, a bit impatient
+      return _out('same_offer', x);
     }
     if (firm) {
       _tire(9);

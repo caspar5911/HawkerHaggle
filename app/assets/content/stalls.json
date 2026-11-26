@@ -71,6 +71,10 @@
           "Already {price}, my dear, cheaper than my own children get.",
           "Really cannot already. {price}."
         ],
+        "same_offer": [
+          "Aiyo my dear, same price again? Come up a little lah. Still {price}.",
+          "Again {offer}? You stubborn like my grandson! {price}."
+        ],
         "insulted": [
           "{offer}?! You want auntie close shop is it?",
           "Wah lau, {offer}... you joking with me?",
@@ -291,6 +295,10 @@
           "{price}. Not moving.",
           "No more discount. {price}."
         ],
+        "same_offer": [
+          "Same again? Still {price}.",
+          "{offer} again. No. {price}."
+        ],
         "insulted": [
           "{offer}? Go buy frozen one lah.",
           "Haiz. {offer}, you buy ikan bilis can.",
@@ -507,6 +515,10 @@
           "{price}, boss, any lower I lose money.",
           "Boss, {price} already I cry inside.",
           "Boss, {price} is my wholesale price already!"
+        ],
+        "same_offer": [
+          "Boss, same number again ah? Come up a bit lah! {price}!",
+          "{offer} again? Aiyo boss, I'm still at {price}!"
         ],
         "insulted": [
           "{offer}?! Boss, you want to bankrupt me ah?",
@@ -726,6 +738,10 @@
           "Cannot lower than {price} already lah.",
           "Adik, {price} already my last.",
           "Sorry adik, {price} cannot less already."
+        ],
+        "same_offer": [
+          "Same price again, adik? Come up a little. {price}.",
+          "{offer} again ah? Still {price}, adik."
         ],
         "insulted": [
           "{offer}?! Adik, the cloth also more than that!",
@@ -960,6 +976,10 @@
           "{price}. I will not go lower.",
           "{price}, that is my price."
         ],
+        "same_offer": [
+          "You said that already. {price}.",
+          "{offer} again? Still {price}."
+        ],
         "insulted": [
           "{offer}? Please. This is not a pasar malam.",
           "{offer}... you insult my family's shop."
@@ -1162,6 +1182,10 @@
         "final": [
           "Bro {price} already, cannot liao.",
           "{price}, really cannot go down."
+        ],
+        "same_offer": [
+          "Bro, same number again?! Come up a bit lah. {price}!",
+          "{offer} again sia? Still {price}!"
         ],
         "insulted": [
           "{offer}?! Bro I also need to eat sia!",
@@ -1369,6 +1393,10 @@
           "{price}. Old things also have dignity.",
           "Cannot lower than {price} already, young one."
         ],
+        "same_offer": [
+          "Same price again? Hmm. Still {price}.",
+          "{offer} again, young one? {price}."
+        ],
         "insulted": [
           "{offer}? This one older than your grandfather leh.",
           "Aiyo, {offer}... you don't respect old things."
@@ -1572,6 +1600,10 @@
         "final": [
           "{price}, dear. That's it.",
           "{price}. No lower, darling."
+        ],
+        "same_offer": [
+          "Same again, dear? Come up a little. {price}.",
+          "{offer} again? Still {price}, dear."
         ],
         "insulted": [
           "{offer}?! Even the chilli also more than that!",
@@ -1787,6 +1819,10 @@
           "{price}, dear. That's my last, really.",
           "Okay, {price}. Cannot go lower already, sayang."
         ],
+        "same_offer": [
+          "Aduh, same price again, sayang? {price} lah.",
+          "{offer} again? Makcik still at {price}."
+        ],
         "insulted": [
           "{offer}?! Aduh, that one not even enough for the rice!",
           "{offer}? You joking with Makcik ah?"
@@ -1997,6 +2033,10 @@
           "{price}, bro. Final whistle.",
           "{price}. That's my last offer, confirm."
         ],
+        "same_offer": [
+          "Bro, same number again? Come up a bit. {price}.",
+          "{offer} again? Still {price}, bro."
+        ],
         "insulted": [
           "{offer}?! Bro, even the laces cost more!",
           "{offer}? You trolling me ah?"
@@ -2206,6 +2246,10 @@
         "final": [
           "{price}. Ah Ma cannot go lower.",
           "{price}, my child. That's all."
+        ],
+        "same_offer": [
+          "Same again, my child? {price}.",
+          "{offer} again? Aiyah. Still {price}."
         ],
         "insulted": [
           "{offer}? Aiyah, the chickens also laugh.",

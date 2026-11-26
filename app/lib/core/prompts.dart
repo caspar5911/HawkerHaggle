@@ -14,6 +14,7 @@ const events = <String, String>{
   "competitor_drop": "The customer says another stall is cheaper. You grumble but lower to {ask}.",
   "competitor_annoyed": "The customer says another stall is cheaper. You're annoyed and keep {ask}.",
   "bulk": "The customer will buy two. You give {ask} each.",
+  "same_offer": "The customer just repeated the same offer ({offer}). You hold at {ask}, a little impatient: tell them to come up a bit.",
   "only_one":
       "The customer wants to buy two, but you only have this one. Tell them so; the price for it is still {ask}.",
   "back_to_one":
@@ -25,7 +26,7 @@ const events = <String, String>{
       "The customer keeps asking for cheaper without naming a price. You hold at {ask} and tell them to name a price.",
   "rude": "The customer was rude. You're offended.",
   "deflect": "The customer flirted or said something creepy. Laugh it off politely, firmly NOT flirting back, and steer back to the goods; the price is still {ask}.",
-  "budget_best": "The customer says they only have {offer}. That's below what you can sell for. Kindly tell them your real lowest price is {ask}; you truly can't go lower.",
+  "budget_best": "The customer is firm at {offer} (their limit). That's below what you can do today. Kindly tell them your best price for them is {ask}. Don't call it your cost price or your real lowest.",
   "pity": "The customer told you a sad story. Show real sympathy, in character; your price is now {ask}.",
   "pity_tired": "The customer keeps telling sad stories. Stay kind but firm; your price is still {ask}.",
   "clarify": "You're not sure what the customer means ({unclear}). Ask them, in character, to say clearly; your price is still {ask}.",
