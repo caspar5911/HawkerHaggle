@@ -54,7 +54,7 @@ Future<Map<String, Object?>> buyNow(Game g, String stall, String item) async {
 }
 
 void main() {
-  setUp(() => Game.testWallet = null); // the app's own default: the wallet on
+  setUp(() => Game.testWallet = true); // (the pre-wallet branch has it off: the shop, tested with the wallet on)
   tearDown(() => Game.testWallet = false);
 
   test('the shop shows everything, by tier, with what it does; old ids kept', () async {
