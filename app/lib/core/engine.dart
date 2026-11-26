@@ -11,6 +11,7 @@ const engineMoves = [
   'rude', 'walk', 'accept', //
 ];
 const once = ['competitor', 'bulk', 'regular']; // tactics that only work once per haggle
+const minGive = 0.1; // the least share of the gap a fair (not insulting) offer moves her, even when cross
 const maxRounds = 40; // a safety net only: patience (shown on screen) is the real limit and always runs out first
 // A firm price gets their real lowest only when earned by both goodwill and bargaining (see Haggle.firmLine).
 const firmRoom = 0.35; // unearned, a firm price must be this share of the bargaining range above their lowest
@@ -335,7 +336,9 @@ class Haggle {
       return _out('final', x);
     }
     final before = s.ask;
-    _concede(x, 0.25 + 0.08 * s.mood - 0.15 * p.stubborn + _eventGive);
+    // an offer that isn't an insult always moves her a little, however cross she is (crossness costs you, it never
+    // freezes the haggle)
+    _concede(x, math.max(minGive, 0.25 + 0.08 * s.mood - 0.15 * p.stubborn + _eventGive));
     _tire(7);
     return _out(s.ask >= before ? 'final' : 'counter', x);
   }

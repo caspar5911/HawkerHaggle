@@ -43,6 +43,7 @@
           "fair": 12,
           "ask": 18,
           "floor": 10,
+          "pieces": 6,
           "facts": [
             "Thai honey mangoes (Nam Dok Mai)",
             "Very sweet, no fibre",
@@ -712,6 +713,7 @@
           "fair": 10,
           "ask": 14,
           "floor": 8.5,
+          "pieces": 10,
           "facts": [
             "Kueh lapis and ondeh-ondeh made fresh this morning",
             "Pandan and gula melaka, from her mother's recipe",
@@ -1766,6 +1768,7 @@
           "fair": 60,
           "ask": 80,
           "floor": 52,
+          "pieces": 20,
           "facts": [
             "20 packets in one tray",
             "Coconut rice cooked with pandan leaves",
@@ -1782,6 +1785,7 @@
           "fair": 15,
           "ask": 22,
           "floor": 12,
+          "pieces": 30,
           "facts": [
             "30 pieces in one box",
             "Glutinous rice balls filled with gula melaka",
@@ -2210,6 +2214,7 @@
           "fair": 6,
           "ask": 9,
           "floor": 5,
+          "pieces": 10,
           "facts": [
             "10 eggs in one tray",
             "From her own free-roaming chickens",
