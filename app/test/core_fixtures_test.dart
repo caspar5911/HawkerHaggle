@@ -70,6 +70,9 @@ void main() {
       );
       same(got, r[4], 'checked(${(r[0] as String).length > 40 ? '${(r[0] as String).substring(0, 40)}…' : r[0]})');
     }
+    for (final r in ref['without_thinking'] as List) {
+      same(withoutThinking(r[0] as String), r[1], 'without_thinking(${r[0]})');
+    }
     for (final r in ref['mood_line'] as List) {
       same(moodLine(r[0] as String, d(r[1]), r[2] as String), r[3], 'mood_line(${r.take(3).toList()})');
     }

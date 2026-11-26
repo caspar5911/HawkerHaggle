@@ -243,7 +243,7 @@ class AI:
             r = self.http.post(f"{self.base_url.rstrip('/')}/chat/completions", json=body, headers=headers,
                                timeout=self.timeout)
             r.raise_for_status()
-            return (r.json()["choices"][0]["message"].get("content") or "").strip()
+            return without_thinking(r.json()["choices"][0]["message"].get("content") or "")
         except (requests.RequestException, KeyError, IndexError, TypeError, ValueError):
             return None
         finally:
@@ -383,12 +383,32 @@ def money(v) -> str:
     return f"${v:.2f}".replace(".00", "") if v != int(v) else f"${int(v)}"
 
 
+THINK_BLOCK = re.compile(r"<think>[\s\S]*?</think>", re.I)
+TAG = re.compile(r"</?[a-z][^<>]*>", re.I)
+
+
+def without_thinking(text: str) -> str:
+    """The model's private reasoning sometimes leaks into its answer ("a draft...</think>the real reply", or a
+    <think>...</think> block): only what comes after the thinking is the answer. Thinking that never ends is no
+    answer at all."""
+    t = THINK_BLOCK.sub("", text)
+    close = t.lower().rfind("</think>")
+    if close >= 0:
+        t = t[close + len("</think>"):]
+    start = t.lower().find("<think>")
+    if start >= 0:
+        t = t[:start]
+    return t.strip()
+
+
 def checked(text: str | None, allowed, counts=(), dollar_counts: bool = False) -> str | None:
     """Keep a model reply only if it can't mislead about the price: every $ amount must be one of the engine's
     prices, other numbers must be engine prices or small counts ("2 for you"), and nothing is 'free'."""
     if not text:
         return None
     text = text.strip().strip('"').splitlines()[0][:220]
+    if TAG.search(text):
+        return None                 # a stray tag (<think>, </b>...) is never something she says
     ok = {round(float(a), 2) for a in allowed}
     dollars = ok | ({round(float(c), 2) for c in counts} if dollar_counts else set())
     if re.search(r"percent|%|\bdiscount of\b", text, re.I):

@@ -303,4 +303,31 @@ void main() {
       expect(r['ask'], ask);
     });
   });
+
+  group('🧠 her private thinking never shows', () {
+    test('a reply with leaked thinking: only the answer after it is used', () async {
+      final m = FakeModel(line: 'Eh bro, welcome back! \$38.</think>Eh bro, back again sia! Today \$38 only!');
+      final ai = AiClient(
+        const AiConfig(endpoint: 'http://model/v1', model: 'test'),
+        client: m.client,
+      );
+      expect(await ai.chat('You are Ah Boy', 'hi'), 'Eh bro, back again sia! Today \$38 only!');
+      m.line = '<think>She should greet warmly.</think>Morning my dear!';
+      expect(await ai.chat('You are Auntie Mei', 'hi'), 'Morning my dear!');
+      m.line = '<think>still thinking and never stopped';
+      expect(await ai.chat('You are Auntie Mei', 'hi'), '');
+    });
+
+    test('in a haggle: the stallholder never says a tag', () async {
+      final (g, m) = await aiGame(
+        () => DateTime(2026, 12, 2, 10),
+        model: FakeModel(line: 'Draft line.</think>Aiyo, too low lah my dear!'),
+      );
+      final r = await g.start('mei', 'mango', 'none');
+      final x = await g.move(r['id'] as String, text: 'how is business today?');
+      expect('${x['line']}', isNot(contains('<')));
+      expect('${x['line']}', isNot(contains('think')));
+      if (x['ai_line'] == true) expect(x['line'], 'Aiyo, too low lah my dear!');
+    });
+  });
 }
