@@ -266,6 +266,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
           style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600),
         ),
       ),
+    if (_me?['morning'] is Map) _Morning(m: _me!['morning'] as Map),
     const SizedBox(height: 12),
     if (_legend != null)
       LegendBanner(l: _legend!, onTap: _openLegend)
@@ -626,7 +627,13 @@ class _Hello extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
-          GestureDetector(key: const ValueKey('name_chip'), onTap: onName, child: _Chip('👋 ${me['name']} ✏️')),
+          GestureDetector(
+            key: const ValueKey('name_chip'),
+            onTap: onName,
+            child: _Chip(
+              '${me['crown'] == true ? '👑' : '👋'} ${me['name']}${me['gold_name'] == true ? ' 🏅' : ''} ✏️',
+            ),
+          ),
           if (me['wallet'] is num) _Chip('👛 ${money(me['wallet'] as num)}', key: const ValueKey('wallet_chip')),
           _Chip('⭐ ${me['best_stars'] ?? me['stars']}'),
           _Chip('🤝 ${me['deals']} deals'),
@@ -851,6 +858,7 @@ class _StallCard extends StatelessWidget {
                                                     ? '✨ legendary · yours today!'
                                                     : '✨ legendary · today only · asking ${money(it['ask'] as num)}')
                                               : 'asking ${money(it['ask'] as num)}'
+                                                    '${it['best_paid'] is num ? ' · 📒 your best ${money(it['best_paid'] as num)}' : ''}'
                                                     '${it['short'] == true ? ' · 👛 more than you have' : ''}',
                                           style: const TextStyle(color: Palette.soft, fontSize: 12),
                                         ),
@@ -1823,6 +1831,7 @@ class _Scene extends StatelessWidget {
                 opening: g!['opening'] as num,
                 deal: g!['deal'] as num?,
                 qty: ((g!['qty'] ?? 1) as num).toInt(),
+                showOff: g!['watch'] == true,
               ),
             ),
           ],
@@ -3419,4 +3428,28 @@ class _NewBadge extends StatelessWidget {
       style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
     ),
   );
+}
+
+/// This morning, from the shop: Mum's cake, the piggy bank, deliveries.
+class _Morning extends StatelessWidget {
+  const _Morning({required this.m});
+  final Map m;
+  @override
+  Widget build(BuildContext context) {
+    final lines = [
+      if (m['cake'] is num) "🎂 Mum's cake: +${money(m['cake'] as num)} pocket money",
+      if (m['interest'] is num) '🐷 Piggy bank: +${money(m['interest'] as num)} in your jar',
+      if (m['delivered'] is List)
+        '🛵 Delivered ${(m['delivered'] as List).join(', ')}: +${money(m['delivered_total'] as num)}',
+    ];
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      key: const ValueKey('morning'),
+      padding: const EdgeInsets.only(top: 6),
+      child: Text(
+        lines.join('\n'),
+        style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600, height: 1.35),
+      ),
+    );
+  }
 }

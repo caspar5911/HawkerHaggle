@@ -1615,8 +1615,8 @@ class JarStrip extends StatelessWidget {
               Expanded(
                 child: Text(
                   next == null
-                      ? 'Savings jar: ${money(saved)}'
-                      : 'Jar ${money(saved)} · ${next['emoji']} ${money(next['cost'] as num)}',
+                      ? '🛍️ Shop · jar ${money(saved)}'
+                      : '🛍️ Shop · jar ${money(saved)} · next ${next['emoji']} ${money(next['cost'] as num)}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
@@ -1861,9 +1861,9 @@ class _JarScreenState extends State<JarScreen> {
     }
   }
 
-  Future<void> _buy(Map g) async {
+  Future<void> _buy(Map g, {bool fromWallet = false}) async {
     try {
-      final r = await widget.api.buyGoal('${g['id']}');
+      final r = await widget.api.buyGoal('${g['id']}', fromWallet: fromWallet);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${r['note']}')));
       await _load();
@@ -1872,11 +1872,69 @@ class _JarScreenState extends State<JarScreen> {
     }
   }
 
+  /// One thing in the shop: yours ✅, buy it with the jar, save & buy (jar + wallet), or how much more you need.
+  Widget _goalCard(Map g, double jar, double? wallet) {
+    final cost = (g['cost'] as num).toDouble();
+    final owned = g['owned'] == true;
+    final canJar = !owned && jar >= cost;
+    final canBoth = !owned && !canJar && wallet != null && jar + wallet >= cost;
+    final short = cost - jar - (wallet ?? 0);
+    return Container(
+      key: ValueKey('goal_${g['id']}'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: owned ? const Color(0xFFE6F4EA) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Row(
+        children: [
+          Text('${g['emoji']}', style: const TextStyle(fontSize: 34)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${g['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                Text('${g['what']}', style: const TextStyle(color: Palette.soft, fontSize: 13)),
+                if (!owned && !canJar && !canBoth)
+                  Text(
+                    '${money(cost)} · ${money(short)} more to go',
+                    style: const TextStyle(color: Palette.soft, fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (owned)
+            const Text(
+              '✅ Yours',
+              style: TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
+            )
+          else if (canJar)
+            Bouncy(
+              key: ValueKey('buy_${g['id']}'),
+              onTap: () => _buy(g),
+              child: Pill(text: money(cost), icon: '🫙', color: Palette.gold),
+            )
+          else if (canBoth)
+            Bouncy(
+              key: ValueKey('savebuy_${g['id']}'),
+              onTap: () => _buy(g, fromWallet: true),
+              child: Pill(text: 'Save & buy ${money(cost)}', icon: '👛', color: Palette.gold),
+            )
+          else
+            Pill(key: ValueKey('buy_${g['id']}'), text: money(cost), icon: '🫙', color: Colors.white),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final j = _j;
     return Scaffold(
-      appBar: AppBar(title: const Text('🫙 Savings jar'), backgroundColor: Palette.cream),
+      appBar: AppBar(title: const Text('🫙 Jar & 🛍️ Shop'), backgroundColor: Palette.cream),
       backgroundColor: Palette.cream,
       body: j == null
           ? const Center(child: CircularProgressIndicator())
@@ -1933,44 +1991,31 @@ class _JarScreenState extends State<JarScreen> {
                     style: TextStyle(color: Palette.soft, height: 1.35),
                   ),
                 const SizedBox(height: 16),
-                for (final g in (j['goals'] as List).cast<Map>())
-                  Container(
-                    key: ValueKey('goal_${g['id']}'),
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-                    child: Row(
-                      children: [
-                        Text('${g['emoji']}', style: const TextStyle(fontSize: 34)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${g['name']}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                              Text('${g['what']}', style: const TextStyle(color: Palette.soft, fontSize: 13)),
-                            ],
-                          ),
-                        ),
-                        if (g['owned'] == true)
-                          const Text(
-                            '✅ Yours',
-                            style: TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
-                          )
-                        else
-                          Bouncy(
-                            key: ValueKey('buy_${g['id']}'),
-                            enabled: g['can'] == true,
-                            onTap: () => _buy(g),
-                            child: Pill(
-                              text: money(g['cost'] as num),
-                              icon: '🫙',
-                              color: g['can'] == true ? Palette.gold : Colors.white,
-                            ),
-                          ),
-                      ],
+                const Text(
+                  '🛍️ The shop: everything you can save up for, and what it does for you.',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                ),
+                const SizedBox(height: 10),
+                for (final (tier, label) in const [
+                  ('starter', 'Starter'),
+                  ('growing', 'Growing'),
+                  ('serious', 'Serious'),
+                  ('dream', 'Dream'),
+                ]) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6, bottom: 6),
+                    child: Text(
+                      label,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Palette.ink),
                     ),
                   ),
+                  for (final g in (j['goals'] as List).cast<Map>().where((g) => (g['tier'] ?? 'starter') == tier))
+                    _goalCard(
+                      g,
+                      (j['jar'] as num).toDouble(),
+                      j['wallet'] is num ? (j['wallet'] as num).toDouble() : null,
+                    ),
+                ],
               ],
             ),
     );

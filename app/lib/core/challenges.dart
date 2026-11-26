@@ -33,10 +33,11 @@ const xpHaggleCapPerDay = 60; // XP from haggles themselves is capped per day, s
 
 /// Market Month milestones: days played -> what it gives.
 const milestones = <(int, String, String)>[
+  (2, '🏺', "Uncle Wong's antique stall opens"),
   (3, '🌱', 'Sticker: Three market days'),
-  (7, '🏺', "Uncle Wong's antique stall opens"),
-  (14, '🌶️', "Madam Kumar's spice shop opens"),
-  (21, '🏅', "A golden name badge, and Ah Ma Tan's kampung shop opens"),
+  (5, '🌶️', "Madam Kumar's spice shop opens"),
+  (9, '🐔', "Ah Ma Tan's kampung shop opens"),
+  (21, '🏅', 'A golden name badge'),
   (30, '👑', 'Sticker and title: Hawker of the Month'),
 ];
 

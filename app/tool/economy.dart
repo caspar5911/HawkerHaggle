@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/core/legendary.dart';
 import 'package:hawker_haggle/core/progress.dart' show dayKey;
+import 'package:hawker_haggle/core/treats.dart' show goals;
 
 /// Haggles like a sensible tapper: the bold offer first, then the safer one; takes her last price.
 Future<Map> haggle(Game g, String stall, String item) async {
@@ -37,9 +38,16 @@ Future<Map> haggle(Game g, String stall, String item) async {
 
 Future<void> main(List<String> args) async {
   final players = args.isEmpty ? 20 : int.parse(args.first);
+  final days = args.length > 1 ? int.parse(args[1]) : 45;
   final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
-  for (final (wallet, chase) in const [(false, true), (true, true), (true, false)]) {
-    final cake = <int>[], awning = <int>[], scooter = <int>[];
+  // (wallet on?, buys every legendary?, trades the priciest things it can afford, as much as it can?)
+  for (final (wallet, chase, trader) in const [
+    (false, true, false),
+    (true, true, false),
+    (true, false, false),
+    (true, false, true),
+  ]) {
+    final got = <String, List<int>>{}; // shop item -> the day each player bought it
     var shortDays = 0, legendDays = 0, legendBought = 0, minWallet = 1e9, maxWallet = 0.0;
     final why = <String, int>{};
     final shortBy = <String>[];
@@ -55,8 +63,7 @@ Future<void> main(List<String> args) async {
         now: () => day,
       );
       await g.load();
-      int? gotCake, gotAwning, gotScooter;
-      for (var d = 1; d <= 21; d++) {
+      for (var d = 1; d <= days; d++) {
         g.me(); // opens the game: Mum's pocket money
         var short = false;
         // Mum's list
@@ -76,20 +83,24 @@ Future<void> main(List<String> args) async {
           }
           if (r['result'] == 'short') short = true;
         }
-        // two things to sell: something they can afford (with the wallet, about 80% of the first price)
-        for (var k = 0; k < 2; k++) {
+        // things to sell: something they can afford (with the wallet, about 80% of the first price); the trader buys
+        // the priciest they can, from every stall, until the stock is full
+        for (var k = 0; k < (trader ? 10 : 2); k++) {
           final choices = [
-            for (final st in (content['stalls'] as List).cast<Map>().take(4))
+            for (final st in (content['stalls'] as List).cast<Map>().take(trader ? 11 : 4))
               for (final it in (st['items'] as List).cast<Map>())
-                if (!wallet || (it['ask'] as num) * 0.8 <= g.progress.wallet) (st, it),
+                if ((!wallet || (it['ask'] as num) * 0.8 <= g.progress.wallet) &&
+                    g.progress.goesToStock('${st['id']}', '${it['id']}'))
+                  (st, it),
           ];
-          if (choices.isEmpty) break;
-          final (st, it) = choices[rnd.nextInt(choices.length)];
+          if (choices.isEmpty || g.progress.stockRoom <= 0) break;
+          if (trader) choices.sort((a, b) => (b.$2['ask'] as num).compareTo(a.$2['ask'] as num));
+          final (st, it) = trader ? choices.first : choices[rnd.nextInt(choices.length)];
           final r = await haggle(g, '${st['id']}', '${it['id']}');
           if (r['result'] == 'short') short = true;
         }
         // sell at your own stall: ask the usual price, else take their offer
-        for (var k = 0; k < 3 && g.progress.stock.isNotEmpty; k++) {
+        for (var k = 0; k < (trader ? 10 : 3) && g.progress.stock.isNotEmpty; k++) {
           var s = await g.shopStart();
           final fair = (s['product'] as Map)['fair'] as num;
           s = await g.shopMove(s['id'] as String, ask: fair.toDouble());
@@ -105,20 +116,16 @@ Future<void> main(List<String> args) async {
           minWallet = math.min(minWallet, g.progress.wallet);
           maxWallet = math.max(maxWallet, g.progress.wallet);
         }
-        // goals, in order, as soon as the jar allows
-        for (final (id, cost) in const [('cake', 30.0), ('awning', 80.0), ('scooter', 150.0)]) {
-          if (!g.progress.owns(id) && g.progress.jar >= cost) {
-            await g.buyGoal(id);
-            if (id == 'cake') gotCake = d;
-            if (id == 'awning') gotAwning = d;
-            if (id == 'scooter') gotScooter = d;
-          }
+        // the shop: the cheapest thing not yet owned, as soon as the jar (and, with a wallet, Save & buy) allows
+        for (final gl in [...goals]..sort((a, b) => a.cost.compareTo(b.cost))) {
+          if (g.progress.owns(gl.id)) continue;
+          final have = g.progress.jar + (wallet ? g.progress.wallet - 30 : 0); // (keeps $30 to shop with)
+          if (have < gl.cost) break;
+          await g.buyGoal(gl.id, fromWallet: wallet);
+          got.putIfAbsent(gl.id, () => []).add(d);
         }
         day = day.add(const Duration(days: 1));
       }
-      if (gotCake != null) cake.add(gotCake);
-      if (gotAwning != null) awning.add(gotAwning);
-      if (gotScooter != null) scooter.add(gotScooter);
     }
     String when(List<int> days) => days.isEmpty
         ? 'never'
@@ -126,16 +133,24 @@ Future<void> main(List<String> args) async {
               '(${days.length}/$players players)';
     stdout.writeln(
       wallet
-          ? '\n👛 WITH THE WALLET, ${chase ? 'buying every legendary item' : 'saving for the jar goals instead'}'
+          ? '\n👛 WITH THE WALLET, ${trader
+                ? 'a money-maker: the priciest things, as many as fit'
+                : chase
+                ? 'buying every legendary item'
+                : 'saving for the jar goals instead'}'
           : '🫙 WITHOUT (as now)',
     );
-    stdout.writeln('  cake (\$30): ${when(cake)}');
-    stdout.writeln('  awning (\$80): ${when(awning)}');
-    stdout.writeln('  scooter (\$150): ${when(scooter)}');
+    for (final id in const ['cake', 'awning', 'scooter', 'storeroom', 'van', 'stall2', 'wall']) {
+      final gl = goals.firstWhere((x) => x.id == id);
+      stdout.writeln('  ${gl.emoji} ${gl.name} (\$${gl.cost.toInt()}): ${when(got[id] ?? const [])}');
+    }
+    stdout.writeln(
+      '  shop items owned by the end: ${(got.values.fold<int>(0, (a, b) => a + b.length) / players).toStringAsFixed(1)} of ${goals.length}',
+    );
     stdout.writeln('  legendary: bought $legendBought of $legendDays tries');
     stdout.writeln('  legendary results: $why');
     stdout.writeln('  short examples: ${shortBy.take(6).join('; ')}');
-    stdout.writeln('  days a purchase was out of reach: $shortDays of ${21 * players}');
+    stdout.writeln('  days a purchase was out of reach: $shortDays of ${days * players}');
     if (wallet) {
       stdout.writeln('  wallet: lowest \$${minWallet.toStringAsFixed(2)}, highest \$${maxWallet.toStringAsFixed(2)}');
     }

@@ -3,12 +3,163 @@
 /// no prices, no XP, nothing the engine or the Python reference sees.
 library;
 
-/// Things to save up for. Buying one empties that much from the jar.
-const goals = <(String, String, String, double, String)>[
-  ('cake', '🎂', "Mum's birthday cake", 30, 'Mum: Wah, a cake for me? So sweet of you!'),
-  ('awning', '⛱️', 'A bright new awning for your own stall', 80, 'Customers at your stall pay a little more.'),
-  ('scooter', '🛵', 'A little scooter to get around the markets', 150, 'Vroom! The whole island is yours.'),
+/// One thing in the 🛍️ shop: bought once with your jar, and it does something for you from then on.
+class Goal {
+  const Goal(this.id, this.emoji, this.name, this.cost, this.tier, this.does, this.bought);
+  final String id, emoji, name;
+  final double cost;
+  final String tier; // starter, growing, serious, dream
+  final String does; // what it does for you (shown in the shop)
+  final String bought; // said when you buy it
+}
+
+/// The shop's tiers, in order.
+const goalTiers = [('starter', 'Starter'), ('growing', 'Growing'), ('serious', 'Serious'), ('dream', 'Dream')];
+
+/// Everything in the 🛍️ shop, cheapest first in each tier. Bigger things make the next ones easier to reach. (Ids are
+/// stored when bought: never rename one.)
+const goals = <Goal>[
+  Goal(
+    'notebook',
+    '📒',
+    'Price notebook',
+    25,
+    'starter',
+    'The market shows the best price you ever paid for each thing.',
+    'Now you can see your best price on every stall.',
+  ),
+  Goal(
+    'cake',
+    '🎂',
+    "Mum's birthday cake",
+    30,
+    'starter',
+    'Mum gives you \$5 more pocket money every day.',
+    'Mum: Wah, a cake for me? So sweet of you! (\$5 more pocket money every day.)',
+  ),
+  Goal(
+    'charm',
+    '🍀',
+    'Lucky charm',
+    40,
+    'starter',
+    'Every stallholder starts with more patience with you.',
+    'They seem a little more patient already.',
+  ),
+  Goal(
+    'awning',
+    '⛱️',
+    'A bright awning for your stall',
+    80,
+    'starter',
+    'Customers at your own stall pay 5% more.',
+    'Your stall looks lovely: customers pay a little more.',
+  ),
+  Goal(
+    'flowers',
+    '🌸',
+    'Flowers for the stallholders',
+    100,
+    'growing',
+    'Every stallholder starts in a better mood with you.',
+    'They love the flowers! Everyone is in a better mood with you.',
+  ),
+  Goal(
+    'shelf',
+    '📦',
+    'A bigger shelf',
+    120,
+    'growing',
+    'Your stock holds 15 things instead of 10.',
+    'Room for 15 things now.',
+  ),
+  Goal(
+    'scooter',
+    '🛵',
+    'A scooter for deliveries',
+    150,
+    'growing',
+    'Deliveries: each new day you play, one thing from your stock sells by itself (at 90% of the market price).',
+    'Vroom! Every new day you play, one thing goes out for delivery.',
+  ),
+  Goal(
+    'watch',
+    '⌚',
+    'Calculator watch',
+    180,
+    'growing',
+    'While you haggle, see how much you have got off the first price.',
+    'Beep! Now you can see your discount as you haggle.',
+  ),
+  Goal(
+    'piggy',
+    '🐷',
+    'Piggy bank',
+    200,
+    'growing',
+    'Your jar grows by 2% each new day you play (up to \$5 a day).',
+    'Oink! Your savings grow a little every day now.',
+  ),
+  Goal(
+    'sign',
+    '🪧',
+    'A shop sign',
+    200,
+    'serious',
+    'Big-spender customers come to your stall more often.',
+    'People can see your stall from far away now.',
+  ),
+  Goal(
+    'icebox',
+    '🧊',
+    'An ice box',
+    250,
+    'serious',
+    'Fresh things (fish, prawns, fruit, kueh, eggs) sell for 10% more at your stall.',
+    'Everything stays fresh and cold.',
+  ),
+  Goal(
+    'neon',
+    '💡',
+    'A neon sign',
+    300,
+    'serious',
+    'Customers at your own stall pay another 5% more.',
+    'Your stall glows at night now!',
+  ),
+  Goal('storeroom', '🗄️', 'A storeroom', 350, 'serious', 'Your stock holds 25 things.', 'Room for 25 things now.'),
+  Goal(
+    'van',
+    '🚚',
+    'A food van',
+    500,
+    'serious',
+    'Two more deliveries each new day you play.',
+    'Your own van! Three deliveries a day now (with the scooter).',
+  ),
+  Goal(
+    'stall2',
+    '🏪',
+    'A second stall',
+    1200,
+    'dream',
+    'Three more deliveries each new day you play.',
+    'A second stall of your own! It sells three more things every day.',
+  ),
+  Goal('golden', '✨', 'A golden stall', 2000, 'dream', 'Your own stall shines gold.', 'Your stall shines gold!'),
+  Goal(
+    'wall',
+    '👑',
+    'Your name on the hawker centre wall',
+    3000,
+    'dream',
+    'The final trophy: a crown next to your name everywhere.',
+    'Your name is on the wall! 👑 Hawker legend.',
+  ),
 ];
+
+/// Fresh things that the ice box keeps cold (they sell for more at your stall).
+const freshThings = {'mei/durian', 'mei/mango', 'lim/pomfret', 'lim/prawns', 'siti/kueh', 'rosnah/ondeh', 'tan/eggs'};
 
 /// What each stallholder might throw in for a customer they like (it goes into your stock, free).
 const freebies = <String, (String, String, double)>{
