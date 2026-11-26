@@ -9,6 +9,7 @@ import 'api.dart';
 import 'character.dart';
 import 'extras.dart';
 import 'juice.dart';
+import 'music.dart';
 import 'sfx.dart';
 import 'voice.dart';
 import 'shop_screen.dart';
@@ -810,6 +811,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
   bool _dilemmaDone = false;
   Object? _twistAnswered; // the twist already answered (by its haggle state)
   final _savedLines = <String>{};
+  final _tune = Music.enter('calm');
 
   @override
   void initState() {
@@ -819,6 +821,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
 
   @override
   void dispose() {
+    Music.leave(_tune);
     _poll?.cancel();
     _whisperTimer?.cancel();
     final room = _room;
@@ -2325,6 +2328,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           SwitchListTile(
+            key: const ValueKey('music_switch'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Music', style: TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: const Text('A little tune in the background. Off if you play your own music.'),
+            value: Music.on,
+            onChanged: (on) async {
+              await Music.setOn(on);
+              setState(() {});
+            },
+          ),
+          SwitchListTile(
             key: const ValueKey('reduce_motion'),
             contentPadding: EdgeInsets.zero,
             title: const Text('Reduce motion', style: TextStyle(fontWeight: FontWeight.w600)),
@@ -2531,6 +2545,7 @@ class CoopGuestScreen extends StatefulWidget {
 }
 
 class _CoopGuestScreenState extends State<CoopGuestScreen> {
+  final _tune = Music.enter('calm');
   Map<String, dynamic>? _g;
   List<Map> _chat = const [];
   final _text = TextEditingController();
@@ -2562,6 +2577,7 @@ class _CoopGuestScreenState extends State<CoopGuestScreen> {
 
   @override
   void dispose() {
+    Music.leave(_tune);
     _poll?.cancel();
     _wait?.cancel();
     _whisperTimer?.cancel();

@@ -9,6 +9,7 @@ import 'package:hawker_haggle/character.dart';
 import 'package:hawker_haggle/core/game.dart';
 import 'package:hawker_haggle/extras.dart';
 import 'package:hawker_haggle/main.dart';
+import 'package:hawker_haggle/music.dart';
 import 'package:hawker_haggle/sfx.dart';
 import 'package:hawker_haggle/voice.dart';
 
@@ -243,6 +244,7 @@ void main() {
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
     Sfx.available = false;
+    Music.reset();
   });
 
   testWidgets('market shows stalls; OK lah turns into Confirm; the second tap buys', (tester) async {
@@ -251,6 +253,7 @@ void main() {
     ]);
     expect(find.text('Morning my dear! \$18 only.'), findsOneWidget);
     expect(find.text('\$11 can or not?'), findsOneWidget);
+    expect(Music.wanted, 'calm'); // the softer tune under a haggle
     expect(find.textContaining('chats'), findsNothing); // no AI chat limit shown anywhere
 
     await tester.tap(find.text('OK lah, \$18'));
@@ -729,6 +732,21 @@ void main() {
     await settle(tester, 2500);
     expect(find.byKey(const ValueKey('deal_stamp')), findsNothing); // the result card takes over
     await settle(tester, 2000);
+  });
+
+  testWidgets('Music: the market tune, its own switch in Settings', (tester) async {
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    expect(Music.wanted, 'stroll');
+    await tester.tap(find.byIcon(Icons.settings_rounded));
+    await settle(tester);
+    await tester.tap(find.byKey(const ValueKey('music_switch')));
+    await settle(tester, 400);
+    expect(Music.on, isFalse);
+    expect(Music.wanted, isNull);
+    await tester.tap(find.byKey(const ValueKey('music_switch')));
+    await settle(tester, 400);
+    expect(Music.wanted, 'stroll');
   });
 
   testWidgets('Reduce motion can be switched on in Settings', (tester) async {

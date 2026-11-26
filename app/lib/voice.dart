@@ -8,6 +8,8 @@ import 'dart:async';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'music.dart';
+
 abstract class Voice {
   /// The phone's voice typing (tests swap in a pretend one).
   static Voice instance = PhoneVoice();
@@ -128,6 +130,7 @@ class PhoneVoice implements Voice {
     _onWords = onWords;
     _onEnd = onEnd;
     _onReady = onReady;
+    await Music.hush(true); // or the phone would try to type the tune
     return _stretch(d);
   }
 
@@ -200,6 +203,7 @@ class PhoneVoice implements Voice {
     final f = _onEnd;
     _onEnd = _onWords = null;
     _onReady = null;
+    Music.hush(false).ignore();
     final p = d.problem;
     f?.call(p == null ? null : say(p));
   }

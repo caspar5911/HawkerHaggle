@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'character.dart';
+import 'music.dart';
 import 'sfx.dart';
 import 'widgets.dart';
 
@@ -21,6 +22,7 @@ class _ShopScreenState extends State<ShopScreen> {
   final _price = TextEditingController();
   bool _busy = false;
   int _react = 0;
+  final _tune = Music.enter('calm');
 
   @override
   void initState() {
@@ -30,6 +32,7 @@ class _ShopScreenState extends State<ShopScreen> {
 
   @override
   void dispose() {
+    Music.leave(_tune);
     _scroll.dispose();
     _price.dispose();
     super.dispose();

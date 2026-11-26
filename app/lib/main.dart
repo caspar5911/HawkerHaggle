@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'api.dart';
 import 'juice.dart';
+import 'music.dart';
 import 'screens.dart';
 import 'sfx.dart';
 import 'widgets.dart';
@@ -11,6 +12,7 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   Sfx.init();
+  Music.init();
   Motion.init();
   runApp(HawkerHaggleApp(api: Api()));
 }
@@ -30,6 +32,9 @@ class HawkerHaggleApp extends StatelessWidget {
         scaffoldBackgroundColor: Palette.cream,
         snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
       ),
+      // the web version may only start the music after a tap
+      builder: (context, child) =>
+          Listener(onPointerDown: (_) => Music.tapped(), behavior: HitTestBehavior.translucent, child: child),
       home: MarketScreen(api: api),
     );
   }
