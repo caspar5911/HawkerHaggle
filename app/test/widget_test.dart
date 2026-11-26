@@ -93,6 +93,7 @@ class Fake extends Game {
   }
 
   Map<String, Object?>? legend; // today's legendary item (a test sets it)
+  Map<String, Object?>? nextLegend; // the next one, on other days (a test sets it)
 
   @override
   Map<String, Object?> stalls() => {
@@ -110,6 +111,7 @@ class Fake extends Game {
       },
     ],
     'legendary': legend == null ? null : {...legend!, 'stall': 'mei', 'stall_name': 'Auntie Mei'},
+    'next_legendary': nextLegend,
   };
   @override
   Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise, bool anyStall = false]) async {
@@ -942,6 +944,23 @@ void main() {
     expect(shared.single, contains('legendary'));
     expect(shared.single, isNot(contains('http'))); // gone tomorrow: no challenge link
     await settle(tester, 3000);
+  });
+
+  testWidgets('✨ on other days: when and where the next legendary is, never what', (tester) async {
+    for (final (days, weekday, day, want) in [
+      (1, 6, '2026-12-05', 'Tomorrow, at Madam Lee\'s'),
+      (3, 6, '2026-12-05', 'Saturday, at Madam Lee\'s'),
+      (12, 2, '2026-12-15', 'Tue 15 Dec, at Madam Lee\'s'),
+    ]) {
+      final fake = Fake([])
+        ..nextLegend = {'days': days, 'weekday': weekday, 'day': day, 'stall': 'lee', 'stall_name': 'Madam Lee'};
+      await tester.pumpWidget(const SizedBox()); // a fresh market each time
+      await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+      await settle(tester, 2000);
+      expect(find.byKey(const ValueKey('legend_teaser')), findsOneWidget);
+      expect(find.textContaining(want), findsOneWidget);
+      expect(find.textContaining('What could it be?'), findsOneWidget);
+    }
   });
 
   testWidgets('✨ a legendary item already bought today says so and does not open', (tester) async {

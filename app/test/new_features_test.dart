@@ -110,6 +110,23 @@ void main() {
       });
     }
 
+    test('on other days the market says when and where the next one is, but not what it is', () async {
+      final day = ordinaryDay();
+      final g = await newGame(day, unlockAll: true);
+      final next = g.stalls()['next_legendary'] as Map;
+      final (days, stall) = nextLegendary(day)!;
+      expect(next['days'], days);
+      expect(days, greaterThan(0));
+      expect(next['stall'], stall);
+      expect(legendaryOn(next['day'] as String)!.$1, stall); // the same day the real schedule says
+      expect(next.containsKey('name'), isFalse); // the item stays a surprise
+      expect(next.containsKey('emoji'), isFalse);
+      // on the day itself: the banner, no teaser
+      final g2 = await newGame(legendDay(), unlockAll: true);
+      expect(g2.stalls()['next_legendary'], isNull);
+      expect(g2.stalls()['legendary'], isNotNull);
+    });
+
     test('not on an ordinary day: no banner, and the item cannot be started', () async {
       final g = await newGame(ordinaryDay(), unlockAll: true);
       expect(g.stalls()['legendary'], isNull);

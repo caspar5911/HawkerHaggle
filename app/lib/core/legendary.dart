@@ -167,3 +167,13 @@ const legendaryItems = <String, Map<String, Object>>{
 (String, Map<String, Object>)? legendaryToday(DateTime now) => legendaryOn(dayKey(now));
 
 bool isLegendary(String itemId) => itemId.startsWith('legend_');
+
+/// The next legendary day after [now] (within [within] days): (days from today, stall id). The item stays a secret
+/// until the day.
+(int, String)? nextLegendary(DateTime now, {int within = 60}) {
+  for (var d = 1; d <= within; d++) {
+    final l = legendaryOn(dayKey(DateTime(now.year, now.month, now.day + d)));
+    if (l != null) return (d, l.$1);
+  }
+  return null;
+}

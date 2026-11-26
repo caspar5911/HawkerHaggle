@@ -353,6 +353,19 @@ class Game {
             ],
           },
       ],
+      // on other days: when and where the next one is (not what it is: that's a surprise until the day)
+      'next_legendary': legend != null
+          ? null
+          : switch (nextLegendary(now())) {
+              (final days, final stall) => {
+                'days': days,
+                'day': dayKey(DateTime(now().year, now().month, now().day + days)),
+                'weekday': DateTime(now().year, now().month, now().day + days).weekday,
+                'stall': stall,
+                'stall_name': _stalls[stall]?['name'],
+              },
+              null => null,
+            },
       'legendary': legend == null
           ? null
           : {'stall': legend.$1, 'stall_name': _stalls[legend.$1]?['name'], ..._legendView(legend.$2)},

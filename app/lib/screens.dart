@@ -73,6 +73,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         _me = r[0];
         _stalls = r[1]['stalls'] as List;
         _legend = r[1]['legendary'] as Map?;
+        _nextLegend = r[1]['next_legendary'] as Map?;
         _today = r[2];
         _challenges = r[3];
         _error = null;
@@ -94,6 +95,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   Map<String, dynamic>? _jar;
   bool _linkChecked = false;
   Map? _legend; // today's legendary item (null on an ordinary day)
+  Map? _nextLegend; // on other days: when and where the next one is (the item stays a mystery)
 
   String _boardLine() {
     final n = (_board?['items'] as List? ?? const []).length;
@@ -255,7 +257,10 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
     if (_me != null) _Hello(me: _me!, onName: _editName),
     const SizedBox(height: 12),
-    if (_legend != null) LegendBanner(l: _legend!, onTap: _openLegend),
+    if (_legend != null)
+      LegendBanner(l: _legend!, onTap: _openLegend)
+    else if (_nextLegend != null)
+      LegendTeaser(next: _nextLegend!),
     if (_challenges != null) ChallengeStrip(c: _challenges!, onTap: _openChallenges),
     if (_today != null) TodayCard(today: _today!, onItem: _openById),
     if (_error != null) _Oops(message: _error!, retry: _load),
@@ -632,6 +637,56 @@ class _Rise extends StatelessWidget {
       child: Transform.translate(offset: Offset(0, 40 * (1 - t)), child: child),
     ),
     child: child,
+  );
+}
+
+/// ✨ On an ordinary day: when and where the next legendary item turns up. Not what it is: that's the surprise.
+class LegendTeaser extends StatelessWidget {
+  const LegendTeaser({super.key, required this.next});
+  final Map next;
+
+  static String when(Map next) {
+    final days = (next['days'] as num).toInt();
+    if (days == 1) return 'Tomorrow';
+    const names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final weekday = names[((next['weekday'] as num).toInt() - 1) % 7];
+    if (days < 7) return weekday;
+    final d = DateTime.tryParse('${next['day']}');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return d == null ? 'Soon' : '${weekday.substring(0, 3)} ${d.day} ${months[d.month - 1]}';
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('legend_teaser'),
+    margin: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(
+      color: Colors.white.withValues(alpha: 0.8),
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: Palette.gold.withValues(alpha: 0.6), width: 1.5),
+    ),
+    child: Row(
+      children: [
+        const Text('✨', style: TextStyle(fontSize: 24)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(text: 'Something legendary is coming: '),
+                TextSpan(
+                  text: '${when(next)}, at ${next['stall_name']}\'s',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const TextSpan(text: '. What could it be? 🤔'),
+              ],
+            ),
+            style: const TextStyle(color: Palette.ink, height: 1.3),
+          ),
+        ),
+      ],
+    ),
   );
 }
 
