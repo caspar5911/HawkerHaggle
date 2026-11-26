@@ -313,6 +313,7 @@ class Game {
       'best_saved': done.fold<double>(0, (a, h) => math.max(a, ((h['saved'] ?? 0) as num).toDouble())),
       'best_stars': progress.bestStars(),
       'streak': progress.streak(),
+      'play_streak': Challenges(progress).playStreak(),
       'stickers': progress.stickers().where((x) => x['earned'] != null).length,
       'rank': Challenges(progress).rank(),
       'days_played': progress.daysPlayed(),
@@ -1376,6 +1377,14 @@ class Game {
         'done': ((shop['sales'] ?? 0) as num) > 0,
       },
       {'id': 'list', 'emoji': '📝', 'text': "Mum's list under budget: keep the change", 'done': any('list_days')},
+      {
+        'id': 'orders',
+        'emoji': '📋',
+        'text': 'Customer orders at your stall: buy what they want, deliver it for more',
+        'done':
+            progress.order()?['state'] == 'done' ||
+            ((progress.p['earned'] as Map?)?.values ?? const []).any((d) => d is Map && d['orders'] != null),
+      },
       {'id': 'daily', 'emoji': '🎯', 'text': 'The daily challenge: \$${moneyDaily.toInt()}', 'done': any('done_daily')},
       {
         'id': 'quests',
@@ -1396,10 +1405,44 @@ class Game {
         'done': (Challenges(progress).rank()['level'] as int) > 1,
       },
       {'id': 'story', 'emoji': '📖', 'text': "A stallholder's story chapter: \$10 to \$20", 'done': arcs},
+      {
+        'id': 'streak',
+        'emoji': '🔥',
+        'text': 'Play days in a row: \$5 at 3 days, \$15 at 7, \$30 at 14, \$50 at 30',
+        'done': _profile['streak_rewarded'] == true || Challenges(progress).playStreak() >= 3,
+      },
     ];
   }
 
   /// 👛 Put some of your wallet in the savings jar (for goals). Jar money can't be spent at the market.
+  /// 📋 Today's customer order (and the new day's perks, so one has come in).
+  Map<String, Object?>? order() {
+    progress.newDay(wallet: walletOn);
+    progress.ensureOrder();
+    return progress.order();
+  }
+
+  Future<Map<String, Object?>?> answerOrder({required bool yes}) async {
+    try {
+      progress.answerOrder(yes: yes);
+    } on StateError catch (e) {
+      throw GameError(409, e.message);
+    }
+    await _save();
+    return progress.order();
+  }
+
+  Future<Map<String, Object?>> deliverOrder() async {
+    final double pay;
+    try {
+      pay = progress.deliverOrder();
+    } on StateError catch (e) {
+      throw GameError(409, e.message);
+    }
+    await _save();
+    return {...?progress.order(), 'paid': pay};
+  }
+
   /// 👛 Take money out of the jar, back into your wallet.
   Future<Map<String, Object?>> takeFromJar(double amount) async {
     if (!walletOn) throw GameError(400, 'No wallet');
@@ -1838,7 +1881,14 @@ class Game {
         'from': _stockFrom(sale.product.id),
       },
       'stock': progress.stock.length,
+      // 👩 your very first sale: Mum helps
+      if ((((_profile['shop'] as Map?)?['sales'] ?? 0) as num) == 0) 'first_sale': true,
       if (progress.owns('golden')) 'golden': true, // ✨ the golden stall
+      // what you bought for your stall, to see at it
+      'decor': [
+        for (final id in stallDecor)
+          if (progress.owns(id)) id,
+      ],
       'offer': sale.offer,
       'ask': sale.ask,
       'suggestions': sale.done ? <double>[] : sale.suggestions(),

@@ -163,55 +163,70 @@ class _ShopScreenState extends State<ShopScreen> {
                       : const [Color(0xFFDDF1EC), Color(0xFFFFF6E5)],
                 ),
               ),
-              child: customer == null
-                  ? Center(
-                      child: _closed == null
-                          ? const CircularProgressIndicator()
-                          : Padding(
-                              key: const ValueKey('shop_closed'),
-                              padding: const EdgeInsets.all(24),
-                              child: Text(
-                                _closed!,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink, height: 1.4),
+              child: Stack(
+                children: [
+                  Positioned.fill(child: StallDecor(owned: {for (final d in (s?['decor'] as List? ?? const [])) '$d'})),
+                  Positioned.fill(
+                    child: customer == null
+                        ? Center(
+                            child: _closed == null
+                                ? const CircularProgressIndicator()
+                                : Padding(
+                                    key: const ValueKey('shop_closed'),
+                                    padding: const EdgeInsets.all(24),
+                                    child: Text(
+                                      _closed!,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: Palette.ink,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ),
+                          )
+                        : Column(
+                            children: [
+                              const SizedBox(height: 6),
+                              Stallholder(
+                                look: Map<String, dynamic>.from(customer['look'] as Map),
+                                face: _face,
+                                reactKey: _react,
+                                size: 120,
                               ),
-                            ),
-                    )
-                  : Column(
-                      children: [
-                        const SizedBox(height: 6),
-                        Stallholder(
-                          look: Map<String, dynamic>.from(customer['look'] as Map),
-                          face: _face,
-                          reactKey: _react,
-                          size: 120,
-                        ),
-                        Text(
-                          '${customer['name']} wants your ${product!['emoji']} ${product['name']}',
-                          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
-                        ),
-                        Text(
-                          product['from'] != null
-                              ? 'You bought it at ${product['from']}\'s for ${money(product['cost'] as num)} · usually ${money(product['fair'] as num)}'
-                              : 'Wholesale, you paid ${money(product['cost'] as num)} · usually sells for ${money(product['fair'] as num)}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Palette.soft, fontSize: 13),
-                        ),
-                        GestureDetector(
-                          onTap: () =>
-                              Navigator.of(context)
-                                  .push(MaterialPageRoute<void>(builder: (_) => InventoryScreen(api: widget.api))),
-                          child: Text(
-                            (s!['stock'] as num) > 0
-                                ? '📦 ${s['stock']} thing${s['stock'] == 1 ? '' : 's'} in stock · see them ›'
-                                : '📦 Buy things at the market to sell them here',
-                            key: const ValueKey('shop_stock'),
-                            style: const TextStyle(color: Palette.soft, fontSize: 12, fontWeight: FontWeight.w600),
+                              Text(
+                                '${customer['name']} wants your ${product!['emoji']} ${product['name']}',
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                              ),
+                              Text(
+                                product['from'] != null
+                                    ? 'You bought it at ${product['from']}\'s for ${money(product['cost'] as num)} · usually ${money(product['fair'] as num)}'
+                                    : 'Wholesale, you paid ${money(product['cost'] as num)} · usually sells for ${money(product['fair'] as num)}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: Palette.soft, fontSize: 13),
+                              ),
+                              GestureDetector(
+                                onTap: () => Navigator.of(context)
+                                    .push(MaterialPageRoute<void>(builder: (_) => InventoryScreen(api: widget.api))),
+                                child: Text(
+                                  (s!['stock'] as num) > 0
+                                      ? '📦 ${s['stock']} thing${s['stock'] == 1 ? '' : 's'} in stock · see them ›'
+                                      : '📦 Buy things at the market to sell them here',
+                                  key: const ValueKey('shop_stock'),
+                                  style: const TextStyle(
+                                    color: Palette.soft,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
+                  ),
+                ],
+              ),
             ),
+            if (s != null && s['first_sale'] == true && s['done'] != true) _firstSaleTip(s),
             Expanded(
               child: ListView(
                 controller: _scroll,
@@ -296,6 +311,30 @@ class _ShopScreenState extends State<ShopScreen> {
     );
   }
 
+  /// 👩 Mum's tip for your very first sale (until it's over).
+  Widget _firstSaleTip(Map<String, dynamic> s) {
+    final product = s['product'] as Map;
+    final paid = money(product['cost'] as num);
+    final usual = money(product['fair'] as num);
+    final tip = switch ('${s['event']}') {
+      'raise' ||
+      'accept' ||
+      'thanks' => "They came up! Hold near your price, or take their offer if it's more than it cost you ($paid).",
+      'annoyed' => "Too high for them! Come down a little: anything above $paid is still profit.",
+      _ =>
+        'Your first customer! They will offer low. Ask for the usual price ($usual) or a bit more, and come down '
+            "slowly: it cost you $paid, so anything above that is profit.",
+    };
+    return Container(
+      key: const ValueKey('first_sale_tip'),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: const Color(0xFFFFF2C7), borderRadius: BorderRadius.circular(14)),
+      child: Text('👩 Mum: $tip', style: const TextStyle(color: Palette.ink, height: 1.35)),
+    );
+  }
+
   Widget _result(Map<String, dynamic> s) {
     final sold = s['result'] == 'sold';
     final stars = (s['stars'] as num).toInt();
@@ -306,6 +345,10 @@ class _ShopScreenState extends State<ShopScreen> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
       child: Column(
         children: [
+          if (sold && moneyIn(s['notes'] as List? ?? const []) > 0) ...[
+            MoneyPop(amount: moneyIn(s['notes'] as List? ?? const [])),
+            const SizedBox(height: 8),
+          ],
           Text(
             sold ? 'Sold for ${money(s['price'] as num)}!' : '${(s['customer'] as Map)['name']} walked away',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Palette.ink),

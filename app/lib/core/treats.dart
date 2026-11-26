@@ -312,6 +312,21 @@ const goals = <Goal>[
   ),
 ];
 
+/// Made-up regulars who order things from your stall.
+const orderCustomers = [
+  'Mrs Goh',
+  'Mr Rahman',
+  'Ms Priya',
+  'Uncle Teo',
+  'Madam Chua',
+  'Mr Ong',
+  'Kak Aishah',
+  'Mr Lee',
+];
+
+/// Shop things you can see at your own stall.
+const stallDecor = ['awning', 'balloons', 'lanterns', 'sign', 'neon', 'radio', 'tea', 'icebox', 'flowers', 'shelf'];
+
 /// Fresh things that the ice box keeps cold (they sell for more at your stall).
 const freshThings = {'mei/durian', 'mei/mango', 'lim/pomfret', 'lim/prawns', 'siti/kueh', 'rosnah/ondeh', 'tan/eggs'};
 

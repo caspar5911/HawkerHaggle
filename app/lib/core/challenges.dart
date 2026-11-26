@@ -26,6 +26,9 @@ const ranks = <(int, String)>[
   (6000, 'Haggle Grandmaster'),
 ];
 
+/// 🔥 Money for playing days in a row (into your wallet, or with no wallet the jar).
+const streakRewards = {3: 5.0, 7: 15.0, 14: 30.0, 30: 50.0};
+
 /// XP for each source.
 const xpDailyChallenge = 60, xpList = 40, xpListUnder = 20, xpQuest = 60, xpAllQuests = 100, xpDayPlayed = 20;
 const xpGuessSpotOn = 4, xpGuessClose = 2; // guessing the fair price before a haggle (inside the haggle cap)
@@ -352,6 +355,14 @@ class Challenges {
         if (daysPlayed() == d) notes.add('$emoji Day $d of your Market Month: $what!');
       }
       if (daysPlayed() >= 3) progress.earn('days3', stickers);
+      // 🔥 days in a row: a reward at 3, 7, 14 and 30
+      final row = playStreak();
+      final prize = streakRewards[row];
+      if (prize != null) {
+        progress.reward(prize, 'streak');
+        progress.p['streak_rewarded'] = true; // (the "How to earn" card remembers)
+        notes.add('🔥 $row days in a row! +${_price(prize)}');
+      }
       if (daysPlayed() >= 30) progress.earn('month', stickers);
     }
     // XP from the haggle itself, capped per day
@@ -431,6 +442,18 @@ class Challenges {
       notes.add('🎖️ New rank: ${rank()['title']}! +${_price(money)}');
     }
     return notes;
+  }
+
+  /// 🔥 Days played in a row, up to today (0 if not today).
+  int playStreak() {
+    final days = _map('days');
+    var n = 0;
+    var d = DateTime.parse(today);
+    while (days.containsKey(dayKey(d))) {
+      n++;
+      d = d.subtract(const Duration(days: 1));
+    }
+    return n;
   }
 
   /// Everything for the Challenges screen.

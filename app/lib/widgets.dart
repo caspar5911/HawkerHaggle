@@ -498,3 +498,140 @@ class _ConfettiPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ConfettiPainter old) => old.t != t;
 }
+
+/// What you bought for your stall, around the customer: the ⛱️ awning along the top, 🎈 balloons and 🏮 lanterns in
+/// the corners, a 🪧 sign (glowing with the 💡 neon), and 📻 🍵 🧊 🌸 📦 along the counter.
+class StallDecor extends StatelessWidget {
+  const StallDecor({super.key, required this.owned});
+  final Set<String> owned;
+
+  Widget _at(String id, Widget child, {double? top, double? left, double? right, double? bottom}) => Positioned(
+    top: top,
+    left: left,
+    right: right,
+    bottom: bottom,
+    child: KeyedSubtree(key: ValueKey('decor_$id'), child: child),
+  );
+
+  static const _e = TextStyle(fontSize: 24);
+
+  @override
+  Widget build(BuildContext context) {
+    final neon = owned.contains('neon');
+    final counter = [
+      for (final (id, emoji) in const [
+        ('radio', '📻'),
+        ('tea', '🍵'),
+        ('icebox', '🧊'),
+        ('flowers', '🌸'),
+        ('shelf', '📦'),
+      ])
+        if (owned.contains(id)) (id, emoji),
+    ];
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          if (owned.contains('awning'))
+            _at('awning', const Awning(colors: [Palette.red, Colors.white], height: 22), top: 0, left: 0, right: 0),
+          if (owned.contains('balloons')) ...[
+            _at('balloons', const Text('🎈', style: _e), top: 24, left: 8),
+            _at('balloons2', const Text('🎈', style: _e), top: 24, right: 8),
+          ],
+          if (owned.contains('lanterns')) ...[
+            _at('lanterns', const Text('🏮', style: _e), top: 56, left: 10),
+            _at('lanterns2', const Text('🏮', style: _e), top: 56, right: 10),
+          ],
+          if (owned.contains('sign') || neon)
+            _at(
+              'sign',
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: neon ? const Color(0xFF2B1B4D) : const Color(0xFFFFF2C7),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: neon ? const Color(0xFFFF5CC8) : Palette.gold, width: 2),
+                  boxShadow: neon
+                      ? const [BoxShadow(color: Color(0xAAFF5CC8), blurRadius: 12, spreadRadius: 1)]
+                      : const [],
+                ),
+                child: Text(
+                  neon ? '💡 OPEN' : '🪧 My stall',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: neon ? const Color(0xFFFFE6FA) : Palette.ink,
+                  ),
+                ),
+              ),
+              top: 26,
+              right: owned.contains('balloons') ? 46 : 10,
+            ),
+          for (final (i, (id, emoji)) in counter.indexed)
+            _at(
+              id,
+              Text(emoji, style: _e),
+              bottom: 4,
+              left: i.isEven ? 8.0 + 30 * (i ~/ 2) : null,
+              right: i.isOdd ? 8.0 + 30 * (i ~/ 2) : null,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The money a result's notes say came in: every "+\$X", Mum's change, and a sale's "👛 \$X into your wallet".
+double moneyIn(List notes) {
+  var sum = 0.0;
+  for (final n in notes.map((x) => '$x')) {
+    for (final m in RegExp(r'\+\$(\d+(?:\.\d+)?)').allMatches(n)) {
+      sum += double.parse(m[1]!);
+    }
+    final change = RegExp(r'Keep the change! \$(\d+(?:\.\d+)?)').firstMatch(n);
+    if (change != null) sum += double.parse(change[1]!);
+    final sale = RegExp(r'👛 \$(\d+(?:\.\d+)?) into your wallet').firstMatch(n);
+    if (sale != null) sum += double.parse(sale[1]!);
+  }
+  return (sum * 100).round() / 100;
+}
+
+/// 💰 "+\$X" popping up when money comes in, with a ka-ching.
+class MoneyPop extends StatefulWidget {
+  const MoneyPop({super.key, required this.amount});
+  final num amount;
+  @override
+  State<MoneyPop> createState() => _MoneyPopState();
+}
+
+class _MoneyPopState extends State<MoneyPop> {
+  @override
+  void initState() {
+    super.initState();
+    Sfx.play('coin', volume: 0.6);
+    HapticFeedback.lightImpact();
+  }
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+    key: const ValueKey('money_pop'),
+    tween: Tween(begin: 0, end: 1),
+    duration: const Duration(milliseconds: 900),
+    curve: Curves.elasticOut,
+    builder: (_, t, child) => Transform.translate(
+      offset: Offset(0, 14 * (1 - t)),
+      child: Transform.scale(scale: 0.6 + 0.4 * t, child: child),
+    ),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Palette.gold,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.12), offset: const Offset(0, 3))],
+      ),
+      child: Text(
+        '💰 +${money(widget.amount)}',
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Palette.ink),
+      ),
+    ),
+  );
+}

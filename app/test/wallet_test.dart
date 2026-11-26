@@ -270,6 +270,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('👛 In your wallet: \$60'), findsOneWidget);
     expect(find.byKey(const ValueKey('save_all')), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('save_10'))); // (below the "How to earn" card)
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('save_10')));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
     await tester.pumpAndSettle();
