@@ -59,7 +59,7 @@ double paidOut(Map r) {
 }
 
 void main() {
-  setUp(() => Game.testWallet = null); // the app's own default: the wallet on
+  setUp(() => Game.testWallet = true); // (the pre-wallet branch has it off: earning, tested with the wallet on)
   tearDown(() => Game.testWallet = false);
 
   test('\$60 to start', () async {
