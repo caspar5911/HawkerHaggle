@@ -148,8 +148,11 @@ class PhoneReminder implements Reminder {
   Future<void> schedule(List<Nudge> plan) async {
     if (!await _init()) return;
     try {
-      await _n.cancelAll();
-      for (final (i, x) in plan.indexed) {
+      // only the planned ones: a reminder already on the screen stays (cancelAll would remove it too)
+      await _n.cancelAllPendingNotifications();
+    } catch (_) {}
+    for (final (i, x) in plan.indexed) {
+      try {
         await _n.zonedSchedule(
           id: 100 + i,
           title: x.title,
@@ -158,9 +161,9 @@ class PhoneReminder implements Reminder {
           notificationDetails: _details,
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // no exact-alarm permission needed
         );
+      } catch (_) {
+        // one that can't be planned (say, a moment in the past) never stops the rest
       }
-    } catch (_) {
-      // a reminder never breaks the game
     }
   }
 

@@ -721,6 +721,7 @@ class Game {
     );
     final fresh = <String>{...r.stickers};
     final notes = <String>[];
+    if (view['combos'] is num && (view['combos'] as num) > 0) progress.earn('combo', fresh); // you were in it too
     if (deal) {
       progress.earn('teamwork', fresh);
       final opening = view['opening'] is num ? (view['opening'] as num).toDouble() : dealt!;

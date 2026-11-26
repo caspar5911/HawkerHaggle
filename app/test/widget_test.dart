@@ -443,6 +443,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('mic')));
     await settle(tester, 600);
     expect(find.textContaining('Tap the mic on your keyboard'), findsOneWidget);
+    expect(Music.wanted, isNull); // quiet, so the keyboard's mic doesn't hear the tune
     final field = tester.widget<TextField>(find.byKey(const ValueKey('reply_field')));
     expect(field.controller!.text, isEmpty); // nothing heard by the game itself
     expect(field.focusNode!.hasFocus, isTrue); // the keyboard is up
@@ -450,6 +451,7 @@ void main() {
     await tester.tap(find.text('Send'));
     await settle(tester, 2500);
     expect(fake.sent.last['text'], '\$10 can or not auntie');
+    expect(Music.wanted, 'calm'); // the box closed: the music comes back
     await settle(tester, 3000);
   });
 

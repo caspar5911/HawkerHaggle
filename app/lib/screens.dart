@@ -1189,7 +1189,16 @@ class _HaggleScreenState extends State<HaggleScreen> {
     final view = {
       for (final k in const [
         'line', 'event', 'ask', 'opening', 'patience', 'mood', 'qty', 'done', 'result', 'deal', 'pending', //
-        'stars', 'saved', 'surprise', 'surprise_note', 'accept_text', 'walk_text', 'tells', 'combo', 'legendary',
+        'stars',
+        'saved',
+        'surprise',
+        'surprise_note',
+        'accept_text',
+        'walk_text',
+        'tells',
+        'combo',
+        'combos',
+        'legendary',
       ])
         k: g[k],
       'turn': _turn,
@@ -1937,8 +1946,10 @@ class _TypeBoxState extends State<_TypeBox> {
   final _field = FocusNode();
   bool _keyboardTip = false; // the player uses their keyboard's mic: say where it is
 
-  /// 🎤 with "Use my keyboard's mic": the keyboard comes up, and the player taps its mic.
+  /// 🎤 with "Use my keyboard's mic": the keyboard comes up, and the player taps its mic (the music goes quiet, or
+  /// the keyboard would hear the tune).
   void _keyboardMic() {
+    Music.hush(true).ignore();
     setState(() => _keyboardTip = true);
     _field.requestFocus();
     SystemChannels.textInput.invokeMethod('TextInput.show');
@@ -1955,6 +1966,7 @@ class _TypeBoxState extends State<_TypeBox> {
     super.initState();
     if (widget.listen && Voice.useKeyboard) {
       _keyboardTip = true; // the keyboard opens (autofocus): its own mic does the listening
+      Music.hush(true).ignore();
     } else if (widget.listen) {
       // let the box finish opening first (so the tap isn't heard)
       Timer(const Duration(milliseconds: 280), () => mounted ? _talk() : null);
@@ -1964,6 +1976,7 @@ class _TypeBoxState extends State<_TypeBox> {
   @override
   void dispose() {
     Voice.instance.stop(); // never leave the microphone on
+    if (_keyboardTip) Music.hush(false).ignore();
     _field.dispose();
     super.dispose();
   }
@@ -2578,13 +2591,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final r = (on: want, hour: at?.hour ?? _remind.hour, minute: at?.minute ?? _remind.minute);
     await Reminder.save(on: r.on, hour: r.hour, minute: r.minute);
     if (mounted) setState(() => _remind = r);
+    await widget.api.refreshReminders(); // first: planning clears the old plan
     if (on == true) {
       await Reminder.instance.showNow(
         '🔔 Reminder on!',
         "We'll remind you every day at $_remindAt. See you at the market!",
       );
     }
-    await widget.api.refreshReminders();
   }
 
   /// Logging in or out switches whose progress this is: show its name and settings.

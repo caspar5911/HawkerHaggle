@@ -153,6 +153,20 @@ void main() {
       expect(r['combos'], 2);
     });
 
+    test("the friend's phone gets the Tag team sticker too", () async {
+      final friend = await newGame(ordinaryDay());
+      await friend.coopFinish(
+        stall: 'mei',
+        item: 'mango',
+        view: {'result': 'deal', 'deal': 14, 'opening': 18, 'stars': 2, 'combos': 1},
+        host: 'Arella',
+      );
+      expect(friend.stickers().firstWhere((s) => s['id'] == 'combo')['earned'], isNotNull);
+      final other = await newGame(ordinaryDay());
+      await other.coopFinish(stall: 'mei', item: 'mango', view: {'result': 'deal', 'deal': 14, 'opening': 18});
+      expect(other.stickers().firstWhere((s) => s['id'] == 'combo')['earned'], isNull);
+    });
+
     test('alone, sweet-talk then an offer is just a haggle; same person twice is no combo', () async {
       final (g, id) = await haggle();
       await g.move(id, text: 'wah auntie your mangoes look so nice!');
