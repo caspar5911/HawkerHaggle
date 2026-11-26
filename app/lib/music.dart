@@ -13,13 +13,13 @@ import 'sfx.dart';
 class Music {
   Music._();
 
-  static const volumes = {'stroll': 0.3, 'calm': 0.25};
+  static const volumes = {'stroll': 0.48, 'calm': 0.4};
 
   /// The player's volume, 0 to 1. The middle is the normal level; all the way up is twice as loud.
   static double level = 0.5;
 
   /// How loud a tune plays at the player's [level].
-  static double volumeOf(String tune) => (volumes[tune] ?? 0.3) * level * 2;
+  static double volumeOf(String tune) => ((volumes[tune] ?? 0.4) * level * 2).clamp(0.0, 1.0);
 
   /// The player's switch (on unless they turned it off).
   static bool on = true;
@@ -46,7 +46,7 @@ class Music {
     _blocked = kIsWeb; // browsers refuse sound before the first tap (often without saying so), so wait for it
     try {
       on = startsOn(await _storage.read(key: 'music'), await _storage.read(key: 'muted'));
-      level = (double.tryParse(await _storage.read(key: 'music_level') ?? '') ?? 0.5).clamp(0.0, 1.0);
+      level = (double.tryParse(await _storage.read(key: 'music_level2') ?? '') ?? 0.5).clamp(0.0, 1.0);
     } catch (_) {}
     AppLifecycleListener(
       onStateChange: (s) {
@@ -72,7 +72,7 @@ class Music {
     }
     if (save) {
       try {
-        await _storage.write(key: 'music_level', value: level.toStringAsFixed(2));
+        await _storage.write(key: 'music_level2', value: level.toStringAsFixed(2));
       } catch (_) {}
     }
   }

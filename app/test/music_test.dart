@@ -45,12 +45,12 @@ void main() {
   });
 
   test('the volume: the middle is the normal level, the ends are silent and twice as loud', () async {
-    expect(Music.volumeOf('stroll'), closeTo(0.3, 1e-9));
-    expect(Music.volumeOf('calm'), closeTo(0.25, 1e-9));
+    expect(Music.volumeOf('stroll'), closeTo(0.48, 1e-9));
+    expect(Music.volumeOf('calm'), closeTo(0.4, 1e-9));
     await Music.setLevel(0);
     expect(Music.volumeOf('calm'), 0);
     await Music.setLevel(1.7); // never past the end
     expect(Music.level, 1);
-    expect(Music.volumeOf('calm'), closeTo(0.5, 1e-9));
+    expect(Music.volumeOf('calm'), closeTo(0.8, 1e-9));
   });
 }

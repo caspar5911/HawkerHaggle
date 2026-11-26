@@ -184,7 +184,7 @@ def stroll():
             t.melody(s, flat(mel), musicbox, 0.14, octave=1)
         comp_bouncy(t, s, chords, rng)
     t.echo(0.75, 0.22)
-    t.mp3("stroll")
+    t.mp3("stroll", loud=0.95)
 
 
 # Calm: 16 bars of G major, a soft marimba rocking in eighths under a few music-box notes
@@ -211,7 +211,7 @@ def calm():
         for e in (1, 3):
             t.add(i * 4 + e, shaker(rng, 0.04), 0.035)
     t.echo(1.5, 0.25)
-    t.mp3("calm", loud=0.6)
+    t.mp3("calm", loud=0.95)
 
 
 if __name__ == "__main__":
