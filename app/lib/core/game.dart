@@ -13,6 +13,7 @@ import 'festivals.dart';
 import 'haggle_guide.dart';
 import 'legendary.dart';
 import 'progress.dart';
+import 'py.dart' show plainDigits;
 import 'reader.dart';
 import 'shop.dart';
 import 'softspots.dart';
@@ -499,6 +500,35 @@ class Game {
     } else {
       heard = heardByRules(text);
     }
+    // "30 for 20 nasi lemak": 20 packets is ONE tray here (the pieces in one pack), never 20 trays. The number of
+    // pieces is not a quantity and not a price; the other number is the price for the whole pack.
+    final pieces = (ss.item['pieces'] as num?)?.toInt();
+    final plain = plainDigits(text).toLowerCase();
+    // the pieces, said as pieces: "20 packets", "20 nasi lemak", "6 mangoes", "30 for 20" (a plain "20 can?" is a price)
+    final saysPieces =
+        pieces != null &&
+        (RegExp(
+              '(?<![\\d.\$])$pieces\\s*(pieces?|pcs|packets?|packs?|nasi lemak|eggs?|mangoes|mangos|ondeh|kueh|kuih)\\b',
+            ).hasMatch(plain) ||
+            RegExp('\\bfor\\s+$pieces(?![\\d.])(?!\\s*(dollars?|bucks))').hasMatch(plain));
+    if (pieces != null && pieces > 1 && heard.relOp.isEmpty && (saysPieces || heard.qty == pieces)) {
+      final others = [
+        for (final m in RegExp(r'\d+(?:\.\d+)?').allMatches(plain))
+          if (double.parse(m[0]!) != pieces) double.parse(m[0]!),
+      ];
+      var price = heard.price != null && heard.price != pieces ? heard.price : null;
+      if (price != null && heard.per == 'each' && heard.qty == pieces) price = price * pieces; // per packet: the pack
+      price ??= others.length == 1 ? others.single : null;
+      heard = price != null && price > 0
+          ? Heard(
+              heard.move == 'budget' ? 'budget' : 'offer',
+              price,
+              ai: heard.ai,
+              reading: heard.reading,
+              also: heard.also,
+            )
+          : Heard('smalltalk', null, ai: heard.ai, reading: heard.reading, also: heard.also);
+    }
     // "just one, $20 can?" while buying two: back to one first (she says her price for one, then they offer again)
     if (h.s.qty > 1 && heard.move != 'walk' && justOne.hasMatch(text.toLowerCase())) {
       return Heard('one', null, ai: heard.ai, reading: heard.reading, also: heard.also);
@@ -954,6 +984,11 @@ class Game {
       out = h.move(kind, price, callBack);
       event = out.event;
       if (event == 'callback') ss.calledBack = true;
+      if (event == 'insulted' && !ss.events.contains('insulted')) {
+        ss.firmNote =
+            "😠 That's so low ${stall['name']} is offended: the price stays, ${stall['name']} gets crosser, and "
+            'patience drops fast. Offer closer to the price (start at about two-thirds), or say something nice first.';
+      }
       if (event == 'budget_best') {
         ss.firmEarly = h.s.ask > h.item.floor * 1.06; // a firm price before it was earned
         // say why, so the rule can be learned (and that it isn't hopeless)

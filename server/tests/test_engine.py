@@ -402,3 +402,16 @@ def test_the_next_stall_is_cheaper_works_early_and_annoys_late():
     soft_out, hard_out = soft.move("competitor").event, hard.move("competitor").event
     assert (soft_out, hard_out) != ("competitor_annoyed", "competitor_drop")  # never kinder from the stubborn one
 
+
+def test_after_insults_a_fair_offer_still_moves_her():
+    """Auntie Rosnah's tray: five offers far too low made her as cross as she gets; a fair one still gets a counter
+    (it used to freeze her price for the rest of the haggle)."""
+    tray = Item("tray", "nasi lemak tray", fair=60.0, ask=80.0, floor=52.0)
+    rosnah = Personality(stubborn=0.45, flattery=0.6, temper=0.3, callback=0.5)
+    h = Haggle(tray, rosnah, seed=1)
+    for low in (20, 20, 25, 30, 35):
+        assert h.move("offer", low).event == "insulted"
+    assert h.s.mood == -3
+    out = h.move("offer", 45)
+    assert out.event == "counter" and out.ask < 80
+

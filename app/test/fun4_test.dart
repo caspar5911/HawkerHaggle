@@ -330,4 +330,92 @@ void main() {
       if (x['ai_line'] == true) expect(x['line'], 'Aiyo, too low lah my dear!');
     });
   });
+
+  test('😠 the first insult in a haggle says so (once); a fair offer after it still moves her', () async {
+    final g = Game(
+      content: content,
+      store: MemoryKeyValue(),
+      random: math.Random(3),
+      surprises: false,
+      unlockAll: true,
+    );
+    await g.load();
+    final w = await g.start('mei', 'mango', 'none');
+    if ((await g.move(w['id'] as String, move: 'walk'))['done'] != true) {
+      await g.move(w['id'] as String, move: 'walk');
+    }
+    final r = await g.start('rosnah', 'tray', 'none');
+    final id = r['id'] as String;
+    var x = await g.move(id, text: '20 can?');
+    expect(x['event'], 'insulted');
+    expect('${x['firm_note']}', contains('offended'));
+    x = await g.move(id, text: '25 can?');
+    expect(x['event'], 'insulted');
+    expect(x.containsKey('firm_note'), isFalse, reason: 'once a haggle');
+    for (final low in [30, 35]) {
+      x = await g.move(id, text: '$low can?');
+    }
+    x = await g.move(id, text: '45 can?');
+    expect(x['event'], 'counter');
+    expect(x['ask'] as num, lessThan(80));
+  });
+
+  group('📦 the pieces in one pack are not a quantity', () {
+    Future<(Game, String)> at(String stall, String item, {FakeModel? model}) async {
+      final g = model == null
+          ? Game(content: content, store: MemoryKeyValue(), random: math.Random(3), surprises: false, unlockAll: true)
+          : (await aiGame(() => DateTime(2026, 12, 2, 10), model: model)).$1;
+      await g.load();
+      final w = await g.start('boy', 'yoyo', 'none'); // (the first haggle is the gentle one: get it out of the way)
+      await g.move(w['id'] as String, move: 'buy');
+      final r = await g.start(stall, item, 'none');
+      return (g, r['id'] as String);
+    }
+
+    for (final (text, want) in const [
+      ('30 for 20 nasi lemak', 30.0),
+      ('can do 45 for 20 packets?', 45.0),
+      ('20 packets 50 can?', 50.0),
+    ]) {
+      test('"$text": one tray, for \$$want', () async {
+        final (g, id) = await at('rosnah', 'tray');
+        final r = await g.move(id, text: text);
+        expect(r['qty'], 1);
+        expect(r['offer'], want);
+      });
+    }
+
+    test('the AI read 20 as a quantity: still one tray, and she never offers you two', () async {
+      final m = FakeModel(
+        move: '{"move": "bulk", "price": 30, "per": "total", "qty": 20}',
+        line: 'Aiyoh sayang, too low lah!',
+      );
+      final (g, id) = await at('rosnah', 'tray', model: m);
+      final r = await g.move(id, text: 'auntie 30 for 20 nasi lemak can?');
+      expect(r['qty'], 1);
+      expect(r['offer'], 30);
+      expect('${m.says.last['messages']}', isNot(contains('only have two left')));
+    });
+
+    test('a plain "20 can?" is still a price; a budget stays a budget; 10% off stays a percentage', () async {
+      var (g, id) = await at('rosnah', 'tray');
+      expect((await g.move(id, text: '20 can?'))['offer'], 20);
+      (g, id) = await at('rosnah', 'tray');
+      final b = await g.move(id, text: 'I only have 60 for 20 packets');
+      expect(b['offer'], 60);
+      expect(['confirm', 'budget_best'], contains(b['event']), reason: 'a stated limit');
+      (g, id) = await at('rosnah', 'tray');
+      expect((await g.move(id, text: '10% off for 20 packets?'))['offer'], 72);
+    });
+
+    test('a box of 6 mangoes: "6 mangoes for 15" is one box; two trays is still two', () async {
+      final (g, id) = await at('mei', 'mango');
+      final r = await g.move(id, text: '6 mangoes for 15 can?');
+      expect(r['qty'], 1);
+      expect(r['offer'], 15);
+      final (g2, id2) = await at('rosnah', 'tray');
+      final two = await g2.move(id2, text: 'I take two trays, cheaper?');
+      expect(two['qty'], 2);
+    });
+  });
 }
