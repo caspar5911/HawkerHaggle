@@ -169,6 +169,7 @@ class Api {
   });
   Future<int> reportCount() => _run((g) => g.reports.length);
   Future<Map<String, dynamic>> today() => _run((g) => Map<String, dynamic>.from(g.today()));
+  Future<Map<String, dynamic>> guide() => _run((g) => Map<String, dynamic>.from(g.guide()));
   Future<List<Map<String, dynamic>>> stickers() =>
       _run((g) => [for (final s in g.stickers()) Map<String, dynamic>.from(s)]);
   Future<Map<String, dynamic>> stallProfile(String id) => _run((g) => Map<String, dynamic>.from(g.stallProfile(id)));

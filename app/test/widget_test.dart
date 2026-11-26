@@ -976,6 +976,38 @@ void main() {
     expect(find.byKey(const ValueKey('combo_stamp')), findsNothing); // just a moment
   });
 
+  testWidgets('💡 the result card has a tip for next time', (tester) async {
+    await openHaggle(tester, [
+      game('OK lah OK lah, \$18!', event: 'accept', result: 'deal', deal: 18, stars: 0)
+        ..addAll({'coach': 'You paid her first price! Offer about 70% first.'}),
+    ]);
+    await tester.tap(find.text('OK lah, \$18'));
+    await settle(tester, 600);
+    await tester.tap(find.text('Confirm \$18'));
+    await settle(tester, 2500);
+    expect(find.text('💡 Next time: You paid her first price! Offer about 70% first.'), findsOneWidget);
+    await settle(tester, 3000);
+  });
+
+  testWidgets('📖 the haggling guide: from Me, hidden tricks with hints, and real-life manners', (tester) async {
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('tab_me')));
+    await settle(tester, 600);
+    await tester.tap(find.byKey(const ValueKey('guide_open')));
+    await settle(tester, 1000);
+    expect(find.text('📖 Haggling guide'), findsOneWidget);
+    expect(find.textContaining('0 of 12 tricks learned'), findsOneWidget);
+    expect(find.text('???'), findsWidgets);
+    expect(find.textContaining('Hint: Be nice before you talk price.'), findsOneWidget);
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('real_life')),
+      find.byType(ListView).last,
+      const Offset(0, -300),
+    );
+    expect(find.textContaining('chicken rice'), findsOneWidget);
+  });
+
   testWidgets('Reduce motion can be switched on in Settings', (tester) async {
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(Fake([]))));
     await settle(tester, 2000);

@@ -10,6 +10,7 @@ import 'ai_client.dart';
 import 'challenges.dart';
 import 'engine.dart';
 import 'festivals.dart';
+import 'haggle_guide.dart';
 import 'legendary.dart';
 import 'progress.dart';
 import 'reader.dart';
@@ -141,6 +142,10 @@ class _Session {
   final comboStickers = <String>{}; // the Tag team sticker, when the first combo earns it
   bool comboNow = false; // the move just played was a combo (for the screen)
   String lastEvent = ''; // the stallholder's last reaction (no combo right after she's been made cross)
+  final events = <String>{}; // every reaction this haggle (for the tip for next time)
+  bool walkedAway = false; // tried walking away (called back or not)
+  double? firstOffer; // the first offer, as a share of the opening price
+  String coach = ''; // the tip for next time (when it ends)
 }
 
 /// Sweet-talk: what one friend says before the other makes the offer, for a tag-team combo.
@@ -293,6 +298,24 @@ class Game {
       'rank': Challenges(progress).rank(),
       'days_played': progress.daysPlayed(),
       'played_today': progress.playedOn(dayKey(now())),
+      'tricks': learnedTricks(done, softSpots: progress.softSpotsFound()).length,
+      'tricks_total': tricks.length,
+    };
+  }
+
+  /// 📖 The haggling guide: every trick, and which ones this player has used (the others stay hidden).
+  Map<String, Object?> guide() {
+    final learned = learnedTricks(_done, softSpots: progress.softSpotsFound());
+    return {
+      'tricks': [
+        for (final (id, emoji, title, how, example, hint) in tricks)
+          learned.contains(id)
+              ? {'id': id, 'emoji': emoji, 'title': title, 'how': how, 'example': example, 'learned': true}
+              : {'id': id, 'hint': hint, 'learned': false},
+      ],
+      'learned': learned.length,
+      'total': tricks.length,
+      'real_life': realLife,
     };
   }
 
@@ -521,6 +544,7 @@ class Game {
             },
       'rival_left': h.s.rivalLeft,
       'combo': ss.comboNow,
+      'coach': h.s.done && ss.coach.isNotEmpty ? ss.coach : null,
       'combos': ss.combos,
       'legendary': ss.legendary,
       'hearts': progress.hearts('${ss.stall['id']}'),
@@ -854,6 +878,8 @@ class Game {
         h.warm(1.0);
         progress.earn('combo', ss.comboStickers);
       }
+      if (kind == 'walk') ss.walkedAway = true;
+      if (kind == 'offer' && price != null && price > 0 && ss.firstOffer == null) ss.firstOffer = price / h.s.opening;
       out = h.move(kind, price, callBack);
       event = out.event;
       if (event == 'callback') ss.calledBack = true;
@@ -981,6 +1007,7 @@ class Game {
           'hard': hard,
           'rude': ss.rude,
           if (ss.combos > 0) 'combos': ss.combos,
+          if (ss.events.contains('final') || ss.events.contains('budget_best') || event == 'final') 'heard_final': true,
           if (ss.legendary) 'legendary': true,
           if (ss.guess != null) 'guess': ss.guess,
           if (ss.festival != null) 'festival_week': ss.festival!.id,
@@ -1015,6 +1042,19 @@ class Game {
           if (free != null) extra.add(free);
         }
       }
+      final close = h.s.result == 'deal' && h.s.deal != null ? _closeness(ss) : '';
+      ss.coach = coachTip(
+        result: h.s.result,
+        rounds: h.s.rounds,
+        stars: out?.stars ?? 0,
+        tactics: {...ss.tactics},
+        events: {...ss.events, event},
+        walkedAway: ss.walkedAway,
+        calledBack: ss.calledBack,
+        who: '${stall['name']}',
+        firstOffer: ss.firstOffer,
+        kindWordNoted: close.contains('kind word'),
+      );
       ss.finish = {
         'stickers': fresh.toList(),
         'mum': r.mum,
@@ -1027,6 +1067,7 @@ class Game {
     }
     ss.tells = _tells(ss, before);
     ss.lastEvent = event;
+    ss.events.add(event);
     if (ss.comboStickers.isNotEmpty && !h.s.done) await _save(); // the Tag team sticker, kept at once
     return _view(ss, said, event, out, you, aiLine);
   }

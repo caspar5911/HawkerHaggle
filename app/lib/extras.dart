@@ -196,6 +196,111 @@ Future<void> showStallProfile(BuildContext context, Api api, Map stall) async {
 }
 
 /// The sticker book.
+/// 📖 The haggling guide: the tricks the game rewards (hidden until used once), and real-life manners.
+class HaggleGuideScreen extends StatelessWidget {
+  const HaggleGuideScreen({super.key, required this.api});
+  final Api api;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('📖 Haggling guide'), backgroundColor: Palette.cream),
+    backgroundColor: Palette.cream,
+    body: FutureBuilder<Map<String, dynamic>>(
+      future: api.guide(),
+      builder: (context, snap) {
+        final g = snap.data;
+        if (g == null) return const Center(child: CircularProgressIndicator());
+        final tricks = (g['tricks'] as List).cast<Map>();
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            Text(
+              '${g['learned']} of ${g['total']} tricks learned. A trick appears here once you\'ve used it in a haggle; '
+              'the hints say how to find the rest.',
+              style: const TextStyle(color: Palette.soft, height: 1.35),
+            ),
+            const SizedBox(height: 12),
+            for (final t in tricks) t['learned'] == true ? _learned(t) : _hidden(t),
+            const SizedBox(height: 18),
+            const Text(
+              '🇸🇬 In real life',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Palette.ink),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              key: const ValueKey('real_life'),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final line in (g['real_life'] as List).cast<String>())
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: Text(line, style: const TextStyle(color: Palette.ink, height: 1.35)),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+
+  Widget _learned(Map t) => Container(
+    key: ValueKey('trick_${t['id']}'),
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${t['emoji']} ${t['title']}',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Palette.ink),
+        ),
+        const SizedBox(height: 4),
+        Text('${t['how']}', style: const TextStyle(color: Palette.ink, height: 1.35)),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(color: Palette.cream, borderRadius: BorderRadius.circular(12)),
+          child: Text(
+            '${t['example']}',
+            style: const TextStyle(fontStyle: FontStyle.italic, color: Palette.ink),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _hidden(Map t) => Container(
+    key: ValueKey('trick_${t['id']}'),
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(18)),
+    child: Row(
+      children: [
+        const Text('🔒', style: TextStyle(fontSize: 22)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '???',
+                style: TextStyle(fontWeight: FontWeight.w700, color: Palette.soft),
+              ),
+              Text('Hint: ${t['hint']}', style: const TextStyle(color: Palette.soft)),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 class StickerBookScreen extends StatelessWidget {
   const StickerBookScreen({super.key, required this.api});
   final Api api;

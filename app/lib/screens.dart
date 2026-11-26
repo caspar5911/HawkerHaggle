@@ -434,6 +434,16 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
       onTap: () => _push(HistoryScreen(api: widget.api)),
     ),
     _Entry(
+      key: const ValueKey('guide_open'),
+      emoji: '📖',
+      title: 'Haggling guide',
+      line: _me?['tricks'] == null
+          ? 'The tricks that work, and how to be a good customer in real life.'
+          : '${_me!['tricks']} of ${_me!['tricks_total']} tricks learned. The rest appear once you try them!',
+      color: const Color(0xFFFDE8E4),
+      onTap: () => _push(HaggleGuideScreen(api: widget.api)),
+    ),
+    _Entry(
       key: const ValueKey('quotes_open'),
       emoji: '⭐',
       title: 'Quote book',
@@ -1591,7 +1601,7 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     if (g['closeness'] != null) g['closeness'],
                     ...(g['notes'] as List? ?? const []),
                     if (widget.target != null) _beatNote(g),
-                    if (_wasGuided) mumWellDone(g),
+                    if (_wasGuided) mumWellDone(g) else if (g['coach'] != null) '💡 Next time: ${g['coach']}',
                   ],
                 },
                 stall: widget.stall,

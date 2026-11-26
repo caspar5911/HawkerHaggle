@@ -543,6 +543,8 @@ class Progress {
 
   // ---------------------------------------------------------------- soft spots
   /// Mark a stallholder's soft spot as found. True the first time.
+  int softSpotsFound() => _map('soft_spots').values.where((v) => v == true).length;
+
   bool findSoftSpot(String stall) {
     final found = _map('soft_spots');
     if (found[stall] == true) return false;
