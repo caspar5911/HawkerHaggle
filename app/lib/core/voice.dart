@@ -25,9 +25,25 @@ final _plainNumbers = RegExp(r'(?<![\d$.])(\d+(?:\.\d+)?)');
 
 /// Keep a model reply only if it can't mislead about the price: every $ amount must be one of the game's prices,
 /// other numbers must be game prices, small counts or things with units, and "free" only next to a real price.
+final _thinkBlock = RegExp(r'<think>[\s\S]*?</think>', caseSensitive: false);
+final _tag = RegExp(r'</?[a-z][^<>]*>', caseSensitive: false);
+
+/// The model's private reasoning sometimes leaks into its answer (a draft, then a closing `think` tag, then the
+/// real reply; or a whole `think` block): only what comes after the thinking is the answer. Thinking that never ends
+/// is no answer at all.
+String withoutThinking(String text) {
+  var t = text.replaceAll(_thinkBlock, '');
+  final close = t.toLowerCase().lastIndexOf('</think>');
+  if (close >= 0) t = t.substring(close + '</think>'.length);
+  final start = t.toLowerCase().indexOf('<think>');
+  if (start >= 0) t = t.substring(0, start);
+  return t.trim();
+}
+
 String? checked(String? text, Iterable<num> allowed, {Iterable<num> counts = const [], bool dollarCounts = false}) {
   if (text == null || text.isEmpty) return null;
   text = pySlice(firstLine(stripChars(text.trim(), '"')), 220);
+  if (_tag.hasMatch(text)) return null; // a stray tag (<think>, </b>...) is never something she says
   final ok = {for (final a in allowed) pyRound(a.toDouble(), 2)};
   final dollars = {
     ...ok,

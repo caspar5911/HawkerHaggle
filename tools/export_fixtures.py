@@ -68,7 +68,18 @@ checks = [
     ("6 mangoes in a box, $18", [18.0], [6], False), ("I give you discount of $2", [12.0], [], False),
     ("Wah 100 pieces ah? Still $35 each lah", [35.0], [100, 150], False), ("x" * 300 + " $12", [12.0], [], False),
 ]
+checks += [
+    ("Aiyo come come, $12.</think>Eh bro, $12 only!", [12.0], [], False), ("<b>$12</b> lah", [12.0], [], False),
+    ("Price 12 < 15 ok", [12.0], [12, 15], False),
+]
 out["checked"] = [[t, a, c, d, ai.checked(t, a, counts=c, dollar_counts=d)] for t, a, c, d in checks]
+thinking = [
+    "Eh bro, welcome back! $38.</think>Eh bro, back again sia! Today $38 only!",
+    "<think>She should greet warmly.</think>Morning my dear! $18.", "<THINK>x</THINK> Hello", "no thinking here",
+    "draft one</think>draft two</think>the answer", "<think>never finished thinking", "answer<think>more thoughts",
+    "", "</think>", "  spaced </think>  answer  ",
+]
+out["without_thinking"] = [[t, ai.without_thinking(t)] for t in thinking]
 out["mood_line"] = [[e, p, a, ai.mood_line(e, p, a)] for e in ("counter", "confirm", "plead", "greet", "smalltalk")
                     for p in (None, 10, 24.9, 25, 49.9, 50, 84.9, 85, 100) for a in ("", "compliment", "flirt", "rude")]
 hist = [{"who": "them", "text": "Aiyo come come, $32!"}, {"who": "you", "text": "hi"},

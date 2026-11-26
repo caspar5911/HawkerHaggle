@@ -123,7 +123,7 @@ class AiClient {
         }
         final data = jsonDecode(utf8.decode(r.bodyBytes)) as Map;
         final msg = ((data['choices'] as List).first as Map)['message'] as Map;
-        return ('${msg['content'] ?? ''}').trim();
+        return withoutThinking('${msg['content'] ?? ''}'); // (her private reasoning is never her answer)
       }
       return null;
     } catch (e) {
