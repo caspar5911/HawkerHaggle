@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'api.dart';
 import 'core/game.dart' show nameMax;
 import 'character.dart';
+import 'sfx.dart';
 import 'widgets.dart';
 
 const _title = TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Palette.ink);
@@ -1781,6 +1782,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   ),
                 const SizedBox(height: 14),
                 const Text('✨ Treasures', style: _heading),
+                if ((inv['treasures'] as List? ?? const []).isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  _TrophyShelf(trophies: (inv['treasures'] as List).cast<Map>()),
+                ],
                 const SizedBox(height: 4),
                 if (treasures.isEmpty) _empty('Legendary finds and the things you get with your jar show up here.'),
                 for (final (i, t) in treasures.indexed)
@@ -1845,7 +1850,99 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 }
 
+/// 🏆 Your legendary finds on a wooden shelf.
+class _TrophyShelf extends StatelessWidget {
+  const _TrophyShelf({required this.trophies});
+  final List<Map> trophies;
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const ValueKey('trophy_shelf'),
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+    decoration: BoxDecoration(color: const Color(0xFFFFF6E5), borderRadius: BorderRadius.circular(16)),
+    child: Column(
+      children: [
+        Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 10,
+          runSpacing: 6,
+          children: [
+            for (final t in trophies)
+              Tooltip(
+                message: '${t['name']}',
+                child: Text('${t['emoji']}', style: const TextStyle(fontSize: 36)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Container(
+          height: 10,
+          decoration: BoxDecoration(color: const Color(0xFFC98B5A), borderRadius: BorderRadius.circular(4)),
+        ),
+        const SizedBox(height: 8),
+      ],
+    ),
+  );
+}
+
 /// What you're saving for, and buying it.
+const _tierNames = [('starter', 'Starter'), ('growing', 'Growing'), ('serious', 'Serious'), ('dream', 'Dream')];
+
+/// 🎉 Just bought something in the shop: confetti, the thing itself, and a new tier when it's the first in one.
+class _Bought extends StatelessWidget {
+  const _Bought({required this.goal, required this.note, this.newTier});
+  final Map goal;
+  final String note;
+  final String? newTier;
+  @override
+  Widget build(BuildContext context) => Stack(
+    key: const ValueKey('bought'),
+    children: [
+      const Positioned.fill(child: IgnorePointer(child: Confetti())),
+      Center(
+        child: Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(26),
+          child: Padding(
+            padding: const EdgeInsets.all(22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (newTier != null)
+                  Text(
+                    '🎉 New tier: $newTier!',
+                    key: const ValueKey('new_tier'),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: Palette.ink),
+                  ),
+                Text('${goal['emoji']}', style: const TextStyle(fontSize: 64)),
+                const Text(
+                  "It's yours!",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: Palette.ink),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: 260,
+                  child: Text(
+                    note,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Palette.ink, height: 1.35),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Bouncy(
+                  key: const ValueKey('bought_ok'),
+                  onTap: () => Navigator.of(context).pop(),
+                  child: const Pill(text: 'Yay!', icon: '🥳', color: Palette.gold),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 /// 💡 How to earn money: every way, ✅ the ones you've done, 👉 the first one you haven't tried yet.
 class _EarnCard extends StatelessWidget {
   const _EarnCard({required this.ways});
@@ -1956,11 +2053,23 @@ class _ShopPanelState extends State<ShopPanel> {
   }
 
   Future<void> _buy(Map g, {bool fromWallet = false}) async {
+    // the first thing in a tier: a new tier reached
+    final tier = '${g['tier'] ?? 'starter'}';
+    final firstInTier = !((_j?['goals'] as List? ?? const []).cast<Map>().any(
+      (x) => x['tier'] == tier && x['owned'] == true,
+    ));
     try {
       final r = await widget.api.buyGoal('${g['id']}', fromWallet: fromWallet);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${r['note']}')));
       await _load();
+      if (!mounted) return;
+      final label = {for (final (id, name) in _tierNames) id: name}[tier] ?? tier;
+      Sfx.play('star', volume: 0.7);
+      showDialog<void>(
+        context: context,
+        builder: (_) =>
+            _Bought(goal: g, note: '${r['note']}', newTier: firstInTier && tier != 'starter' ? label : null),
+      ).ignore();
     } on ApiError catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }

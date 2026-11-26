@@ -746,6 +746,20 @@ class Progress {
         m['delivered'] = sent;
         m['delivered_total'] = (total * 100).round() / 100;
       }
+      // 📋 customer orders: one not delivered in time is missed; with none on the go, a new one comes in
+      final o = p['order'];
+      if (o is Map && o['state'] == 'active' && '${o['due']}'.compareTo(day) < 0) {
+        o['state'] = 'missed';
+        m['order_missed'] = '${o['customer']}';
+      }
+      final cur = p['order'];
+      if (cur is! Map || cur['state'] != 'active') {
+        final offer = _newOrder(day);
+        if (offer != null) {
+          p['order'] = offer;
+          m['order_new'] = '${offer['customer']}';
+        }
+      }
       p['morning'] = m;
     }
     final m = p['morning'];
@@ -771,6 +785,79 @@ class Progress {
     _setWallet(wallet - v);
     addToJar(v);
     return v;
+  }
+
+  // ---------------------------------------------------------------- 📋 customer orders
+  /// A customer's order for today: something from an open stall that can go into your stock, two of it (one if
+  /// it's pricey), by tomorrow, for a little more than the market asks. Picked from the day and your name, so it
+  /// stays put all day.
+  Map<String, Object?>? _newOrder(String day) {
+    final choices = [
+      for (final MapEntry(key: st, value: s) in _stalls.entries)
+        if (unlocked(st))
+          for (final it in (s['items'] as List).cast<Map>())
+            if (it['single'] != true && goesToStock(st, '${it['id']}') && (it['ask'] as num) <= 40) (st, it),
+    ];
+    if (choices.isEmpty) return null;
+    final h = _hash('order-$day-${p['name']}');
+    final (st, it) = choices[h % choices.length];
+    final ask = (it['ask'] as num).toDouble();
+    final qty = ask >= 25 ? 1 : 2;
+    return {
+      'day': day,
+      'due': dayKey(DateTime.parse(day).add(const Duration(days: 1))),
+      'customer': orderCustomers[(h ~/ 7) % orderCustomers.length],
+      'stall': st,
+      'stall_name': _stalls[st]?['name'],
+      'item': it['id'],
+      'name': it['name'],
+      'emoji': it['emoji'],
+      'qty': qty,
+      'pay': (ask * qty * 1.05).ceilToDouble(),
+      'state': 'offered',
+    };
+  }
+
+  /// The very first order (before any new day has brought one): today's, straight away.
+  void ensureOrder() {
+    if (p['order'] == null) {
+      final o = _newOrder(dayKey(now()));
+      if (o != null) p['order'] = o;
+    }
+  }
+
+  /// Today's order (offered, on the go, delivered...) with how many you have in stock, or null.
+  Map<String, Object?>? order() {
+    final o = p['order'];
+    if (o is! Map) return null;
+    final key = '${o['stall']}/${o['item']}';
+    return {...Map<String, Object?>.from(o), 'have': stock.where((x) => x['key'] == key).length};
+  }
+
+  /// Takes on today's order (or turns it down).
+  void answerOrder({required bool yes}) {
+    final o = p['order'];
+    if (o is! Map || o['state'] != 'offered') throw StateError('No order to answer');
+    o['state'] = yes ? 'active' : 'declined';
+  }
+
+  /// Hands over the order from your stock: paid into your wallet (or with no wallet, the jar). Returns the pay.
+  double deliverOrder() {
+    final o = p['order'];
+    if (o is! Map || o['state'] != 'active') throw StateError('No order to deliver');
+    final key = '${o['stall']}/${o['item']}';
+    final qty = ((o['qty'] ?? 1) as num).toInt();
+    final list = (p['stock'] as List?) ?? const [];
+    if (list.where((x) => (x as Map)['key'] == key).length < qty) {
+      throw StateError('Not enough in your stock yet: you need $qty ${o['name']}.');
+    }
+    for (var i = 0; i < qty; i++) {
+      list.removeAt(list.indexWhere((x) => (x as Map)['key'] == key));
+    }
+    final pay = ((o['pay'] ?? 0) as num).toDouble();
+    reward(pay, 'orders');
+    o['state'] = 'done';
+    return pay;
   }
 
   /// From the jar back into your wallet. Returns what was taken out.

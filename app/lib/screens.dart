@@ -82,7 +82,13 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         _error = null;
       });
       final jar = await widget.api.jar();
-      if (mounted) setState(() => _jar = jar);
+      final order = await widget.api.order();
+      if (mounted) {
+        setState(() {
+          _jar = jar;
+          _order = order;
+        });
+      }
       widget.api.refreshReminders().ignore(); // a day played gets no reminder
       // friends: this week's board (also what the stallholders gossip about)
       final b = await widget.api.board();
@@ -97,6 +103,7 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   Map? _wedding;
   Map<String, dynamic>? _board;
   Map<String, dynamic>? _jar;
+  Map<String, dynamic>? _order; // 📋 today's customer order
   bool _linkChecked = false;
   Map? _legend; // today's legendary item (null on an ordinary day)
   Map? _nextLegend; // on other days: when and where the next one is (the item stays a mystery)
@@ -236,10 +243,12 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
     try {
       final j = await widget.api.jar();
       final me = await widget.api.me();
+      final order = await widget.api.order();
       if (mounted) {
         setState(() {
           _jar = j;
           _me = me;
+          _order = order;
         });
       }
     } on ApiError catch (_) {}
@@ -382,8 +391,40 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
       ),
   ];
 
+  Future<void> _answerOrder(bool yes) async {
+    try {
+      final o = await widget.api.answerOrder(yes: yes);
+      if (mounted) setState(() => _order = o);
+    } on ApiError catch (e) {
+      _toastHere(e.message);
+    }
+  }
+
+  Future<void> _deliverOrder() async {
+    try {
+      final o = await widget.api.deliverOrder();
+      Sfx.play('coin', volume: 0.6);
+      HapticFeedback.mediumImpact();
+      _toastHere('📋 Delivered to ${o['customer']}! +${money(o['paid'] as num)}');
+      await _refreshMoney();
+    } on ApiError catch (e) {
+      _toastHere(e.message);
+    }
+  }
+
+  void _toastHere(String m) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  }
+
   List<Widget> _stallPage() => [
     const SizedBox(height: 8),
+    if (_order != null && const ['offered', 'active', 'done'].contains(_order!['state']))
+      OrderCard(
+        order: _order!,
+        onAnswer: _answerOrder,
+        onDeliver: _deliverOrder,
+        onGo: () => _openById('${_order!['stall']}', '${_order!['item']}'),
+      ),
     _Entry(
       key: const ValueKey('shop_open'),
       emoji: '🧺',
@@ -2745,6 +2786,10 @@ class _ResultState extends State<_Result> {
                   ),
                   const SizedBox(height: 10),
                   Stars(count: (g['stars'] as num).toInt()),
+                  if (moneyIn(g['notes'] as List? ?? const []) > 0) ...[
+                    const SizedBox(height: 8),
+                    MoneyPop(amount: moneyIn(g['notes'] as List? ?? const [])),
+                  ],
                   const SizedBox(height: 10),
                   if (deal)
                     Text(
@@ -3641,6 +3686,8 @@ class _Morning extends StatelessWidget {
     'stars': '⭐ stars',
     'deliveries': '🛵 deliveries',
     'list': "📝 Mum's change",
+    'orders': '📋 orders',
+    'streak': '🔥 streak',
   };
   @override
   Widget build(BuildContext context) {
@@ -3649,6 +3696,8 @@ class _Morning extends StatelessWidget {
       if (earned != null)
         '💰 Last time you played you earned ${money(earned!['total'] as num)}'
             '${by.isEmpty ? '' : ' (${by.entries.map((e) => '${_from[e.key] ?? e.key} ${money(e.value as num)}').join(' · ')})'}',
+      if (m['order_new'] != null) '📋 ${m['order_new']} has an order for you: see My stall.',
+      if (m['order_missed'] != null) "📋 You missed ${m['order_missed']}'s order. Never mind, there'll be others.",
       if (m['extra'] is num) "👩 Mum's extra pocket money: +${money(m['extra'] as num)}",
       if (m['interest'] is num) '🐷 Piggy bank: +${money(m['interest'] as num)} in your jar',
       if (m['delivered'] is List)
@@ -3661,6 +3710,93 @@ class _Morning extends StatelessWidget {
       child: Text(
         lines.join('\n'),
         style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600, height: 1.35),
+      ),
+    );
+  }
+}
+
+/// 📋 A customer's order: accept or not; then buy what they want at the market and deliver it for more.
+class OrderCard extends StatelessWidget {
+  const OrderCard({
+    super.key,
+    required this.order,
+    required this.onAnswer,
+    required this.onDeliver,
+    required this.onGo,
+  });
+  final Map order;
+  final void Function(bool yes) onAnswer;
+  final VoidCallback onDeliver;
+  final VoidCallback onGo;
+
+  @override
+  Widget build(BuildContext context) {
+    final o = order;
+    final state = '${o['state']}';
+    final qty = ((o['qty'] ?? 1) as num).toInt();
+    final have = ((o['have'] ?? 0) as num).toInt();
+    final what = '$qty × ${o['emoji']} ${o['name']}';
+    final due = DateTime.tryParse('${o['due']}');
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final by = due == null ? 'tomorrow' : 'by ${days[due.weekday - 1]}';
+    return Container(
+      key: const ValueKey('order_card'),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: state == 'done' ? const Color(0xFFE6F4EA) : const Color(0xFFFFF7E0),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Palette.gold.withValues(alpha: 0.7), width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            state == 'done' ? '📋 Order delivered!' : '📋 A customer order',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Palette.ink),
+          ),
+          const SizedBox(height: 4),
+          Text(switch (state) {
+            'offered' =>
+              "${o['customer']} would like $what from ${o['stall_name']}'s, $by. Pays ${money(o['pay'] as num)}.",
+            'active' => 'For ${o['customer']}: $what, $by. You have $have of $qty. Pays ${money(o['pay'] as num)}.',
+            _ => '${o['customer']} got $what. +${money(o['pay'] as num)} 🥳',
+          }, style: const TextStyle(color: Palette.ink, height: 1.35)),
+          if (state != 'done') ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (state == 'offered') ...[
+                  Bouncy(
+                    key: const ValueKey('order_accept'),
+                    onTap: () => onAnswer(true),
+                    child: const Pill(text: 'Accept', icon: '✅', color: Palette.gold),
+                  ),
+                  Bouncy(
+                    key: const ValueKey('order_decline'),
+                    onTap: () => onAnswer(false),
+                    child: const Pill(text: 'No thanks', color: Colors.white),
+                  ),
+                ] else ...[
+                  if (have >= qty)
+                    Bouncy(
+                      key: const ValueKey('order_deliver'),
+                      onTap: onDeliver,
+                      child: Pill(text: 'Deliver for ${money(o['pay'] as num)}', icon: '📦', color: Palette.gold),
+                    )
+                  else
+                    Bouncy(
+                      key: const ValueKey('order_go'),
+                      onTap: onGo,
+                      child: Pill(text: "Go to ${o['stall_name']}'s", icon: '🏮', color: Colors.white),
+                    ),
+                ],
+              ],
+            ),
+          ],
+        ],
       ),
     );
   }
