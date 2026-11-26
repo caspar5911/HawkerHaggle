@@ -379,7 +379,7 @@ class Challenges {
       }).length;
       if (sharp >= 5) progress.earn('sharp_eye', stickers);
     }
-    final room = xpHaggleCapPerDay - _n(xpDay['haggles']).toInt();
+    final room = xpHaggleCapPerDay * (progress.owns('school') ? 2 : 1) - _n(xpDay['haggles']).toInt(); // 📚
     final got = math.max(0, math.min(gain, room));
     xpDay['haggles'] = _n(xpDay['haggles']).toInt() + got;
     _addXp(got);
@@ -392,8 +392,9 @@ class Challenges {
     final todays = _records.where((r) => r['day'] == day).toList();
     if (!dailyDone() && daily().check(todays, record)) {
       _map('done_daily')[day] = true;
-      _addXp(xpDailyChallenge);
-      notes.add('🎯 Daily challenge done: ${daily().title}! +$xpDailyChallenge XP');
+      final dxp = progress.owns('coin') ? xpDailyChallenge * 3 ~/ 2 : xpDailyChallenge; // 🪙 the lucky coin
+      _addXp(dxp);
+      notes.add('🎯 Daily challenge done: ${daily().title}! +$dxp XP');
       final count = _map('done_daily').length;
       if (count >= 7) progress.earn('dailies7', stickers);
     }

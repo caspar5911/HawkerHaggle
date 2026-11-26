@@ -314,6 +314,17 @@ void main() {
     await settle(tester, 3000);
   });
 
+  testWidgets('🛍️ the Shop tab shows the shop', (tester) async {
+    final fake = Fake([]);
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('tab_shop')));
+    await settle(tester, 1500);
+    expect(find.byKey(const ValueKey('shop_panel')), findsOneWidget);
+    expect(find.text('Starter'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('👩 on Mum\'s list, the haggle says Mum pays', (tester) async {
     final fake = Fake([])
       ..wallet = 12.5
@@ -1178,7 +1189,7 @@ void main() {
     tester,
   ) async {
     final fake = Fake([]);
-    fake.progress.addToJar(40); // enough for the cake: a dot on My stall
+    fake.progress.addToJar(40); // enough for the cake: a dot on the Shop tab
     tester.view.physicalSize = const Size(400, 900); // a phone
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1193,7 +1204,7 @@ void main() {
     await settle(tester);
     expect(find.byKey(const ValueKey('shop_open')), findsOneWidget);
     expect(find.byKey(const ValueKey('jar_open')), findsOneWidget);
-    expect(find.textContaining('You can afford a goal'), findsOneWidget);
+    expect(find.textContaining('You can afford something in the shop'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('tab_friends')));
     await settle(tester);
     expect(find.byKey(const ValueKey('friends_login')), findsOneWidget); // no account: how to get one

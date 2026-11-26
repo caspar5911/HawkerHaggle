@@ -1826,14 +1826,31 @@ class _InventoryScreenState extends State<InventoryScreen> {
 }
 
 /// What you're saving for, and buying it.
-class JarScreen extends StatefulWidget {
+/// The jar and the shop as a page of its own (from the jar strip).
+class JarScreen extends StatelessWidget {
   const JarScreen({super.key, required this.api});
   final Api api;
   @override
-  State<JarScreen> createState() => _JarScreenState();
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('🫙 Jar & 🛍️ Shop'), backgroundColor: Palette.cream),
+    backgroundColor: Palette.cream,
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [ShopPanel(api: api)],
+    ),
+  );
 }
 
-class _JarScreenState extends State<JarScreen> {
+/// 🫙 The jar and 🛍️ the shop: your savings, Save buttons, and everything you can buy, by tier. A column, to sit in a
+/// page or in the Shop tab.
+class ShopPanel extends StatefulWidget {
+  const ShopPanel({super.key, required this.api});
+  final Api api;
+  @override
+  State<ShopPanel> createState() => _ShopPanelState();
+}
+
+class _ShopPanelState extends State<ShopPanel> {
   Map<String, dynamic>? _j;
 
   @override
@@ -1933,92 +1950,91 @@ class _JarScreenState extends State<JarScreen> {
   @override
   Widget build(BuildContext context) {
     final j = _j;
-    return Scaffold(
-      appBar: AppBar(title: const Text('🫙 Jar & 🛍️ Shop'), backgroundColor: Palette.cream),
-      backgroundColor: Palette.cream,
-      body: j == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                Center(
-                  child: Text(
-                    money(j['jar'] as num),
-                    key: const ValueKey('jar_total'),
-                    style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Palette.ink),
-                  ),
+    return j == null
+        ? const Padding(
+            padding: EdgeInsets.only(top: 60),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Text(
+                  money(j['jar'] as num),
+                  key: const ValueKey('jar_total'),
+                  style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Palette.ink),
                 ),
-                if (j['wallet'] is num) ...[
-                  const Text(
-                    'Save from your wallet for the big things below. Jar money stays here: it can\'t be spent at '
-                    'the market.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Palette.soft, height: 1.35),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '👛 In your wallet: ${money(j['wallet'] as num)}',
-                    key: const ValueKey('jar_wallet'),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final v in const [5.0, 10.0, 20.0])
-                        if ((j['wallet'] as num) >= v)
-                          Bouncy(
-                            key: ValueKey('save_${v.toInt()}'),
-                            onTap: () => _save(v),
-                            child: Pill(text: 'Save ${money(v)}', icon: '🫙', color: Colors.white),
-                          ),
-                      if ((j['wallet'] as num) > 0)
-                        Bouncy(
-                          key: const ValueKey('save_all'),
-                          onTap: () => _save((j['wallet'] as num).toDouble()),
-                          child: const Pill(text: 'Save it all', icon: '🫙', color: Colors.white),
-                        ),
-                    ],
-                  ),
-                ] else
-                  const Text(
-                    'Every dollar you bargain off an asking price goes in here, and so does the profit from your own '
-                    'stall. Paying more never stops you buying: you just save less.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Palette.soft, height: 1.35),
-                  ),
-                const SizedBox(height: 16),
+              ),
+              if (j['wallet'] is num) ...[
                 const Text(
-                  '🛍️ The shop: everything you can save up for, and what it does for you.',
-                  style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                  'Save from your wallet for the big things below. Jar money stays here: it can\'t be spent at '
+                  'the market.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Palette.soft, height: 1.35),
                 ),
                 const SizedBox(height: 10),
-                for (final (tier, label) in const [
-                  ('starter', 'Starter'),
-                  ('growing', 'Growing'),
-                  ('serious', 'Serious'),
-                  ('dream', 'Dream'),
-                ]) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6, bottom: 6),
-                    child: Text(
-                      label,
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Palette.ink),
-                    ),
+                Text(
+                  '👛 In your wallet: ${money(j['wallet'] as num)}',
+                  key: const ValueKey('jar_wallet'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final v in const [5.0, 10.0, 20.0])
+                      if ((j['wallet'] as num) >= v)
+                        Bouncy(
+                          key: ValueKey('save_${v.toInt()}'),
+                          onTap: () => _save(v),
+                          child: Pill(text: 'Save ${money(v)}', icon: '🫙', color: Colors.white),
+                        ),
+                    if ((j['wallet'] as num) > 0)
+                      Bouncy(
+                        key: const ValueKey('save_all'),
+                        onTap: () => _save((j['wallet'] as num).toDouble()),
+                        child: const Pill(text: 'Save it all', icon: '🫙', color: Colors.white),
+                      ),
+                  ],
+                ),
+              ] else
+                const Text(
+                  'Every dollar you bargain off an asking price goes in here, and so does the profit from your own '
+                  'stall. Paying more never stops you buying: you just save less.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Palette.soft, height: 1.35),
+                ),
+              const SizedBox(height: 16),
+              const Text(
+                '🛍️ The shop: everything you can save up for, and what it does for you.',
+                style: TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+              ),
+              const SizedBox(height: 10),
+              for (final (tier, label) in const [
+                ('starter', 'Starter'),
+                ('growing', 'Growing'),
+                ('serious', 'Serious'),
+                ('dream', 'Dream'),
+              ]) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, bottom: 6),
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Palette.ink),
                   ),
-                  for (final g in (j['goals'] as List).cast<Map>().where((g) => (g['tier'] ?? 'starter') == tier))
-                    _goalCard(
-                      g,
-                      (j['jar'] as num).toDouble(),
-                      j['wallet'] is num ? (j['wallet'] as num).toDouble() : null,
-                    ),
-                ],
+                ),
+                for (final g in (j['goals'] as List).cast<Map>().where((g) => (g['tier'] ?? 'starter') == tier))
+                  _goalCard(
+                    g,
+                    (j['jar'] as num).toDouble(),
+                    j['wallet'] is num ? (j['wallet'] as num).toDouble() : null,
+                  ),
               ],
-            ),
-    );
+            ],
+          );
   }
 }
 
