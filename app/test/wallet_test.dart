@@ -10,12 +10,16 @@ import 'package:hawker_haggle/api.dart';
 import 'package:hawker_haggle/extras.dart' show InventoryScreen, JarScreen;
 import 'package:hawker_haggle/core/challenges.dart';
 import 'package:hawker_haggle/core/game.dart';
+import 'package:hawker_haggle/core/progress.dart' show Progress;
 import 'package:hawker_haggle/core/voice.dart' show money;
 import 'package:hawker_haggle/sfx.dart';
 
 import 'challenges_test.dart' as month show newGame, buy, playKind;
 
 final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
+
+/// Mum's money to start with.
+const start = Progress.startMoney;
 
 /// A game with the wallet on (the app's own default), on a given day.
 Future<Game> walletGame(DateTime Function() now, {MemoryKeyValue? store}) async {
@@ -63,24 +67,24 @@ void main() {
     expect(g.walletOn, isFalse);
   });
 
-  test('pocket money: \$50 to start, then \$20 each new market day (once a day)', () async {
+  test('pocket money: \$60 to start, then \$20 each new market day (once a day)', () async {
     var day = day1;
     final store = MemoryKeyValue();
     var g = await walletGame(() => day, store: store);
-    expect(g.me()['wallet'], 50);
-    expect(g.me()['pocket'], 50);
-    expect(g.me()['wallet'], 50, reason: 'once a day');
+    expect(g.me()['wallet'], start);
+    expect(g.me()['pocket'], start);
+    expect(g.me()['wallet'], start, reason: 'once a day');
     final (stall, item, ask) = notOnList(g, under: 30);
     await buyNow(g, stall, item);
-    expect(g.me()['wallet'], 50 - ask);
+    expect(g.me()['wallet'], start - ask);
     day = day2;
     g = await walletGame(() => day, store: store);
-    expect(g.me()['wallet'], 70 - ask);
+    expect(g.me()['wallet'], start + 20 - ask);
     expect(g.me()['pocket'], 20);
     await g.saveToJar(10); // saving is yours to do: Mum doesn't refill it
     day = DateTime(2026, 12, 4, 10);
     g = await walletGame(() => day, store: store);
-    expect(g.me()['wallet'], 80 - ask);
+    expect(g.me()['wallet'], start + 30 - ask);
     expect(g.progress.jar, 10);
   });
 
@@ -95,7 +99,7 @@ void main() {
     final paid = r['pending'] as num;
     r = await g.move(id, move: 'confirm');
     expect(r['result'], 'deal');
-    expect(g.progress.wallet, 50 - paid);
+    expect(g.progress.wallet, start - paid);
     expect(g.progress.jar, 0);
     expect(g.progress.stock.single['cost'], paid);
     expect('${r['notes']}', contains('You paid ${money(paid)}'));
@@ -118,10 +122,10 @@ void main() {
     expect(g.progress.stock, isEmpty, reason: "Mum's things go home to Mum");
     final change = ((budget - paid) * 100).round() / 100;
     if (change > 0) {
-      expect(g.progress.wallet, closeTo(50 + change, 0.001));
+      expect(g.progress.wallet, closeTo(start + change, 0.001));
       expect('${last!['notes']}', contains('Keep the change'));
     } else {
-      expect(g.progress.wallet, closeTo(math.max(0, 50 + change), 0.001)); // over budget: the extra is yours to pay
+      expect(g.progress.wallet, closeTo(math.max(0, start + change), 0.001)); // over budget: the extra is yours to pay
     }
     // buying the same thing again is your own (not Mum's)
     final again = await g.start('${items.first['stall']}', '${items.first['item']}', 'none');
@@ -131,7 +135,7 @@ void main() {
   test("a deal you can't pay for never closes: you're told why, and the deal stays on the table", () async {
     final g = await walletGame(() => day1);
     g.me();
-    g.progress.pay(45); // $5 left
+    g.progress.pay(start - 5); // $5 left
     final (stall, item, ask) = notOnList(g, under: 30);
     final r0 = await g.start(stall, item, 'none');
     final id = r0['id'] as String;
@@ -179,7 +183,7 @@ void main() {
     final two = await g.move(id, text: 'I take two, cheaper?');
     expect(two['qty'], 2);
     final r = await g.move(id, move: 'buy');
-    expect(g.progress.wallet, closeTo(50 - 2 * (r['deal'] as num), 0.001));
+    expect(g.progress.wallet, closeTo(start - 2 * (r['deal'] as num), 0.001));
     expect(g.progress.stock.length, 2);
   });
 
@@ -214,10 +218,10 @@ void main() {
     g.me();
     final r = await g.saveToJar(20);
     expect(r['saved'], 20);
-    expect(r['wallet'], 30);
+    expect(r['wallet'], start - 20);
     expect(r['jar'], 20);
     final all = await g.saveToJar(999);
-    expect(all['saved'], 30);
+    expect(all['saved'], start - 20);
     expect(all['wallet'], 0);
     await expectLater(g.saveToJar(5), throwsA(isA<GameError>()));
   });
@@ -233,7 +237,7 @@ void main() {
       host: 'Melody',
     );
     expect(g.progress.stock, isEmpty);
-    expect(g.progress.wallet, 50);
+    expect(g.progress.wallet, start);
     expect(g.progress.jar, 0);
   });
 
@@ -252,23 +256,25 @@ void main() {
     );
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300))); // the API's first load
     await tester.pumpAndSettle();
-    expect(find.text('👛 In your wallet: \$50'), findsOneWidget);
+    expect(find.text('👛 In your wallet: \$60'), findsOneWidget);
     expect(find.byKey(const ValueKey('save_all')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('save_10')));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
     await tester.pumpAndSettle();
-    expect(find.text('👛 In your wallet: \$40'), findsOneWidget);
+    expect(find.text('👛 In your wallet: \$50'), findsOneWidget);
     expect(find.text('\$10'), findsWidgets); // the jar
     expect(g.progress.jar, 10);
     await tester.pump(const Duration(seconds: 5)); // the note goes away
-    // 🛍️ the shop: every item, by tier; the notebook (\$25) is a "Save & buy" with \$10 in the jar and \$40 in the wallet
+    // 🛍️ the shop: every item, by tier; the notebook (\$25) is a "Save & buy" with \$10 in the jar and \$50 in the wallet
     expect(find.text('Starter'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('savebuy_notebook')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('goal_notebook')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('savebuy_notebook')));
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
     await tester.pumpAndSettle();
     expect(g.progress.owns('notebook'), isTrue);
-    expect(g.progress.wallet, 25);
+    expect(g.progress.wallet, start - 10 - 15);
     expect(find.text('✅ Yours'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pump(const Duration(seconds: 5));

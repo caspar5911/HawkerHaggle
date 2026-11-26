@@ -70,10 +70,15 @@ int _hash(String s) {
 String _money(num v) => v == v.roundToDouble() ? '\$${v.toInt()}' : '\$${v.toStringAsFixed(2)}';
 
 class Progress {
-  Progress(this.p, this.content, this.now);
+  Progress(this.p, this.content, this.now, {this.hasWallet = false});
   final Map<String, Object?> p; // the profile (saved by the game)
   final Map content;
   final DateTime Function() now;
+  final bool hasWallet; // 👛 money earned goes into the wallet (with no wallet: into the jar)
+
+  /// Money earned by playing (a challenge, a quest, a rank, a story, a first ⭐⭐⭐): into the wallet, or with no
+  /// wallet into the jar.
+  void reward(double v) => hasWallet ? receive(v) : addToJar(v);
 
   Map<String, Map> get _stalls => {for (final s in content['stalls'] as List) (s as Map)['id'] as String: s};
   List<Map> get _haggles => [for (final h in (p['haggles'] as List? ?? const [])) h as Map];
@@ -388,6 +393,10 @@ class Progress {
       for (final s in _stalls.keys)
         if (!unlocked(s)) s,
     };
+    final key = '${record['stall']}/${record['item']}';
+    final hadThree = _haggles.any(
+      (h) => '${h['stall']}/${h['item']}' == key && h['result'] == 'deal' && ((h['stars'] ?? 0) as num) >= 3,
+    );
     (p['haggles'] as List).add(record);
     final list = p['haggles'] as List;
     if (list.length > 500) list.removeRange(0, list.length - 500);
@@ -403,6 +412,10 @@ class Progress {
     _stickersForHaggle(record, flags, fresh);
     _friendStickers(fresh);
     final story = _storyProgress(record, fresh);
+    if (!hadThree && record['result'] == 'deal' && ((record['stars'] ?? 0) as num) >= 3 && record['coop'] != true) {
+      reward(firstThreeStars);
+      story.add('⭐⭐⭐ Your first three stars on this one! +${_money(firstThreeStars)}');
+    }
     _addStock(record, toStock < 0 ? qty : toStock);
     String? mum;
     if (deal && record['deal'] != null) {
@@ -617,7 +630,7 @@ class Progress {
   // ---------------------------------------------------------------- wallet
   /// Mum's money: to start with, then each new market day (an allowance, so saving is yours to do; topping up to a
   /// fixed amount would let you save it all every night and have it refilled).
-  static const startMoney = 50.0;
+  static const startMoney = 60.0;
   static const pocketMoney = 20.0;
 
   double get wallet => ((p['wallet'] ?? 0) as num).toDouble();
@@ -826,12 +839,24 @@ class Progress {
       if (!chapters[n].check(record, a['last'] as Map?)) continue;
       a['done'] = n + 1;
       a['last'] = {'day': record['day']};
-      notes.add('📖 ${arcTitles[stall]}, chapter ${n + 1}: ${chapters[n].done}');
+      final thanks = storyThanks(n);
+      reward(thanks);
+      notes.add('📖 ${arcTitles[stall]}, chapter ${n + 1}: ${chapters[n].done} (A thank-you: +${_money(thanks)})');
       if (n + 1 == chapters.length) _earn('storyteller', fresh);
     }
     return notes;
   }
 }
+
+/// 💰 Money for playing well (into your wallet, or with no wallet into the jar).
+const moneyDaily = 10.0; // 🎯 a daily challenge
+const moneyQuest = 5.0; // 🗓️ each weekly quest
+const moneyAllQuests = 25.0; // 🏆 all of a week's quests
+const moneyPerRank = 5.0; // 🎖️ ranking up: this times your new level
+const firstThreeStars = 5.0; // ⭐⭐⭐ the first time on an item
+
+/// 📖 A story chapter's thank-you: \$10, \$15, \$20... (n counts from 0).
+double storyThanks(int n) => 10.0 + 5 * n;
 
 /// An item's name without numbers, for notes to the AI (which may only say the game's own numbers):
 /// "tray of kampung eggs (10)" -> "tray of kampung eggs".
