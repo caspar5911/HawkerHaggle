@@ -338,7 +338,8 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
           style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600),
         ),
       ),
-    if (_me?['morning'] is Map) _Morning(m: _me!['morning'] as Map),
+    if (_me?['morning'] is Map || _me?['earned_last'] is Map)
+      _Morning(m: (_me?['morning'] as Map?) ?? const {}, earned: _me?['earned_last'] as Map?),
     const SizedBox(height: 12),
     if (_legend != null)
       LegendBanner(l: _legend!, onTap: _openLegend)
@@ -947,7 +948,8 @@ class _StallCard extends StatelessWidget {
                                                     : '✨ legendary · today only · asking ${money(it['ask'] as num)}')
                                               : 'asking ${money(it['ask'] as num)}'
                                                     '${it['best_paid'] is num ? ' · 📒 your best ${money(it['best_paid'] as num)}' : ''}'
-                                                    '${it['short'] == true ? ' · 👛 more than you have' : ''}',
+                                                    '${it['short'] == true ? ' · 👛 more than you have' : ''}'
+                                                    '${it['rental'] == true ? ' · 🚲 a rental (not for resale)' : ''}',
                                           style: const TextStyle(color: Palette.soft, fontSize: 12),
                                         ),
                                       ],
@@ -3628,11 +3630,25 @@ class _NewBadge extends StatelessWidget {
 
 /// This morning, from the shop: Mum's cake, the piggy bank, deliveries.
 class _Morning extends StatelessWidget {
-  const _Morning({required this.m});
+  const _Morning({required this.m, this.earned});
   final Map m;
+  final Map? earned; // what you earned the last day you played
+  static const _from = {
+    'stall': '🧺 stall',
+    'challenges': '🎯 challenges',
+    'rank': '🎖️ rank',
+    'story': '📖 story',
+    'stars': '⭐ stars',
+    'deliveries': '🛵 deliveries',
+    'list': "📝 Mum's change",
+  };
   @override
   Widget build(BuildContext context) {
+    final by = (earned?['by'] as Map?) ?? const {};
     final lines = [
+      if (earned != null)
+        '💰 Last time you played you earned ${money(earned!['total'] as num)}'
+            '${by.isEmpty ? '' : ' (${by.entries.map((e) => '${_from[e.key] ?? e.key} ${money(e.value as num)}').join(' · ')})'}',
       if (m['extra'] is num) "👩 Mum's extra pocket money: +${money(m['extra'] as num)}",
       if (m['interest'] is num) '🐷 Piggy bank: +${money(m['interest'] as num)} in your jar',
       if (m['delivered'] is List)

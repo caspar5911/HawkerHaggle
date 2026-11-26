@@ -153,6 +153,8 @@ class Api {
   Future<Map<String, dynamic>> inventory() => _run((g) => Map<String, dynamic>.from(g.inventory()));
   Future<Map<String, dynamic>> sellNext(int index) =>
       _run((g) async => Map<String, dynamic>.from(await g.sellNext(index)));
+  Future<Map<String, dynamic>> takeFromJar(double amount) =>
+      _run((g) async => Map<String, dynamic>.from(await g.takeFromJar(amount)));
   Future<Map<String, dynamic>> saveToJar(double amount) =>
       _run((g) async => Map<String, dynamic>.from(await g.saveToJar(amount)));
   Future<Map<String, dynamic>> buyGoal(String id, {bool fromWallet = false}) =>

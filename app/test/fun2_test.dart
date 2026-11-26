@@ -102,14 +102,17 @@ class FakeAi extends AiClient {
 
 void main() {
   group('buy low, sell high', () {
-    test('deals become stock at the price paid; a qty-2 deal adds two; rentals and catering are not resold', () async {
+    test('deals become stock at the price paid; a qty-2 deal adds two; a rental is not resold (a tray is)', () async {
       final g = await newGame();
       expect(g.progress.stock, isEmpty);
       await buy(g, 'mei', 'mango');
       expect(g.progress.stock, hasLength(1));
       expect(g.progress.stock.single['cost'], 18); // the asking price, paid in full
       await buy(g, 'tan', 'bicycle');
+      expect(g.progress.stock, hasLength(1)); // a day's rental: given back by 6pm
       await buy(g, 'rosnah', 'tray');
+      expect(g.progress.stock, hasLength(2)); // a nasi lemak tray can be sold again (since test 56)
+      g.progress.p['stock'] = [...g.progress.stock.take(1)]; // (back to the mango, for the counts below)
       expect(g.progress.stock, hasLength(1));
       var r = await g.start('raj', 'case', 'none');
       r = await g.move(r['id'] as String, text: 'I buy two');

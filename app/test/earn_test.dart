@@ -147,4 +147,77 @@ void main() {
     ways = (g.jar()['earn'] as List).cast<Map>();
     expect(ways.firstWhere((w) => w['id'] == 'stall')['done'], isTrue);
   });
+
+  test('🍱 a nasi lemak tray goes into your stock; 🚲 the bicycle is a rental (shown, not stock)', () async {
+    final (g, _) = await newGame();
+    g.progress.receive(200);
+    final tray = await g.start('rosnah', 'tray', 'none');
+    await g.move(tray['id'] as String, move: 'buy');
+    expect(g.progress.stock.single['key'], 'rosnah/tray');
+    final bike = await g.start('tan', 'bicycle', 'none');
+    await g.move(bike['id'] as String, move: 'buy');
+    expect(g.progress.stock.length, 1, reason: 'a rental is not stock');
+    final inv = g.inventory();
+    expect((inv['rented'] as List).single['name'], contains('bicycle'));
+    final tan = ((g.stalls()['stalls'] as List).cast<Map>().firstWhere((s) => s['id'] == 'tan')['items'] as List)
+        .cast<Map>();
+    expect(tan.firstWhere((i) => i['id'] == 'bicycle')['rental'], isTrue);
+    expect(tan.firstWhere((i) => i['id'] == 'eggs').containsKey('rental'), isFalse);
+  });
+
+  test('🍱 trays bought before this update come back into your stock, once', () async {
+    final store = MemoryKeyValue();
+    await store.write(
+      'profile',
+      jsonEncode({
+        'name': 'Tester',
+        'wallet': 40,
+        'wallet_day': '2026-12-02',
+        'haggles': [
+          {'stall': 'rosnah', 'item': 'tray', 'result': 'deal', 'deal': 60, 'stars': 1, 'qty': 1, 'day': '2026-11-27'},
+          {'stall': 'rosnah', 'item': 'tray', 'result': 'deal', 'deal': 55, 'stars': 1, 'qty': 1, 'day': '2026-11-20'},
+        ],
+      }),
+    );
+    final c = Clock();
+    var g = Game(content: content, store: store, random: math.Random(1), surprises: false, now: c.call);
+    await g.load();
+    expect(g.progress.stock.single['cost'], 60, reason: 'only since the wallet came in');
+    await store.write('profile', g.exportProfile());
+    g = Game(content: content, store: store, random: math.Random(1), surprises: false, now: c.call);
+    await g.load();
+    expect(g.progress.stock.length, 1, reason: 'once');
+  });
+
+  test('👛 take money out of the jar, back into the wallet', () async {
+    final (g, _) = await newGame();
+    await g.saveToJar(25);
+    expect(g.progress.wallet, 35);
+    final r = await g.takeFromJar(10);
+    expect(r['taken'], 10);
+    expect(g.progress.wallet, 45);
+    expect(g.progress.jar, 15);
+    final all = await g.takeFromJar(999);
+    expect(all['taken'], 15);
+    expect(g.progress.jar, 0);
+    await expectLater(g.takeFromJar(5), throwsA(isA<GameError>()));
+  });
+
+  test('💰 the morning says what you earned the last day you played, and where from', () async {
+    final (g, c) = await newGame();
+    expect(g.me().containsKey('earned_last'), isFalse);
+    final (stall, item) = ('boy', 'yoyo');
+    await (() async {
+      final r = await g.start(stall, item, 'none');
+      await g.move(r['id'] as String, move: 'buy');
+    })();
+    final s = await g.shopStart();
+    final sold = await g.shopMove(s['id'] as String, take: true);
+    final got = (sold['price'] as num).toDouble();
+    expect(g.me().containsKey('earned_last'), isFalse, reason: 'today is not "last time"');
+    c.nextDay();
+    final e = g.me()['earned_last'] as Map;
+    expect((e['by'] as Map)['stall'], got);
+    expect(e['total'] as num, greaterThanOrEqualTo(got));
+  });
 }

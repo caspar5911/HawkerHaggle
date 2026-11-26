@@ -301,6 +301,7 @@ class Game {
     return {
       if (walletOn) ...{'wallet': progress.wallet, 'pocket': progress.pocketToday()},
       if (morning.length > 1) 'morning': morning,
+      'earned_last': ?progress.lastEarnings(), // what you earned the last day you played
       if (progress.owns('wall')) 'crown': true, // 👑 your name on the hawker centre wall
       if (progress.daysPlayed() >= 21) 'gold_name': true, // 🏅 Market Month day 21
       'name': _profile['name'],
@@ -386,6 +387,8 @@ class Game {
                   // 👛 her first price is more than you have (Mum pays for her list, so not those)
                   if (walletOn && (i['ask'] as num) > progress.wallet && !progress.mumPays('${s['id']}', '${i['id']}'))
                     'short': true,
+                  // 🚲 a day's rental: back by 6pm, so it won't go into your stock to sell
+                  if (Progress.notForResale.contains('${s['id']}/${i['id']}')) 'rental': true,
                 },
               // today's legendary item, at its stall (for this day only)
               if (legend != null && legend.stall == s['id']) _legendView(legend.item, legend.key),
@@ -1361,7 +1364,9 @@ class Game {
         {
           'id': 'pocket',
           'emoji': '👩',
-          'text': "Mum's pocket money: \$${Progress.pocketMoney.toInt()} every new day you play",
+          'text':
+              "Mum's pocket money: \$${Progress.welcomeMoney.toInt()} a day in your first week, then "
+              '\$${Progress.pocketMoney.toInt()} every new day you play',
           'done': true,
         },
       {
@@ -1395,6 +1400,15 @@ class Game {
   }
 
   /// 👛 Put some of your wallet in the savings jar (for goals). Jar money can't be spent at the market.
+  /// 👛 Take money out of the jar, back into your wallet.
+  Future<Map<String, Object?>> takeFromJar(double amount) async {
+    if (!walletOn) throw GameError(400, 'No wallet');
+    final v = progress.takeFromJar(amount);
+    if (v <= 0) throw GameError(400, 'Your jar is empty.');
+    await _save();
+    return {...jar(), 'taken': v};
+  }
+
   Future<Map<String, Object?>> saveToJar(double amount) async {
     if (!walletOn) throw GameError(400, 'No wallet');
     final v = progress.saveToJar(amount);
@@ -1706,7 +1720,10 @@ class Game {
             final day = dayKey(now());
             shop['wholesale'] = {'day': day, 'n': _wholesaleToday(shop) + 1};
           }
-          if (got > 0) progress.receive(got);
+          if (got > 0) {
+            progress.receive(got);
+            progress.earned('stall', got);
+          }
           notes.add(
             '👛 ${money2(got)} into your wallet (${money2(progress.wallet)} now)'
             '${s.sale.profit > 0 ? ': ${money2(s.sale.profit)} profit!' : '.'}',
@@ -1720,6 +1737,7 @@ class Game {
         if (s.sale.stars >= 2) progress.earn('shopkeeper', fresh);
         if (progress.owns('giftwrap')) {
           walletOn ? progress.receive(1) : progress.addToJar(1); // 🎁 a tip
+          progress.earned('stall', 1);
           notes.add('🎁 They loved the gift wrap: a \$1 tip!');
         }
         for (final st in fresh) {
@@ -1759,6 +1777,7 @@ class Game {
           },
       ],
       'max': progress.stockLimit,
+      'rented': progress.rentedToday(), // 🚲 a day's rental: back by 6pm, so not stock
       'treasures': [
         for (final h in _done.reversed)
           if (h['legendary'] == true && h['result'] == 'deal')

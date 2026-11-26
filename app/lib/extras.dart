@@ -1799,6 +1799,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         ),
                     ],
                   ),
+                if (((inv['rented'] as List?) ?? const []).isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  const Text('🚲 Rented today', style: _heading),
+                  const SizedBox(height: 4),
+                  for (final (i, m) in (inv['rented'] as List).cast<Map>().indexed)
+                    _card(
+                      key: ValueKey('rented_$i'),
+                      emoji: '${m['emoji']}',
+                      lines: [
+                        Text(
+                          '${m['name']}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                        ),
+                        Text(
+                          'From ${m['from']} · a rental: you give it back by 6pm, so it isn\'t stock to sell',
+                          style: const TextStyle(color: Palette.soft, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                ],
                 if (forMum.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   const Text('👩 For Mum today', style: _heading),
@@ -1909,6 +1929,19 @@ class _ShopPanelState extends State<ShopPanel> {
   }
 
   /// 👛 Save some of your wallet into the jar.
+  /// 👛 Take money out of the jar, back into the wallet.
+  Future<void> _take(double amount) async {
+    try {
+      final r = await widget.api.takeFromJar(amount);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('👛 ${money(r['taken'] as num)} back in your wallet.')));
+      setState(() => _j = r);
+    } on ApiError catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   Future<void> _save(double amount) async {
     try {
       final r = await widget.api.saveToJar(amount);
@@ -1972,17 +2005,12 @@ class _ShopPanelState extends State<ShopPanel> {
               '✅ Yours',
               style: TextStyle(fontWeight: FontWeight.w700, color: Palette.teal),
             )
-          else if (canJar)
+          else if (canJar || canBoth)
+            // one Buy: the jar pays first, then the wallet
             Bouncy(
               key: ValueKey('buy_${g['id']}'),
-              onTap: () => _buy(g),
-              child: Pill(text: money(cost), icon: '🫙', color: Palette.gold),
-            )
-          else if (canBoth)
-            Bouncy(
-              key: ValueKey('savebuy_${g['id']}'),
               onTap: () => _buy(g, fromWallet: true),
-              child: Pill(text: 'Save & buy ${money(cost)}', icon: '👛', color: Palette.gold),
+              child: Pill(text: 'Buy ${money(cost)}', color: Palette.gold),
             )
           else
             Pill(key: ValueKey('buy_${g['id']}'), text: money(cost), icon: '🫙', color: Colors.white),
@@ -2012,8 +2040,8 @@ class _ShopPanelState extends State<ShopPanel> {
               if (j['earn'] is List) _EarnCard(ways: (j['earn'] as List).cast<Map>()),
               if (j['wallet'] is num) ...[
                 const Text(
-                  'Save from your wallet for the big things below. Jar money stays here: it can\'t be spent at '
-                  'the market.',
+                  'Your wallet is for the market and the shop. The jar is savings: it keeps money safe from your '
+                  'haggling (and grows with the piggy bank). The shop uses your jar first, then your wallet.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Palette.soft, height: 1.35),
                 ),
@@ -2042,6 +2070,12 @@ class _ShopPanelState extends State<ShopPanel> {
                         key: const ValueKey('save_all'),
                         onTap: () => _save((j['wallet'] as num).toDouble()),
                         child: const Pill(text: 'Save it all', icon: '🫙', color: Colors.white),
+                      ),
+                    if ((j['jar'] as num) > 0)
+                      Bouncy(
+                        key: const ValueKey('take_all'),
+                        onTap: () => _take((j['jar'] as num).toDouble()),
+                        child: const Pill(text: 'Take it all out', icon: '👛', color: Colors.white),
                       ),
                   ],
                 ),
