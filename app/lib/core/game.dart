@@ -301,6 +301,7 @@ class Game {
     return {
       if (walletOn) ...{'wallet': progress.wallet, 'pocket': progress.pocketToday()},
       if (morning.length > 1) 'morning': morning,
+      'earned_last': ?progress.lastEarnings(), // what you earned the last day you played
       if (progress.owns('wall')) 'crown': true, // 👑 your name on the hawker centre wall
       if (progress.daysPlayed() >= 21) 'gold_name': true, // 🏅 Market Month day 21
       'name': _profile['name'],
@@ -337,7 +338,14 @@ class Game {
     };
   }
 
+  Future<bool> chooseWedding(String role) async {
+    if (!progress.chooseWedding(role)) return false;
+    await _save();
+    return true;
+  }
+
   Map<String, Object?> stalls() {
+    final wedding = progress.wedding;
     final legend = legendaryToday(now(), events: legendEvents);
     final best = <String, int>{};
     final bestPaid = <String, double>{};
@@ -351,6 +359,7 @@ class Game {
       }
     }
     return {
+      'wedding': wedding,
       'stalls': [
         for (final s in content['stalls'] as List)
           {
@@ -359,6 +368,7 @@ class Game {
             'stall': s['stall'],
             'place': s['place'],
             'look': s['look'],
+            if (s['id'] == 'mei' && wedding != null) 'wedding': wedding,
             'hearts': progress.hearts(s['id'] as String),
             'locked': !progress.unlocked(s['id'] as String),
             'new': progress.isNewStall(s['id'] as String), // 🆕 opened for you, never visited yet
@@ -377,6 +387,8 @@ class Game {
                   // 👛 her first price is more than you have (Mum pays for her list, so not those)
                   if (walletOn && (i['ask'] as num) > progress.wallet && !progress.mumPays('${s['id']}', '${i['id']}'))
                     'short': true,
+                  // 🚲 a day's rental: back by 6pm, so it won't go into your stock to sell
+                  if (Progress.notForResale.contains('${s['id']}/${i['id']}')) 'rental': true,
                 },
               // today's legendary item, at its stall (for this day only)
               if (legend != null && legend.stall == s['id']) _legendView(legend.item, legend.key),
@@ -632,6 +644,7 @@ class Game {
       if (ss.firmNote.isNotEmpty) 'firm_note': ss.firmNote,
       'closeness': h.s.done && h.s.result == 'deal' && h.s.deal != null ? _closeness(ss) : null,
       'tells': ss.tells,
+      if (h.style != BargainingStyle.standard) ...{'styled': true, if (event == 'greet') 'tactic_clue': h.style.clue},
       'dilemma': ss.dilemma == null
           ? null
           : {
@@ -657,6 +670,7 @@ class Game {
       'combos': ss.combos,
       'legendary': ss.legendary,
       'hearts': progress.hearts('${ss.stall['id']}'),
+      'wedding': ?(ss.stall['id'] == 'mei' ? progress.wedding : null),
       'new_stickers': ss.finish['stickers'] ?? const <Object>[],
       'mum': ss.finish['mum'],
       'unlocked': ss.finish['unlocked'] ?? const <Object>[],
@@ -699,7 +713,9 @@ class Game {
     if (ss.firmEarly && r > 1.06) {
       t += ' You went firm early: warm $who up and bargain a bit first next time.';
     } else if (ss.nice == 0 && r > 1.06) {
-      t += ' A kind word first makes $who easier to bargain with.';
+      t += ss.h.style == BargainingStyle.standard
+          ? ' A kind word first makes $who easier to bargain with.'
+          : ' ${ss.h.style.clue}';
     }
     return t;
   }
@@ -776,6 +792,7 @@ class Game {
         seed: seed,
         event: surprise,
         friend: progress.hearts(stallId),
+        style: wantsLegend ? BargainingStyle.standard : BargainingStyle.at(stallId),
       ),
       seed,
     );
@@ -818,6 +835,19 @@ class Game {
       final opener = _gossipOpener(stallId);
       if (opener != null) said = '$opener $said';
     }
+    final wedding = progress.wedding;
+    final memory = switch ((stallId, wedding?['stage'], wedding?['choice'])) {
+      ('mei', 1, _) => 'See the red paper? That one is for the wedding mangoes.',
+      ('mei', 2, 'table') => 'I kept a seat for you at the wedding table, my dear.',
+      ('mei', 2, 'stall') => 'Thank you for minding my stall while we celebrate.',
+      ('mei', 3, 'table') => 'See our wedding photo? We saved you a seat right there.',
+      ('mei', 3, 'stall') => 'Look at the wedding photo. I could relax because you had the stall covered.',
+      ('mei', 3, _) => 'Look, the wedding photo is up! Thank you for helping us.',
+      ('lim', 2, _) => 'Mei got the prawns for the wedding. Good.',
+      ('lim', 3, _) => 'Mei said the wedding prawns were a hit. Told you they were good.',
+      _ => '',
+    };
+    if (memory.isNotEmpty && !wantsLegend) said = '$memory $said';
     ss.chat.add({'who': 'them', 'text': said, 'ask': ss.h.s.ask, if (aiLine) 'ai': true});
     return _view(ss, said, 'greet', null, null, aiLine);
   }
@@ -1124,6 +1154,7 @@ class Game {
     if (surprises &&
         !ss.twisted &&
         !h.s.done &&
+        h.s.pending == null &&
         h.s.rounds == 3 &&
         h.s.event != 'rival' &&
         h.s.patience > 40 &&
@@ -1249,7 +1280,7 @@ class Game {
     } else if (ss.rude) {
       await _save();
     }
-    ss.tells = _tells(ss, before);
+    ss.tells = [if (kind != 'clarify' && h.tacticTell.isNotEmpty) h.tacticTell, ..._tells(ss, before)].take(2).toList();
     ss.lastEvent = event;
     ss.events.add(event);
     if (ss.comboStickers.isNotEmpty && !h.s.done) await _save(); // the Tag team sticker, kept at once
@@ -1333,7 +1364,9 @@ class Game {
         {
           'id': 'pocket',
           'emoji': '👩',
-          'text': "Mum's pocket money: \$${Progress.pocketMoney.toInt()} every new day you play",
+          'text':
+              "Mum's pocket money: \$${Progress.welcomeMoney.toInt()} a day in your first week, then "
+              '\$${Progress.pocketMoney.toInt()} every new day you play',
           'done': true,
         },
       {
@@ -1367,6 +1400,15 @@ class Game {
   }
 
   /// 👛 Put some of your wallet in the savings jar (for goals). Jar money can't be spent at the market.
+  /// 👛 Take money out of the jar, back into your wallet.
+  Future<Map<String, Object?>> takeFromJar(double amount) async {
+    if (!walletOn) throw GameError(400, 'No wallet');
+    final v = progress.takeFromJar(amount);
+    if (v <= 0) throw GameError(400, 'Your jar is empty.');
+    await _save();
+    return {...jar(), 'taken': v};
+  }
+
   Future<Map<String, Object?>> saveToJar(double amount) async {
     if (!walletOn) throw GameError(400, 'No wallet');
     final v = progress.saveToJar(amount);
@@ -1678,7 +1720,10 @@ class Game {
             final day = dayKey(now());
             shop['wholesale'] = {'day': day, 'n': _wholesaleToday(shop) + 1};
           }
-          if (got > 0) progress.receive(got);
+          if (got > 0) {
+            progress.receive(got);
+            progress.earned('stall', got);
+          }
           notes.add(
             '👛 ${money2(got)} into your wallet (${money2(progress.wallet)} now)'
             '${s.sale.profit > 0 ? ': ${money2(s.sale.profit)} profit!' : '.'}',
@@ -1692,6 +1737,7 @@ class Game {
         if (s.sale.stars >= 2) progress.earn('shopkeeper', fresh);
         if (progress.owns('giftwrap')) {
           walletOn ? progress.receive(1) : progress.addToJar(1); // 🎁 a tip
+          progress.earned('stall', 1);
           notes.add('🎁 They loved the gift wrap: a \$1 tip!');
         }
         for (final st in fresh) {
@@ -1731,6 +1777,7 @@ class Game {
           },
       ],
       'max': progress.stockLimit,
+      'rented': progress.rentedToday(), // 🚲 a day's rental: back by 6pm, so not stock
       'treasures': [
         for (final h in _done.reversed)
           if (h['legendary'] == true && h['result'] == 'deal')

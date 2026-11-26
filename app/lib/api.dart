@@ -139,6 +139,7 @@ class Api {
 
   Future<Map<String, dynamic>> me() => _run((g) => Map<String, dynamic>.from(g.me()));
   Future<Map<String, dynamic>> stalls() => _run((g) => Map<String, dynamic>.from(g.stalls()));
+  Future<bool> chooseWedding(String role) => _run((g) => g.chooseWedding(role));
   Future<Map<String, dynamic>> start(String stall, String item, [String? surprise, bool anyStall = false]) =>
       _run((g) async => Map<String, dynamic>.from(await g.start(stall, item, surprise, anyStall)));
   Future<Map<String, dynamic>> move(String id, {int? pick, String? move, String? text, String? friend}) => _run(
@@ -152,6 +153,8 @@ class Api {
   Future<Map<String, dynamic>> inventory() => _run((g) => Map<String, dynamic>.from(g.inventory()));
   Future<Map<String, dynamic>> sellNext(int index) =>
       _run((g) async => Map<String, dynamic>.from(await g.sellNext(index)));
+  Future<Map<String, dynamic>> takeFromJar(double amount) =>
+      _run((g) async => Map<String, dynamic>.from(await g.takeFromJar(amount)));
   Future<Map<String, dynamic>> saveToJar(double amount) =>
       _run((g) async => Map<String, dynamic>.from(await g.saveToJar(amount)));
   Future<Map<String, dynamic>> buyGoal(String id, {bool fromWallet = false}) =>

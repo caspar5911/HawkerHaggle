@@ -395,7 +395,7 @@ class Challenges {
       _map('done_daily')[day] = true;
       final dxp = progress.owns('coin') ? xpDailyChallenge * 3 ~/ 2 : xpDailyChallenge; // 🪙 the lucky coin
       _addXp(dxp);
-      progress.reward(moneyDaily);
+      progress.reward(moneyDaily, 'challenges');
       notes.add('🎯 Daily challenge done: ${daily().title}! +$dxp XP, +${_price(moneyDaily)}');
       final count = _map('done_daily').length;
       if (count >= 7) progress.earn('dailies7', stickers);
@@ -409,14 +409,14 @@ class Challenges {
       if (q['done'] == true && doneThisWeek[q['id']] != true) {
         doneThisWeek[q['id'] as String] = true;
         _addXp(xpQuest);
-        progress.reward(moneyQuest);
+        progress.reward(moneyQuest, 'challenges');
         notes.add('📋 Weekly quest done: ${q['title']}! +$xpQuest XP, +${_price(moneyQuest)}');
       }
     }
     if (qs.every((q) => q['done'] == true) && doneThisWeek['all'] != true) {
       doneThisWeek['all'] = true;
       _addXp(xpAllQuests);
-      progress.reward(moneyAllQuests);
+      progress.reward(moneyAllQuests, 'challenges');
       progress.earn('week_done', stickers);
       notes.add('🏆 All of this week\'s quests done! +$xpAllQuests XP, +${_price(moneyAllQuests)}');
     }
@@ -427,7 +427,7 @@ class Challenges {
       for (var l = levelBefore + 1; l <= levelAfter; l++) {
         money += moneyPerRank * l;
       }
-      progress.reward(money);
+      progress.reward(money, 'rank');
       notes.add('🎖️ New rank: ${rank()['title']}! +${_price(money)}');
     }
     return notes;

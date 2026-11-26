@@ -67,7 +67,7 @@ void main() {
     expect(g.walletOn, isFalse);
   });
 
-  test('pocket money: \$60 to start, then \$20 each new market day (once a day)', () async {
+  test('pocket money: \$60 to start, \$30 a day in the welcome week, then \$20 (once a day)', () async {
     var day = day1;
     final store = MemoryKeyValue();
     var g = await walletGame(() => day, store: store);
@@ -79,13 +79,25 @@ void main() {
     expect(g.me()['wallet'], start - ask);
     day = day2;
     g = await walletGame(() => day, store: store);
-    expect(g.me()['wallet'], start + 20 - ask);
-    expect(g.me()['pocket'], 20);
+    const welcome = Progress.welcomeMoney;
+    expect(g.me()['wallet'], start + welcome - ask);
+    expect(g.me()['pocket'], welcome);
     await g.saveToJar(10); // saving is yours to do: Mum doesn't refill it
     day = DateTime(2026, 12, 4, 10);
     g = await walletGame(() => day, store: store);
-    expect(g.me()['wallet'], start + 30 - ask);
+    expect(g.me()['wallet'], start + 2 * welcome - ask - 10);
     expect(g.progress.jar, 10);
+    // after a week of play: \$20 a day
+    for (var d = 5; d <= 12; d++) {
+      await buyNow(g, 'boy', 'yoyo');
+      final s = await g.shopStart(); // (sell it again: keep the stock from filling up)
+      await g.shopMove(s['id'] as String, take: true);
+      day = DateTime(2026, 12, d, 10);
+      g = await walletGame(() => day, store: store);
+      g.me();
+    }
+    expect(g.progress.daysPlayed(), greaterThanOrEqualTo(7));
+    expect(g.me()['pocket'], Progress.pocketMoney);
   });
 
   test('buying costs money and the item becomes stock; the discount no longer goes into the jar', () async {
@@ -267,10 +279,10 @@ void main() {
     await tester.pump(const Duration(seconds: 5)); // the note goes away
     // 🛍️ the shop: every item, by tier; the notebook (\$25) is a "Save & buy" with \$10 in the jar and \$50 in the wallet
     expect(find.text('Starter'), findsOneWidget);
-    await tester.ensureVisible(find.byKey(const ValueKey('savebuy_notebook')));
+    await tester.ensureVisible(find.byKey(const ValueKey('buy_notebook')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('goal_notebook')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('savebuy_notebook')));
+    await tester.tap(find.byKey(const ValueKey('buy_notebook'))); // one Buy: the jar first, then the wallet
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
     await tester.pumpAndSettle();
     expect(g.progress.owns('notebook'), isTrue);

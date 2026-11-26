@@ -72,7 +72,8 @@ class Fake extends Game {
   int flags = 0;
   bool down = false;
   String name = 'Shiok Otter 123';
-  bool named = true; // false: a first launch, which asks for a name
+  bool named = true;
+  int haggles = 1;
   num? wallet; // 👛 (null: no wallet shown)
   bool short = false; // the mangoes cost more than the wallet
   Map<String, Object?>? festival;
@@ -85,7 +86,7 @@ class Fake extends Game {
     return {
       'name': name,
       'named': named,
-      'haggles': 0,
+      'haggles': haggles,
       'deals': 0,
       'stars': 0,
       'best_saved': 0,
@@ -253,9 +254,13 @@ Future<void> settle(WidgetTester t, [int ms = 1500]) async {
 }
 
 Future<Fake> openHaggle(WidgetTester tester, List<Map<String, dynamic>> replies, {Fake? fake}) async {
-  fake ??= Fake(replies);
+  fake ??= Fake(replies)..haggles = MumGuide.enabled ? 0 : 1;
   await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
   await settle(tester, 2000);
+  if (fake.haggles == 0) {
+    await tester.tap(find.byKey(const ValueKey('browse_market')));
+    await settle(tester);
+  }
   await tester.ensureVisible(find.text('box of mangoes'));
   await settle(tester, 300);
   await tester.tap(find.text('box of mangoes'));
@@ -340,19 +345,71 @@ void main() {
   });
 
   testWidgets('a brand-new player is sent to Auntie Mei\'s mangoes for a first win', (tester) async {
-    final fake = Fake([]);
+    final fake = Fake([])..haggles = 0;
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
     await settle(tester, 2000);
     expect(find.byKey(const ValueKey('first_haggle')), findsOneWidget);
     expect(find.textContaining("Auntie Mei's mangoes"), findsOneWidget);
+    expect(find.byKey(const ValueKey('guess_card')), findsNothing);
   });
 
-  testWidgets('first launch asks for a name (random one ready); the 👋 chip and Settings change it', (tester) async {
-    final fake = Fake([])..named = false;
+  testWidgets('the guided first deal keeps the important actions and rewards in view', (tester) async {
+    MumGuide.enabled = true;
+    final fake = Fake([
+      {
+        ...game('Deal lah!', event: 'accept', result: 'deal', deal: 13, stars: 2, saved: .28),
+        'notes': ['Bonus reward'],
+        'new_stickers': ['first_deal'],
+      },
+    ])..haggles = 0;
     await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
     await settle(tester, 2000);
-    expect(find.text('👋 Welcome to the market!'), findsOneWidget);
-    expect(find.text('Cancel'), findsNothing); // must pick (or keep) one
+    await tester.tap(find.byKey(const ValueKey('first_haggle')));
+    await settle(tester, 1600);
+    expect(find.byKey(const ValueKey('guess_card')), findsNothing);
+    expect(find.text('Play together'), findsNothing);
+    expect(find.text('Offer \$11'), findsOneWidget);
+    await tester.tap(find.text('OK lah, \$18'));
+    await settle(tester, 600);
+    await tester.tap(find.text('Confirm \$18'));
+    await settle(tester, 2500);
+    expect(find.text('Continue to market'), findsOneWidget);
+    expect(find.text('Bonus reward'), findsNothing);
+    await tester.tap(find.text('Deal details'));
+    await settle(tester, 600);
+    expect(find.text('Bonus reward'), findsOneWidget);
+  });
+
+  testWidgets('retrying an unsuccessful first haggle keeps the guided lesson', (tester) async {
+    MumGuide.enabled = true;
+    final fake = Fake([game('Never mind lah.', event: 'letgo', result: 'walked')])..haggles = 0;
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    await tester.tap(find.byKey(const ValueKey('first_haggle')));
+    await settle(tester, 1600);
+    await tester.tap(find.byKey(const ValueKey('walk')));
+    await settle(tester, 2500);
+    expect(find.text('You walked away 🚶'), findsOneWidget);
+    fake.haggles = 1;
+    await tester.tap(find.text('Try again'));
+    await settle(tester, 1600);
+    expect(find.byKey(const ValueKey('mum_tip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('guess_card')), findsNothing);
+    expect(find.text('Offer \$11'), findsOneWidget);
+  });
+
+  testWidgets('a nickname is optional on the first launch and can be changed later', (tester) async {
+    final fake = Fake([])
+      ..named = false
+      ..haggles = 0;
+    await tester.pumpWidget(HawkerHaggleApp(api: apiFor(fake)));
+    await settle(tester, 2000);
+    expect(find.byKey(const ValueKey('first_haggle')), findsOneWidget);
+    expect(find.byKey(const ValueKey('name_save')), findsNothing);
+    await tester.tap(find.text('Choose a nickname'));
+    await settle(tester, 500);
+    expect(find.byKey(const ValueKey('name_save')), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('name_dice')));
     await settle(tester, 300);
     final rolled = tester.widget<TextField>(find.byKey(const ValueKey('name_field'))).controller!.text;
@@ -364,8 +421,10 @@ void main() {
     await tester.enterText(find.byKey(const ValueKey('name_field')), 'Caspar <b>');
     await tester.tap(find.byKey(const ValueKey('name_save')));
     await settle(tester, 800);
-    expect(find.text('👋 Welcome to the market!'), findsNothing);
+    expect(find.byKey(const ValueKey('name_save')), findsNothing);
     expect(fake.name, 'Caspar b');
+    await tester.tap(find.byKey(const ValueKey('browse_market')));
+    await settle(tester);
     expect(find.text('👋 Caspar b ✏️'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('name_chip')));

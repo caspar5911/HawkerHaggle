@@ -78,7 +78,46 @@ class Progress {
 
   /// Money earned by playing (a challenge, a quest, a rank, a story, a first ⭐⭐⭐): into the wallet, or with no
   /// wallet into the jar.
-  void reward(double v) => hasWallet ? receive(v) : addToJar(v);
+  void reward(double v, String source) {
+    hasWallet ? receive(v) : addToJar(v);
+    earned(source, v);
+  }
+
+  /// Keeps what you earned today, by where it came from (the last week of play days).
+  void earned(String source, double v) {
+    if (v <= 0) return;
+    final all = _map('earned');
+    final day = dayKey(now());
+    final d = (all[day] ??= <String, Object?>{}) as Map;
+    d[source] = ((((d[source] ?? 0) as num) + v) * 100).round() / 100;
+    final days = all.keys.toList()..sort();
+    for (final old in days.take(math.max(0, days.length - 7))) {
+      all.remove(old);
+    }
+  }
+
+  /// What you earned the last day you played before today: {day, total, by: {source: amount}}, or null.
+  Map<String, Object?>? lastEarnings() {
+    final all = _map('earned');
+    final today = dayKey(now());
+    final days = all.keys.where((d) => d.compareTo(today) < 0).toList()..sort();
+    if (days.isEmpty) return null;
+    final by = Map<String, Object?>.from(all[days.last] as Map);
+    final total = by.values.fold<double>(0, (a, v) => a + (v as num).toDouble());
+    return total > 0 ? {'day': days.last, 'total': (total * 100).round() / 100, 'by': by} : null;
+  }
+
+  /// A day's rental you have today (the bicycle): it goes back by 6pm, so it's not in your stock.
+  List<Map<String, Object?>> rentedToday() => [
+    for (final h in _haggles)
+      if (h['day'] == dayKey(now()) && h['result'] == 'deal' && notForResale.contains('${h['stall']}/${h['item']}'))
+        if ((_stalls['${h['stall']}']?['items'] as List? ?? const [])
+                .cast<Map>()
+                .where((i) => i['id'] == h['item'])
+                .firstOrNull
+            case final item?)
+          {'emoji': item['emoji'], 'name': item['name'], 'from': _stalls['${h['stall']}']?['name'], 'paid': h['deal']},
+  ];
 
   Map<String, Map> get _stalls => {for (final s in content['stalls'] as List) (s as Map)['id'] as String: s};
   List<Map> get _haggles => [for (final h in (p['haggles'] as List? ?? const [])) h as Map];
@@ -118,6 +157,21 @@ class Progress {
         perDay[d] = math.min(xpHaggleCapPerDay, (perDay[d] ?? 0) + gain);
       }
       p['xp'] = days.length * xpDayPlayed + perDay.values.fold<int>(0, (a, b) => a + b);
+    }
+    // (test 56) nasi lemak trays bought since the wallet came in were left out of the stock: add them, once
+    if (p['tray_back'] != true) {
+      p['tray_back'] = true;
+      for (final h in [..._haggles]) {
+        if (h['stall'] == 'rosnah' &&
+            h['item'] == 'tray' &&
+            h['result'] == 'deal' &&
+            h['coop'] != true &&
+            h['legendary'] != true &&
+            '${h['day'] ?? ''}'.compareTo('2026-11-26') >= 0 &&
+            stockRoom > 0) {
+          _addStock(h, math.min(stockRoom, ((h['qty'] ?? 1) as num).toInt()));
+        }
+      }
     }
   }
 
@@ -413,7 +467,7 @@ class Progress {
     _friendStickers(fresh);
     final story = _storyProgress(record, fresh);
     if (!hadThree && record['result'] == 'deal' && ((record['stars'] ?? 0) as num) >= 3 && record['coop'] != true) {
-      reward(firstThreeStars);
+      reward(firstThreeStars, 'stars');
       story.add('⭐⭐⭐ Your first three stars on this one! +${_money(firstThreeStars)}');
     }
     _addStock(record, toStock < 0 ? qty : toStock);
@@ -632,6 +686,7 @@ class Progress {
   /// fixed amount would let you save it all every night and have it refilled).
   static const startMoney = 60.0;
   static const pocketMoney = 20.0;
+  static const welcomeMoney = 30.0; // a day, in your first week of play
 
   double get wallet => ((p['wallet'] ?? 0) as num).toDouble();
   void _setWallet(double v) => p['wallet'] = (math.max(0.0, v) * 100).round() / 100;
@@ -641,7 +696,8 @@ class Progress {
   double topUp() {
     final day = dayKey(now());
     if (p['wallet_day'] == day) return 0;
-    final add = p['wallet_day'] == null ? startMoney : pocketMoney;
+    // (Mum's welcome week: more in your first seven days of play, while you learn how to earn)
+    final add = p['wallet_day'] == null ? startMoney : (daysPlayed() < 7 ? welcomeMoney : pocketMoney);
     p['wallet_day'] = day;
     _setWallet(wallet + add);
     p['pocket'] = {'day': day, 'added': add};
@@ -682,6 +738,7 @@ class Progress {
             : ((x['fair'] ?? x['cost'] ?? 0) as num).toDouble();
         (p['stock'] as List).removeAt(0);
         gain(price);
+        earned('deliveries', price);
         total += price;
         sent.add('${x['emoji']} ${x['name']}');
       }
@@ -716,6 +773,15 @@ class Progress {
     return v;
   }
 
+  /// From the jar back into your wallet. Returns what was taken out.
+  double takeFromJar(double amount) {
+    final v = (math.min(math.max(0.0, amount), jar) * 100).round() / 100;
+    if (v <= 0) return 0;
+    addToJar(-v);
+    _setWallet(wallet + v);
+    return v;
+  }
+
   /// Does Mum pay for this one? An item on her list today that hasn't been bought yet.
   bool mumPays(String stall, String item) {
     final key = '$stall/$item';
@@ -740,6 +806,7 @@ class Progress {
     final change = (((t['budget'] as num).toDouble() - spent) * 100).round() / 100;
     if (change > 0) {
       receive(change);
+      earned('list', change);
       return '👛 Mum: Keep the change! ${_money(change)} into your wallet.';
     }
     if (change < 0) {
@@ -765,7 +832,7 @@ class Progress {
   int get stockRoom => stockLimit - stock.length;
 
   /// Things that can't be resold at your own stall (a day's rental; a catering order).
-  static const notForResale = {'tan/bicycle', 'rosnah/tray'};
+  static const notForResale = {'tan/bicycle'}; // a day's rental: you give it back by 6pm
 
   List<Map> get stock => [for (final x in (p['stock'] as List? ?? const [])) x as Map];
 
@@ -811,6 +878,26 @@ class Progress {
   // ---------------------------------------------------------------- story arcs
   Map _arc(String stall) => (_map('arcs')[stall] ??= <String, Object?>{'done': 0}) as Map;
 
+  /// Decoration and dialogue are derived from the existing chapters, including older saves.
+  Map<String, Object?>? get wedding {
+    final a = (p['arcs'] as Map?)?['mei'] as Map?;
+    final stage = (a?['done'] as num?)?.toInt() ?? 0;
+    if (stage < 1) return null;
+    return {
+      'stage': stage.clamp(1, 3),
+      'choice': a?['wedding_role'],
+      'ready': stage < 3 && hearts('mei') >= arcs['mei']![stage].hearts,
+    };
+  }
+
+  bool chooseWedding(String role) {
+    if (role != 'table' && role != 'stall') return false;
+    final event = wedding;
+    if (event?['stage'] != 2 || event?['choice'] != null) return false;
+    _arc('mei')['wedding_role'] = role;
+    return true;
+  }
+
   /// A regular's story: each chapter done, open (with what to do) or locked (until more hearts).
   Map<String, Object?> arc(String stall) {
     final chapters = arcs[stall]!;
@@ -840,7 +927,7 @@ class Progress {
       a['done'] = n + 1;
       a['last'] = {'day': record['day']};
       final thanks = storyThanks(n);
-      reward(thanks);
+      reward(thanks, 'story');
       notes.add('📖 ${arcTitles[stall]}, chapter ${n + 1}: ${chapters[n].done} (A thank-you: +${_money(thanks)})');
       if (n + 1 == chapters.length) _earn('storyteller', fresh);
     }

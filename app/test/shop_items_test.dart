@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hawker_haggle/core/challenges.dart';
 import 'package:hawker_haggle/core/game.dart';
+import 'package:hawker_haggle/core/progress.dart' show Progress;
 import 'package:hawker_haggle/core/treats.dart';
 
 final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
@@ -87,10 +88,10 @@ void main() {
     final before = g.progress.wallet;
     c.nextDay();
     final me = g.me();
-    expect(g.progress.wallet, before + 20 + 5);
+    expect(g.progress.wallet, before + Progress.welcomeMoney + 5);
     expect((me['morning'] as Map)['extra'], 5);
     g.me();
-    expect(g.progress.wallet, before + 20 + 5, reason: 'once a day');
+    expect(g.progress.wallet, before + Progress.welcomeMoney + 5, reason: 'once a day');
   });
 
   test('🍀 more patience and 🌸 a better mood from the start; ⌚ the watch on the price tag', () async {
@@ -130,7 +131,7 @@ void main() {
     final m = g.me()['morning'] as Map;
     expect((m['delivered'] as List).length, 1);
     expect(m['delivered_total'], fair);
-    expect(g.progress.wallet, closeTo(before + 20 + fair, 0.001));
+    expect(g.progress.wallet, closeTo(before + Progress.welcomeMoney + fair, 0.001));
     expect(g.progress.stock.length, 3);
     g.me();
     expect(g.progress.stock.length, 3, reason: 'once a day');
