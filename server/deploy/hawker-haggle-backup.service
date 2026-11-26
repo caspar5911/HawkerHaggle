@@ -1,0 +1,10 @@
+[Unit]
+Description=Hawker Haggle nightly backup (player accounts and progress)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/projects/HawkerHaggle/server
+# Where the copies go (colon-separated). The installed copy of this file may add a second, off-WSL folder.
+Environment=HH_BACKUP_DIRS=%h/backups/hawker-haggle
+ExecStart=%h/projects/HawkerHaggle/server/.venv/bin/python -m hh.backup
+Nice=10

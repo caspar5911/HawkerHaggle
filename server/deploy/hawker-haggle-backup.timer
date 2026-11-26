@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up Hawker Haggle every night
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
