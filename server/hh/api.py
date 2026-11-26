@@ -210,6 +210,8 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         if heard.rel_op:
             if heard.rel_op == "less" and heard.rel_amount:
                 price = base - heard.rel_amount
+            elif heard.rel_op == "percent" and heard.rel_amount and 0 < heard.rel_amount < 100:
+                price = base * (1 - heard.rel_amount / 100)        # "10% off": a share off her price
             elif heard.rel_op == "halfway" and h.s.last_offer:
                 price = (base + h.s.last_offer) / 2
             elif heard.rel_op == "round_down":

@@ -1,6 +1,6 @@
 import pytest
 
-from hh.engine import Haggle, Item, Personality, nice
+from hh.engine import MAX_ROUNDS, Haggle, Item, Personality, nice
 
 FISH = Item("pomfret", "Fresh pomfret", fair=15.0, ask=22.0, floor=13.0)
 SOFT = Personality(stubborn=0.3, flattery=0.8, temper=0.3, callback=0.8)
@@ -146,18 +146,21 @@ def test_garbage_input_is_harmless():
 
 
 @pytest.mark.parametrize("seed", range(30))
-def test_every_haggle_ends_within_the_round_limit(seed):
+def test_every_haggle_ends_and_patience_is_the_limit(seed):
+    """No hidden move limit: patience (on screen) runs out long before the safety net."""
     import random
     rnd = random.Random(seed)
     h = Haggle(FISH, Personality(*(rnd.random() for _ in range(4))), seed=seed)
-    for _ in range(20):
+    for _ in range(MAX_ROUNDS + 5):
         kind = rnd.choice(["offer", "compliment", "competitor", "bulk", "smalltalk", "walk"])
         out = h.move(kind, rnd.uniform(5, 25) if kind == "offer" else None)
         if out.event == "confirm":
             out = h.move("confirm")
         if out.done:
             break
-    assert h.s.done and h.s.rounds <= 12
+    assert h.s.done and h.s.rounds < MAX_ROUNDS
+    if h.s.result == "refused":
+        assert h.s.patience <= 0                    # never "no sale" with patience left
     if h.s.result == "deal":
         assert h.s.deal >= nice(FISH.floor * 0.9) - 0.01
 
@@ -384,3 +387,18 @@ def test_two_stars_for_a_fifth_off_even_above_the_fair_price():
     assert h.stars() == 1
     h.s.deal = 6.0
     assert h.stars() == 3
+
+
+def test_the_next_stall_is_cheaper_works_early_and_annoys_late():
+    for persona in (SOFT, HARD):
+        early = Haggle(FISH, persona)
+        assert early.move("competitor").event == "competitor_drop"            # her price still high: it works
+        late = Haggle(FISH, persona)
+        late.s.ask = nice(FISH.floor + 1)                                      # nearly at her lowest
+        assert late.move("competitor").event == "competitor_annoyed"
+    mid = (FISH.ask + FISH.floor) / 2 + 0.5                                    # half way down: depends who
+    soft, hard = Haggle(FISH, SOFT), Haggle(FISH, HARD)
+    soft.s.ask = hard.s.ask = nice(mid)
+    soft_out, hard_out = soft.move("competitor").event, hard.move("competitor").event
+    assert (soft_out, hard_out) != ("competitor_annoyed", "competitor_drop")  # never kinder from the stubborn one
+

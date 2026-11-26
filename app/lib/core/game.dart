@@ -188,13 +188,20 @@ class Game {
     DateTime Function()? now,
     this.unlockAll = false,
     this.surprises = true,
-  }) : ai = ai ?? AiClient(const AiConfig()),
+    bool? walletOn,
+  }) : walletOn = walletOn ?? testWallet ?? true,
+       ai = ai ?? AiClient(const AiConfig()),
        _rnd = random ?? math.Random.secure(),
        now = now ?? DateTime.now;
 
   final DateTime Function() now;
   final bool unlockAll; // tests: every stall open
   final bool surprises; // tests: no random market surprises
+  final bool walletOn; // 👛 buying costs money from your wallet (on in the app)
+
+  /// Tests only: the wallet's default for games made without saying (test/flutter_test_config.dart switches it off
+  /// for the tests about other things; test/wallet_test.dart puts it back).
+  static bool? testWallet;
   Progress get progress => Progress(_profile, content, now);
 
   final Map content;
@@ -288,7 +295,9 @@ class Game {
 
   Map<String, Object?> me() {
     final done = _done;
+    if (walletOn) progress.topUp(); // a new market day: Mum's pocket money
     return {
+      if (walletOn) ...{'wallet': progress.wallet, 'pocket': progress.pocketToday()},
       'name': _profile['name'],
       'named': _profile['named'] == true,
       'festival': festivalWeek?.toJson(),
@@ -352,6 +361,9 @@ class Game {
                   'emoji': i['emoji'],
                   'ask': i['ask'],
                   'stars': best['${s['id']}/${i['id']}'] ?? 0,
+                  // 👛 her first price is more than you have (Mum pays for her list, so not those)
+                  if (walletOn && (i['ask'] as num) > progress.wallet && !progress.mumPays('${s['id']}', '${i['id']}'))
+                    'short': true,
                 },
               // today's legendary item, at its stall (for this day only)
               if (legend != null && legend.stall == s['id']) _legendView(legend.item, legend.key),
@@ -495,6 +507,11 @@ class Game {
       double? price;
       if (heard.relOp == 'less' && heard.relAmount != null && heard.relAmount != 0) {
         price = base - heard.relAmount!;
+      } else if (heard.relOp == 'percent' &&
+          heard.relAmount != null &&
+          heard.relAmount! > 0 &&
+          heard.relAmount! < 100) {
+        price = base * (1 - heard.relAmount! / 100); // "10% off": a share off her price
       } else if (heard.relOp == 'halfway' && h.s.lastOffer != null && h.s.lastOffer != 0) {
         price = (base + h.s.lastOffer!) / 2;
       } else if (heard.relOp == 'round_down') {
@@ -542,6 +559,7 @@ class Game {
       'line': said,
       'ai_line': aiLine,
       'you_said': you,
+      'offer': out?.offer, // the price the player's message was read as (their own number, worked out)
       'ask': h.s.ask,
       'opening': h.s.opening,
       'patience': math.max(0, h.s.patience.round()),
@@ -580,6 +598,10 @@ class Game {
               'options': [for (final o in ss.twist!.options) o.$1],
             },
       'rival_left': h.s.rivalLeft,
+      if (walletOn) ...{
+        'wallet': progress.wallet,
+        'mum_pays': !ss.legendary && progress.mumPays('${ss.stall['id']}', '${ss.item['id']}'),
+      },
       'combo': ss.comboNow,
       'coach': h.s.done && ss.coach.isNotEmpty ? ss.coach : null,
       'combos': ss.combos,
@@ -637,6 +659,7 @@ class Game {
   Future<Map<String, Object?>> start(String stallId, [String? itemId, String? surprise, bool anyStall = false]) async {
     final stall = _stalls[stallId];
     if (stall == null) throw GameError(404, 'No such stall');
+    if (walletOn) progress.topUp(); // a new market day: Mum's pocket money
     // today's legendary item: open to everyone that day (even at a stall not unlocked yet), once
     final legend = legendaryToday(now(), events: legendEvents);
     final wantsLegend = itemId != null && isLegendary(itemId);
@@ -783,6 +806,7 @@ class Game {
       },
       qty: qty,
       flags: const {},
+      toStock: walletOn ? 0 : -1, // 👛 the friend who started the haggle paid, and keeps it
     );
     final fresh = <String>{...r.stickers};
     final notes = <String>[];
@@ -791,8 +815,8 @@ class Game {
       progress.earn('teamwork', fresh);
       final opening = view['opening'] is num ? (view['opening'] as num).toDouble() : dealt!;
       final kept = ((opening - dealt!) * qty * 100).round() / 100;
-      if (kept > 0) {
-        progress.addToJar(kept);
+      if (kept > 0 && !walletOn) {
+        progress.addToJar(kept); // (no wallet) the discount into the jar
         notes.add('🫙 ${money(kept)} into your savings jar (${money(progress.jar)} saved).');
       }
     }
@@ -868,6 +892,7 @@ class Game {
     if (kind == 'accept' && price != null && price != 0 && price < h.s.ask) {
       kind = 'offer'; // "ok 24 lah" while they ask 26 is an offer of 24
     }
+    if (walletOn) _canClose(ss, kind, price); // 👛 a deal you can't pay for (or have no room for) never closes
     Outcome? out;
     String event;
     if (kind == 'clarify') {
@@ -987,6 +1012,8 @@ class Game {
           [
             if (heard.qty != null && heard.qty! > 2 && !h.item.single)
               'They asked for ${heard.qty}; you only have two left today, so say you can sell them two (prices are per piece).',
+            if (heard.relOp == 'percent')
+              'They asked for a percentage off. Answer with your price in dollars only: never say a percent or %.',
             if (ss.reopenNow)
               'They really won you over, so the best price you gave before is no longer final: you come down a '
                   'little for them now, and say your new price warmly.',
@@ -1050,6 +1077,11 @@ class Game {
     ss.chat.add({'who': 'them', 'text': said, 'ask': h.s.ask, if (aiLine) 'ai': true});
     if (h.s.done && !ss.recorded) {
       ss.recorded = true;
+      // 👛 who pays: Mum for one of her list items (it goes home to her), your wallet for the rest (your stock)
+      final dealDone = h.s.result == 'deal' && h.s.deal != null;
+      final byMum = walletOn && dealDone && !ss.legendary && progress.mumPays('${stall['id']}', '${item['id']}')
+          ? 1
+          : 0;
       final r = progress.finish(
         record: {
           'stall': stall['id'],
@@ -1079,6 +1111,7 @@ class Game {
         qty: h.s.qty,
         flags: {'nice': ss.nice, 'called_back': ss.calledBack, 'hard': hard},
         chat: ss.chat,
+        toStock: walletOn ? h.s.qty - byMum : -1,
       );
       final extra = <String>[];
       final fresh = <String>{...r.stickers, ...ss.comboStickers};
@@ -1088,11 +1121,25 @@ class Game {
         extra.add('✨ A legendary ${item['name']}! Only today, and you got it.');
       }
       if (h.s.result == 'deal' && h.s.deal != null) {
-        // every dollar knocked off the first asking price goes into the savings jar
-        final kept = ((h.s.opening - h.s.deal!) * h.s.qty * 100).round() / 100;
-        if (kept > 0) {
-          progress.addToJar(kept);
-          extra.add('🫙 ${money(kept)} into your savings jar (${money(progress.jar)} saved).');
+        if (walletOn) {
+          final mine = h.s.qty - byMum;
+          final cost = (h.s.deal! * mine * 100).round() / 100;
+          if (byMum > 0) extra.add("👩 Mum paid for this one: it's on her list.");
+          if (cost > 0) {
+            progress.pay(cost);
+            extra.add('👛 You paid ${money(cost)}. ${money(progress.wallet)} left in your wallet.');
+          }
+          if (byMum > 0) {
+            final change = progress.mumPaid('${stall['id']}', '${item['id']}', h.s.deal!);
+            if (change != null) extra.add(change);
+          }
+        } else {
+          // (no wallet) every dollar knocked off the first asking price goes into the savings jar
+          final kept = ((h.s.opening - h.s.deal!) * h.s.qty * 100).round() / 100;
+          if (kept > 0) {
+            progress.addToJar(kept);
+            extra.add('🫙 ${money(kept)} into your savings jar (${money(progress.jar)} saved).');
+          }
         }
         // a stallholder who likes you might throw something in (never in tests without surprises)
         if (surprises) {
@@ -1102,6 +1149,7 @@ class Game {
             lucky: stableSeed('${ss.seed}-free') % 100 < chance,
             good: (out?.stars ?? 0) >= 2 || ss.nice > 0,
             fresh: fresh,
+            keepPaid: walletOn,
           );
           if (free != null) extra.add(free);
         }
@@ -1193,7 +1241,20 @@ class Game {
   }
 
   /// The savings jar and what you can save up for.
-  Map<String, Object?> jar() => {'jar': progress.jar, 'goals': progress.goalsView()};
+  Map<String, Object?> jar() => {
+    'jar': progress.jar,
+    'goals': progress.goalsView(),
+    if (walletOn) 'wallet': progress.wallet,
+  };
+
+  /// 👛 Put some of your wallet in the savings jar (for goals). Jar money can't be spent at the market.
+  Future<Map<String, Object?>> saveToJar(double amount) async {
+    if (!walletOn) throw GameError(400, 'No wallet');
+    final v = progress.saveToJar(amount);
+    if (v <= 0) throw GameError(400, 'Nothing to save: your wallet is empty.');
+    await _save();
+    return {...jar(), 'saved': v};
+  }
 
   Future<Map<String, Object?>> buyGoal(String id) async {
     final fresh = <String>{};
@@ -1275,6 +1336,40 @@ class Game {
       );
     }
     return parts.join(' ');
+  }
+
+  /// 👛 Would this move close a deal, and can the player pay for it (and keep it)? If not, nothing happens and they
+  /// are told why: the deal on the table stays, so they can offer what they have, or sell something first.
+  void _canClose(_Session ss, String kind, double? price) {
+    final h = ss.h;
+    final pending = h.s.pending;
+    double? at;
+    if (kind == 'buy') {
+      at = pending ?? h.s.ask;
+    } else if ((kind == 'confirm' || kind == 'accept') && pending != null) {
+      at = pending;
+    } else if ((kind == 'offer' || kind == 'budget') &&
+        pending != null &&
+        price != null &&
+        price.isFinite &&
+        nice(price) >= pending) {
+      at = pending; // the agreed price again: that's a yes
+    }
+    if (at == null) return;
+    final stall = '${ss.stall['id']}', item = '${ss.item['id']}';
+    final mine = h.s.qty - (!ss.legendary && progress.mumPays(stall, item) ? 1 : 0); // Mum pays for hers
+    final cost = (at * mine * 100).round() / 100;
+    final wallet = progress.wallet;
+    if (cost > wallet + 1e-9) {
+      throw GameError(
+        402,
+        '👛 Not enough money: that\'s ${money(cost)} and you have ${money(wallet)}. Offer what you can pay ("I only '
+        'have ${money(wallet)}" is true now!), or sell something at your own stall first.',
+      );
+    }
+    if (mine > 0 && progress.goesToStock(stall, item) && progress.stockRoom < mine) {
+      throw GameError(409, '📦 Your stock is full (10 things). Sell some at your own stall first, then come back.');
+    }
   }
 
   /// Really winning them over (their soft spot, a great pitch, helping with their trouble) reopens a "best price"
@@ -1365,14 +1460,25 @@ class Game {
     final Product product;
     if (productId == null && stock.isNotEmpty) {
       final x = stock.first;
+      final fair = (x['fair'] as num).toDouble();
       product = Product(
         'stock:${x['key']}',
         '${x['name']}',
         '${x['emoji']}',
         (x['cost'] as num).toDouble(),
-        (x['fair'] as num).toDouble(),
+        // 👛 at your own stall the usual price is the market's asking price: buy it well at the market and sell it
+        // well at your stall, and the difference is yours
+        walletOn && x['ask'] is num ? (x['ask'] as num).toDouble() : fair,
       );
     } else {
+      // 👛 with a wallet, the wholesaler lets you have three a day (you pay them their price out of the sale)
+      if (walletOn && _wholesaleToday(shop) >= wholesalePerDay) {
+        throw GameError(
+          409,
+          '📦 Nothing to sell: the wholesaler only gives you $wholesalePerDay a day. Buy something at the market to '
+          'sell!',
+        );
+      }
       product = products.firstWhere((p) => p.id == productId, orElse: () => products[n % products.length]);
     }
     final customer = customers[_rnd.nextInt(customers.length)];
@@ -1420,7 +1526,21 @@ class Game {
           progress.takeStock(s.sale.product.id.substring(6), s.sale.product.cost);
         }
         shop['sales'] = ((shop['sales'] ?? 0) as num).toInt() + 1;
-        if (s.sale.profit > 0) {
+        if (walletOn) {
+          // 👛 the money is yours: the whole price for your own stock (you paid for it at the market), the price
+          // less the wholesaler's for wholesale goods
+          final wholesale = !s.sale.product.id.startsWith('stock:');
+          final got = ((s.sale.price ?? 0) - (wholesale ? s.sale.product.cost : 0)).toDouble();
+          if (wholesale) {
+            final day = dayKey(now());
+            shop['wholesale'] = {'day': day, 'n': _wholesaleToday(shop) + 1};
+          }
+          if (got > 0) progress.receive(got);
+          notes.add(
+            '👛 ${money2(got)} into your wallet (${money2(progress.wallet)} now)'
+            '${s.sale.profit > 0 ? ': ${money2(s.sale.profit)} profit!' : '.'}',
+          );
+        } else if (s.sale.profit > 0) {
           progress.addToJar(s.sale.profit);
           notes.add('🫙 ${money2(s.sale.profit)} profit into your savings jar (${money2(progress.jar)} saved).');
         }
@@ -1437,6 +1557,13 @@ class Game {
       await _save();
     }
     return out;
+  }
+
+  /// Wholesale goods a day (when your stock is empty), with a wallet.
+  static const wholesalePerDay = 3;
+  int _wholesaleToday(Map shop) {
+    final w = shop['wholesale'];
+    return w is Map && w['day'] == dayKey(now()) ? ((w['n'] ?? 0) as num).toInt() : 0;
   }
 
   Future<Map<String, Object?>> _shopSay(String id, String event) async {

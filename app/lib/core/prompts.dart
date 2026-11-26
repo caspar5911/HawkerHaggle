@@ -41,15 +41,17 @@ Read the WHOLE message carefully, word by word, in Singlish (lah, leh, lor, hor,
 expensive, wah lau, aiyo...), together with the conversation so far. First write what they really mean in one
 plain sentence ("reading"), then choose exactly one move:
 
-offer      - they name a price they want to pay ("20 can?", "$15 lah", "ok lah 24").
+offer      - they name a price they want to pay ("20 can?", "$15 lah", "ok lah 24", "twenty five lah" = 25).
              A price they quote for ANOTHER stall, or one they paid before elsewhere ("last week I paid $16"), is
              competitor, not offer.
-budget     - they say a number is ALL they have or can pay: "I only have $16", "my budget only 18", "16 is all I
-             got", "wallet left $16". price is that number.
+budget     - they say a number is ALL they have or can pay, or their FINAL offer: "I only have $16", "my budget only
+             18", "16 is all I got", "wallet left $16", "my final offer 16", "take it or leave it, 16", "16, last
+             offer". price is that number.
 pity       - a sad story to get sympathy WITHOUT naming a number: hungry, starving, nothing to eat, no money, lost
              job, sick, sad day. (With a number it is budget or offer.)
 plead      - they ask for cheaper / discount / best price WITHOUT naming a number, or complain the price is too
-             high ("26? aiyo!", "quite steep leh", "too much for me", "everything so overpriced").
+             high ("26? aiyo!", "quite steep leh", "too much for me", "everything so overpriced"). Asking for her
+             lowest or last price is plead too ("what's your lowest?", "last price?", "best price boss?").
 compliment - they praise the goods or the stallholder.
 competitor - they say another stall or shop is cheaper.
 bulk       - they want to buy more than one for a better price, or ask the price for two ("how much for two?").
@@ -84,7 +86,9 @@ Extra fields:
 also     - if the message ALSO does one of these besides the main move, name it: compliment, regular, pity, flirt,
            rude. "wah so nice, 20 can?" is move offer, also compliment. Otherwise null.
 relative - if they describe their price relative to the stallholder's, don't do the maths, describe it:
-           {"op": "less", "amount": 2} for "$2 less can?" / "minus 2 dollars";
+           {"op": "less", "amount": 2} for "$2 less can?" / "minus 2 dollars" / "$2 discount" / "cheaper by 2";
+           {"op": "percent", "amount": 10} for "10% off" / "10 percent discount" / "discount 20%" (a share off her
+           price; "half price" is {"op": "percent", "amount": 50});
            {"op": "halfway"} for "meet halfway" / "split the difference" / "half half";
            {"op": "round_down"} for "round down lah" / "remove the cents". Then move is offer, price null.
            Otherwise null.

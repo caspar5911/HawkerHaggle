@@ -192,7 +192,7 @@ class AiClient {
           reading: pySlice('${data['reading'] ?? ''}', 200),
           unclear: pySlice('${data['unclear'] ?? ''}', 120),
           also: alsoKinds.contains(also) && also != move ? also : '',
-          relOp: const ['less', 'halfway', 'round_down'].contains(op) ? op : '',
+          relOp: const ['less', 'percent', 'halfway', 'round_down'].contains(op) ? op : '',
           relAmount: _num(rel['amount']),
           per: const ['total', 'each'].contains(per) ? per : '',
           qty: qtyN != null && qtyN > 0 && qtyN < 1000 ? qtyN : null,

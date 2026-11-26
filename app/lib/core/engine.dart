@@ -11,7 +11,7 @@ const engineMoves = [
   'rude', 'walk', 'accept', //
 ];
 const once = ['competitor', 'bulk', 'regular']; // tactics that only work once per haggle
-const maxRounds = 12;
+const maxRounds = 40; // a safety net only: patience (shown on screen) is the real limit and always runs out first
 // A firm price gets their real lowest only when earned by both goodwill and bargaining (see Haggle.firmLine).
 const firmRoom = 0.35; // unearned, a firm price must be this share of the bargaining range above their lowest
 const firmCome = 0.7; // ...until they've come down this share of the range by real bargaining
@@ -376,9 +376,13 @@ class Haggle {
     return _out(s.ask < before ? 'plead' : 'plead_no');
   }
 
+  /// "The next stall is cheaper": a skill, not luck. It works while her price is still well above her lowest (she'd
+  /// rather not lose the sale); once she has come down a good way it only annoys her. Stubborn ones put up with it
+  /// for less of the way.
   Outcome _competitor() {
     s.used.add('competitor');
-    if (rng.nextDouble() > p.stubborn) {
+    final come = (item.ask - s.ask) / math.max(item.ask - item.floor, 0.01);
+    if (come <= 0.6 - 0.4 * p.stubborn) {
       _concede(floorNow(), 0.3);
       _tire(5);
       return _out('competitor_drop');

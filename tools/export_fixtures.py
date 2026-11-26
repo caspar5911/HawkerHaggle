@@ -20,6 +20,13 @@ content = json.loads((ROOT / "content" / "stalls.json").read_text())
 messages = sorted({m for m, *_ in CASES} | set(TYPED) | {
     "便宜15", "15块", "15块可以吗", "$1.50", "$ 15", "15.5 can", "1,000", "😂", "👍 deal", "ok", "OK LAH", "can can",
     "  ok lah  ", "deal!!", "no deal", "I only have $16", "wallet only left $20", "16 is all I got", "my budget 18.50",
+    "10% off can?", "10 percent discount", "discount 20% lah", "half price can?", "50% off", "$5 discount can?",
+    "5 dollars discount", "cheaper by 3 can?", "twenty can?", "fifteen dollars ok?", "twenty five lah", "twenty-five",
+    "20 dollars 50 cents", "1/2 price", "30 for 2 pieces", "I come here 10 years, 20 can?", "I bring 2 friends, 15 ok?",
+    "ten dollars less", "one dollar less", "100% off", "I only have twenty", "Ninety nine", "seventeen fifty",
+    "half the price lah", "discount of $4", "lower by 2 dollars", "12.5% off", "I am 12 years old, 9 can?",
+    "my final offer 14", "take it or leave it, 14", "14, last offer", "what is your lowest?", "last price?",
+    "best price boss?", "final offer",
     "actually just one", "one enough lah", "don't want two", "no need two", "only 1 can?", "just one, $20 can?",
     "2 for 40", "two for $30", "2=40", "I buy 3", "give me 2", "take 2 for 30", "$2 less", "3 dollars off", "minus 1.50",
     "half half lah", "split the difference", "remove the cents", "round it down", "I love you 15 please", "marry me",
@@ -70,8 +77,8 @@ hist = [{"who": "them", "text": "Aiyo come come, $32!"}, {"who": "you", "text": 
 out["opener_hint"] = [[hist[:n], ai.opener_hint(hist[:n])] for n in range(len(hist) + 1)]
 out["transcript"] = [[hist, "Auntie Mei", ai.transcript(hist, "Auntie Mei")], [[], "X", ai.transcript([], "X")]]
 
-# Engine traces (no randomness: competitor and walk use the RNG, so they are left out; suggestions' tactic too)
-KINDS = ["offer", "budget", "plead", "pity", "flirt", "compliment", "bulk", "one", "regular", "smalltalk", "rude", "accept",
+# Engine traces (no randomness: walk uses the RNG, so it is left out; suggestions' tactic too)
+KINDS = ["offer", "budget", "plead", "pity", "flirt", "compliment", "competitor", "bulk", "one", "regular", "smalltalk", "rude", "accept",
          "confirm", "cancel", "buy", "side:compliment", "side:regular", "side:pity", "side:flirt", "side:rude"]
 traces, rnd = [], random.Random(11)
 for st in content["stalls"]:

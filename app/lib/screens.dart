@@ -257,6 +257,15 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
   List<Widget> _marketPage() => [
     if (_me?['festival'] is Map) FestivalBanner(f: _me!['festival'] as Map),
     if (_me != null) _Hello(me: _me!, onName: _editName),
+    if (((_me?['pocket'] ?? 0) as num) > 0)
+      Padding(
+        key: const ValueKey('pocket'),
+        padding: const EdgeInsets.only(top: 8),
+        child: Text(
+          '👩 Mum gave you ${money(_me!['pocket'] as num)} pocket money this morning. Spend it wisely, ah!',
+          style: const TextStyle(color: Palette.ink, fontWeight: FontWeight.w600),
+        ),
+      ),
     const SizedBox(height: 12),
     if (_legend != null)
       LegendBanner(l: _legend!, onTap: _openLegend)
@@ -610,6 +619,7 @@ class _Hello extends StatelessWidget {
         runSpacing: 8,
         children: [
           GestureDetector(key: const ValueKey('name_chip'), onTap: onName, child: _Chip('👋 ${me['name']} ✏️')),
+          if (me['wallet'] is num) _Chip('👛 ${money(me['wallet'] as num)}', key: const ValueKey('wallet_chip')),
           _Chip('⭐ ${me['best_stars'] ?? me['stars']}'),
           _Chip('🤝 ${me['deals']} deals'),
           if (((me['streak'] ?? 0) as num) > 0) _Chip('🔥 ${me['streak']} days'),
@@ -621,7 +631,7 @@ class _Hello extends StatelessWidget {
 }
 
 class _Chip extends StatelessWidget {
-  const _Chip(this.text);
+  const _Chip(this.text, {super.key});
   final String text;
   @override
   Widget build(BuildContext context) => Container(
@@ -832,7 +842,8 @@ class _StallCard extends StatelessWidget {
                                               ? (it['sold_out'] == true
                                                     ? '✨ legendary · yours today!'
                                                     : '✨ legendary · today only · asking ${money(it['ask'] as num)}')
-                                              : 'asking ${money(it['ask'] as num)}',
+                                              : 'asking ${money(it['ask'] as num)}'
+                                                    '${it['short'] == true ? ' · 👛 more than you have' : ''}',
                                           style: const TextStyle(color: Palette.soft, fontSize: 12),
                                         ),
                                       ],
@@ -1430,7 +1441,13 @@ class _HaggleScreenState extends State<HaggleScreen> {
       _apply(await widget.api.move(g['id'] as String, pick: pick, move: move, text: text, friend: friend));
     } on ApiError catch (e) {
       _toast(e.message);
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          // nothing happened (say, not enough money): the message wasn't said after all
+          if (_msgs.isNotEmpty && _msgs.last.mine && _msgs.last.text == mine) _msgs.removeLast();
+        });
+      }
       _sendState(); // the friend's phone stops waiting
     }
     return true;
@@ -1805,7 +1822,12 @@ class _Scene extends StatelessWidget {
             top: top + 118,
             left: 16,
             child: Text(
-              '${stall['name']}\n${item['name']}',
+              '${stall['name']}\n${item['name']}'
+              '${g?['mum_pays'] == true
+                  ? "\n👩 Mum pays: it's on her list"
+                  : g?['wallet'] is num
+                  ? '\n👛 ${money(g!['wallet'] as num)}'
+                  : ''}',
               style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink, height: 1.2),
             ),
           ),

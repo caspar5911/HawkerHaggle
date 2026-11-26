@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 MOVES = ("offer", "budget", "plead", "pity", "flirt", "compliment", "competitor", "bulk", "one", "regular", "smalltalk", "rude", "walk",
          "accept")
 ONCE = ("competitor", "bulk", "regular")    # tactics that only work once per haggle
-MAX_ROUNDS = 12
+MAX_ROUNDS = 40     # a safety net only: patience (shown on screen) is the real limit and always runs out first
 # A firm price gets their real lowest only when earned by both goodwill and bargaining (see Haggle.firm_line).
 FIRM_ROOM = 0.35    # unearned, a firm price must be this share of the bargaining range above their lowest
 FIRM_COME = 0.7     # ...until they've come down this share of the range by real bargaining
@@ -290,8 +290,12 @@ class Haggle:
         return self._out("plead" if self.s.ask < before else "plead_no")
 
     def _competitor(self, _=None) -> Outcome:
+        """"The next stall is cheaper": a skill, not luck. It works while her price is still well above her lowest
+        (she'd rather not lose the sale); once she has come down a good way it only annoys her. Stubborn ones put
+        up with it for less of the way."""
         self.s.used.append("competitor")
-        if self.rng.random() > self.p.stubborn:
+        come = (self.item.ask - self.s.ask) / max(self.item.ask - self.item.floor, 0.01)
+        if come <= 0.6 - 0.4 * self.p.stubborn:
             self._concede(self.floor_now(), 0.3)
             self._tire(5)
             return self._out("competitor_drop")

@@ -53,8 +53,9 @@ String coachTip({
   }
   if (deal && stars < 3 && !tactics.contains('competitor') && !tactics.contains('bulk')) {
     return single // one of a kind: there's no second one to ask about
-        ? 'Try "the stall next door is cheaper" 👀. Some stallholders crack.'
-        : 'Try "the stall next door is cheaper" 👀, or ask for a price for two 🛍️. Some stallholders crack.';
+        ? 'Early on, while the price is still high, try "the stall next door is cheaper" 👀.'
+        : 'Early on, while the price is still high, try "the stall next door is cheaper" 👀, or ask for a price for '
+              'two 🛍️.';
   }
   if (deal && stars >= 3) {
     return 'A perfect haggle! Try a harder stall, a ✨ legendary item, or Hard mode in Settings.';
@@ -97,8 +98,8 @@ const tricks = <Trick>[
     'competitor',
     '👀',
     'Mention a cheaper stall',
-    'Saying the stall next door is cheaper can make them drop the price to keep you. Some take it badly, so read '
-        'their face.',
+    'Saying the stall next door is cheaper can make them drop the price to keep you. Say it early, while their '
+        'price is still high: near their lowest it only annoys them (stubborn ones sooner).',
     '"The one over there selling cheaper leh."',
     'Let them know there are other stalls.',
   ),

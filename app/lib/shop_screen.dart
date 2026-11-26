@@ -42,17 +42,24 @@ class _ShopScreenState extends State<ShopScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
   }
 
+  String? _closed; // why no customer can come (nothing to sell): shown instead of the customer
+
   Future<void> _next() async {
     setState(() {
       _busy = true;
       _msgs.clear();
       _s = null;
+      _closed = null;
     });
     try {
       _apply(await widget.api.shopStart());
     } on ApiError catch (e) {
-      _toast(e.message);
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _closed = e.message;
+        });
+      }
     }
   }
 
@@ -153,7 +160,19 @@ class _ShopScreenState extends State<ShopScreen> {
                 ),
               ),
               child: customer == null
-                  ? const Center(child: CircularProgressIndicator())
+                  ? Center(
+                      child: _closed == null
+                          ? const CircularProgressIndicator()
+                          : Padding(
+                              key: const ValueKey('shop_closed'),
+                              padding: const EdgeInsets.all(24),
+                              child: Text(
+                                _closed!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink, height: 1.4),
+                              ),
+                            ),
+                    )
                   : Column(
                       children: [
                         const SizedBox(height: 6),

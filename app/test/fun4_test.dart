@@ -264,4 +264,43 @@ void main() {
       }
     });
   });
+
+  group('🔢 numbers people actually type', () {
+    Future<(Game, String, num)> mango() async {
+      final g = Game(
+        content: content,
+        store: MemoryKeyValue(),
+        random: math.Random(4),
+        surprises: false,
+        unlockAll: true,
+      );
+      await g.load();
+      final r = await g.start('mei', 'mango', 'none');
+      return (g, r['id'] as String, r['ask'] as num);
+    }
+
+    for (final (text, want) in const [
+      ('10% off can?', 16.0), // 18 less 10%: 16.20, said as $16
+      ('discount 20% lah', 14.5),
+      ('half price can?', 9.0),
+      ('\$5 discount can?', 13.0),
+      ('cheaper by 3 can?', 15.0),
+      ('fifteen dollars ok?', 15.0),
+      ('I come here 10 years, 14 can?', 14.0),
+    ]) {
+      test('"$text" is an offer of \$$want', () async {
+        final (g, id, _) = await mango();
+        final r = await g.move(id, text: text);
+        expect(['counter', 'confirm', 'final', 'insulted'], contains(r['event']), reason: text);
+        expect(r['offer'], want, reason: text);
+      });
+    }
+
+    test('100% off is a question, not an offer of nothing', () async {
+      final (g, id, ask) = await mango();
+      final r = await g.move(id, text: '100% off can?');
+      expect(r['event'], 'clarify');
+      expect(r['ask'], ask);
+    });
+  });
 }

@@ -1666,6 +1666,20 @@ class _JarScreenState extends State<JarScreen> {
     if (mounted) setState(() => _j = j);
   }
 
+  /// 👛 Save some of your wallet into the jar.
+  Future<void> _save(double amount) async {
+    try {
+      final r = await widget.api.saveToJar(amount);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('🫙 ${money(r['saved'] as num)} saved. Jar money is for goals, not the market.')),
+      );
+      setState(() => _j = r);
+    } on ApiError catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   Future<void> _buy(Map g) async {
     try {
       final r = await widget.api.buyGoal('${g['id']}');
@@ -1695,12 +1709,48 @@ class _JarScreenState extends State<JarScreen> {
                     style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Palette.ink),
                   ),
                 ),
-                const Text(
-                  'Every dollar you bargain off an asking price goes in here, and so does the profit from your own '
-                  'stall. Paying more never stops you buying: you just save less.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Palette.soft, height: 1.35),
-                ),
+                if (j['wallet'] is num) ...[
+                  const Text(
+                    'Save from your wallet for the big things below. Jar money stays here: it can\'t be spent at '
+                    'the market.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Palette.soft, height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    '👛 In your wallet: ${money(j['wallet'] as num)}',
+                    key: const ValueKey('jar_wallet'),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w700, color: Palette.ink),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final v in const [5.0, 10.0, 20.0])
+                        if ((j['wallet'] as num) >= v)
+                          Bouncy(
+                            key: ValueKey('save_${v.toInt()}'),
+                            onTap: () => _save(v),
+                            child: Pill(text: 'Save ${money(v)}', icon: '🫙', color: Colors.white),
+                          ),
+                      if ((j['wallet'] as num) > 0)
+                        Bouncy(
+                          key: const ValueKey('save_all'),
+                          onTap: () => _save((j['wallet'] as num).toDouble()),
+                          child: const Pill(text: 'Save it all', icon: '🫙', color: Colors.white),
+                        ),
+                    ],
+                  ),
+                ] else
+                  const Text(
+                    'Every dollar you bargain off an asking price goes in here, and so does the profit from your own '
+                    'stall. Paying more never stops you buying: you just save less.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Palette.soft, height: 1.35),
+                  ),
                 const SizedBox(height: 16),
                 for (final g in (j['goals'] as List).cast<Map>())
                   Container(

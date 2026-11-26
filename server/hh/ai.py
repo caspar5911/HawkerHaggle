@@ -58,15 +58,17 @@ Read the WHOLE message carefully, word by word, in Singlish (lah, leh, lor, hor,
 expensive, wah lau, aiyo...), together with the conversation so far. First write what they really mean in one
 plain sentence ("reading"), then choose exactly one move:
 
-offer      - they name a price they want to pay ("20 can?", "$15 lah", "ok lah 24").
+offer      - they name a price they want to pay ("20 can?", "$15 lah", "ok lah 24", "twenty five lah" = 25).
              A price they quote for ANOTHER stall, or one they paid before elsewhere ("last week I paid $16"), is
              competitor, not offer.
-budget     - they say a number is ALL they have or can pay: "I only have $16", "my budget only 18", "16 is all I
-             got", "wallet left $16". price is that number.
+budget     - they say a number is ALL they have or can pay, or their FINAL offer: "I only have $16", "my budget only
+             18", "16 is all I got", "wallet left $16", "my final offer 16", "take it or leave it, 16", "16, last
+             offer". price is that number.
 pity       - a sad story to get sympathy WITHOUT naming a number: hungry, starving, nothing to eat, no money, lost
              job, sick, sad day. (With a number it is budget or offer.)
 plead      - they ask for cheaper / discount / best price WITHOUT naming a number, or complain the price is too
-             high ("26? aiyo!", "quite steep leh", "too much for me", "everything so overpriced").
+             high ("26? aiyo!", "quite steep leh", "too much for me", "everything so overpriced"). Asking for her
+             lowest or last price is plead too ("what's your lowest?", "last price?", "best price boss?").
 compliment - they praise the goods or the stallholder.
 competitor - they say another stall or shop is cheaper.
 bulk       - they want to buy more than one for a better price, or ask the price for two ("how much for two?").
@@ -101,7 +103,9 @@ Extra fields:
 also     - if the message ALSO does one of these besides the main move, name it: compliment, regular, pity, flirt,
            rude. "wah so nice, 20 can?" is move offer, also compliment. Otherwise null.
 relative - if they describe their price relative to the stallholder's, don't do the maths, describe it:
-           {"op": "less", "amount": 2} for "$2 less can?" / "minus 2 dollars";
+           {"op": "less", "amount": 2} for "$2 less can?" / "minus 2 dollars" / "$2 discount" / "cheaper by 2";
+           {"op": "percent", "amount": 10} for "10% off" / "10 percent discount" / "discount 20%" (a share off her
+           price; "half price" is {"op": "percent", "amount": 50});
            {"op": "halfway"} for "meet halfway" / "split the difference" / "half half";
            {"op": "round_down"} for "round down lah" / "remove the cents". Then move is offer, price null.
            Otherwise null.
@@ -282,7 +286,7 @@ class AI:
                     return Heard(move, price if price and price > 0 else None, True,
                                  str(data.get("reading") or "")[:200], str(data.get("unclear") or "")[:120],
                                  also if also in ALSO and also != move else "",
-                                 op if op in ("less", "halfway", "round_down") else "", amount,
+                                 op if op in ("less", "percent", "halfway", "round_down") else "", amount,
                                  per if per in ("total", "each") else "", qty if qty and 0 < qty < 1000 else None)
             except (ValueError, TypeError, AttributeError):
                 pass
@@ -420,7 +424,7 @@ WORDS = [
     ("flirt", r"\b(date|marry( me)?|girlfriend|boyfriend|sexy|kiss|i love you|love you|darling|be my)\b"),
     ("pity", r"\b(starving|hungry|nothing to eat|no food|no money|broke|jobless|lost my job|retrenched|sick|"
              r"hospital|kesian|pity me|very poor|so poor)\b"),
-    ("plead", r"\b(cheaper|discount|less|lower|best price|kurang|reduce|so ex|so expensive)\b"),
+    ("plead", r"\b(cheaper|discount|less|lower|best price|lowest|last price|kurang|reduce|so ex|so expensive)\b"),
     ("compliment", r"\b(nice|fresh|beautiful|pretty|best|good|sweet|shiok|handsome|lovely)\b"),
     ("accept", r"\b(deal|i('ll| will)? (take|buy)( it| this| one| lah)?|pack (it|for me)|wrap (it|for me))\b"),
     ("clarify", r"^\s*(ok+|okay|can|fine|hmm+|ya|yes|sure)\b"),
@@ -437,23 +441,57 @@ def plain_yes(text: str) -> bool:
 
 
 RELATIVE = [
+    # "10% off", "10 percent discount", "half price": a share off her price (worked out by the game, not the model)
+    ("percent", re.compile(r"(\d+(?:\.\d+)?)\s*(%|percent\b|per cent\b)|\b(half|1/2) (price|off)\b|\bhalf the price\b")),
     ("halfway", re.compile(r"\b(half ?way|half half|split the difference|meet (in the )?(middle|halfway))\b")),
     ("round_down", re.compile(r"\b(round (it )?down|remove the cents|no cents|cut the cents)\b")),
-    ("less", re.compile(r"\$?\s*(\d+(?:\.\d{1,2})?)\s*(dollars?|bucks)?\s*(less|off|cheaper)\b|\bminus\s*\$?\s*(\d+(?:\.\d{1,2})?)")),
+    ("less", re.compile(r"\$?\s*(\d+(?:\.\d{1,2})?)\s*(dollars?|bucks)?\s*(less|off|cheaper|discount)\b"
+                      r"|\bminus\s*\$?\s*(\d+(?:\.\d{1,2})?)"
+                      r"|\b(cheaper|lower|less|down|discount) (by|of) \$?\s*(\d+(?:\.\d{1,2})?)")),
 ]
+
+# Numbers in words ("twenty five", "fifteen dollars"), the way people type them: as digits for the rules. A single
+# "one".."nine" only before dollars/bucks, so "just one" or "buy two" stay words.
+_UNITS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9}
+_TEENS = {"ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14, "fifteen": 15, "sixteen": 16,
+          "seventeen": 17, "eighteen": 18, "nineteen": 19}
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+NUMBER_WORDS = re.compile(
+    r"\b(?:(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[\s-]+(one|two|three|four|five|six|seven|eight|nine))?"
+    r"|(ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)"
+    r"|(one|two|three|four|five|six|seven|eight|nine)(?=\s*(?:dollars?|bucks)\b))\b")
+CENTS = re.compile(r"(\d+)\s*dollars?\s*(?:and\s*)?(\d{1,2})\s*cents?\b")
+# A number that counts something ("10 years", "2 friends", "3 days"), never a price
+COUNTED = re.compile(r"(?<![$\d.])\d+(?:\.\d+)?\s*(years?|yrs?|kg|kilos?|g|grams?|days?|hours?|hrs?|minutes?|mins?|"
+                     r"am|pm|o'?clock|times?|months?|weeks?|cm|km|friends?|people|students?|kids?|children|boxes)\b")
+
+
+def plain_numbers(text: str) -> str:
+    """Lower case, number words as digits, "20 dollars 50 cents" as 20.50."""
+    def word(m: re.Match) -> str:
+        if m.group(1):
+            return str(_TENS[m.group(1)] + (_UNITS[m.group(2)] if m.group(2) else 0))
+        return str(_TEENS[m.group(3)] if m.group(3) else _UNITS[m.group(4)])
+    t = NUMBER_WORDS.sub(word, text.lower())
+    return CENTS.sub(lambda m: f"{m.group(1)}.{int(m.group(2)):02d}", t)
 
 
 def heard_by_rules(text: str) -> "Heard":
     """The word-rule reading of a message, with the same extras the AI gives (relative price, also, per piece)."""
-    t = text.lower()
+    t = plain_numbers(text)
     for op, rx in RELATIVE:
         m = rx.search(t)
         if m:
             amount = next((float(g) for g in m.groups() if g and re.fullmatch(r"\d+(?:\.\d+)?", g)), None)
+            if op == "percent" and amount is None:
+                amount = 50.0                                       # half price
             return Heard("offer", None, False, rel_op=op, rel_amount=amount)
     tot = re.search(r"\b(2|two)\s*(for|=)\s*\$?\s*(\d+(?:\.\d{1,2})?)", t)
     if tot:
         return Heard("bulk", float(tot.group(3)), False, per="total")
+    tot = re.search(r"(?<![\d.])\$?\s*(\d+(?:\.\d{1,2})?)\s*for\s*(2|two)\b(?!\s*(dollars?|bucks))", t)   # "30 for 2"
+    if tot:
+        return Heard("bulk", float(tot.group(1)), False, per="total")
     move, price = rules(text)
     also = ""
     if move in ("offer", "budget", "plead", "bulk"):
@@ -481,17 +519,22 @@ def fast_offer(text: str, ask: float) -> float | None:
 
 
 def rules(text: str) -> tuple[str, float | None]:
-    t = text.lower()
+    t = plain_numbers(text)
     bud = re.search(r"\b(only (have|got|left)|budget|all i (have|got)|can only (pay|afford)|left)\b[^\d]{0,12}\$?\s*(\d+(?:\.\d{1,2})?)"
                     r"|\$?\s*(\d+(?:\.\d{1,2})?)\s*(is|only)?\s*all i (have|got)", t)
     if bud:
         return "budget", float(bud.group(5) or bud.group(6))
+    fin = re.search(r"\b(final|last) offer\b|\btake it or leave it\b", t)       # "my final offer 14": a firm limit
+    num = re.search(r"\$?\s*(\d+(?:\.\d{1,2})?)", COUNTED.sub(" ", t))
+    if fin and num:
+        return "budget", float(num.group(1))
     qty = re.search(r"\b(buy|take|want|give me|get)\s+(\d+)\b(?!\s*(dollars?|bucks|\$))", t)
     if qty and int(qty.group(2)) != 1:
         return ("bulk", None) if int(qty.group(2)) == 2 else ("clarify", None)   # "I buy 100 for 150": ask
-    if len(re.findall(r"\d+(?:\.\d+)?", t)) > 1 and re.search(r"\bfor\b", t):
+    priced = COUNTED.sub(" ", t)        # "I come here 10 years, 20 can?": the 20 is the price
+    if len(re.findall(r"\d+(?:\.\d+)?", priced)) > 1 and re.search(r"\bfor\b", priced):
         return "clarify", None                                                     # "3 for 20": per piece or total?
-    m = re.search(r"\$?\s*(\d+(?:\.\d{1,2})?)", t)
+    m = re.search(r"\$?\s*(\d+(?:\.\d{1,2})?)", priced)
     if m and not re.search(r"\b(buy|take)\s+" + re.escape(m.group(1)) + r"\b", t):
         return "offer", float(m.group(1))
     for move, pattern in WORDS:

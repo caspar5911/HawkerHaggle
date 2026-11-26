@@ -373,6 +373,7 @@ class Progress {
     required int qty,
     required Map flags,
     List<Map> chat = const [],
+    int toStock = -1, // how many go into your stock (default: all of them; Mum's go home to Mum)
   }) {
     _keepChat(record, qty, chat);
     final stall = '${record['stall']}';
@@ -392,7 +393,7 @@ class Progress {
     _stickersForHaggle(record, flags, fresh);
     _friendStickers(fresh);
     final story = _storyProgress(record, fresh);
-    _addStock(record, qty);
+    _addStock(record, toStock < 0 ? qty : toStock);
     String? mum;
     if (deal && record['deal'] != null) {
       mum = _onListDeal(stall, '${record['item']}', (record['deal'] as num).toDouble(), qty, fresh);
@@ -528,7 +529,15 @@ class Progress {
 
   // ---------------------------------------------------------------- freebies
   /// A freebie into your stock (free). Every few good deals without one, one is guaranteed.
-  String? maybeFreebie(String stall, {required bool lucky, required bool good, required Set<String> fresh}) {
+  /// [keepPaid] (with a wallet): never push out something you paid for; with no room, the freebie waits (the
+  /// dry-spell count isn't reset, so it comes once there's room).
+  String? maybeFreebie(
+    String stall, {
+    required bool lucky,
+    required bool good,
+    required Set<String> fresh,
+    bool keepPaid = false,
+  }) {
     final f = freebies[stall];
     if (f == null) return null;
     final pity = ((p['free_pity'] ?? 0) as num).toInt();
@@ -536,8 +545,9 @@ class Progress {
       if (good) p['free_pity'] = pity + 1;
       return null;
     }
-    p['free_pity'] = 0;
     final list = (p['stock'] ??= <Object>[]) as List;
+    if (keepPaid && list.length >= stockMax) return null;
+    p['free_pity'] = 0;
     list.add({
       'key': 'free:$stall',
       'name': f.$1,
@@ -589,8 +599,92 @@ class Progress {
 
   bool softSpotFound(String stall) => _map('soft_spots')[stall] == true;
 
+  // ---------------------------------------------------------------- wallet
+  /// Mum's money: to start with, then each new market day (an allowance, so saving is yours to do; topping up to a
+  /// fixed amount would let you save it all every night and have it refilled).
+  static const startMoney = 50.0;
+  static const pocketMoney = 20.0;
+
+  double get wallet => ((p['wallet'] ?? 0) as num).toDouble();
+  void _setWallet(double v) => p['wallet'] = (math.max(0.0, v) * 100).round() / 100;
+
+  /// A new market day: Mum's pocket money ([startMoney] the very first time, then [pocketMoney]). Once a day; returns
+  /// what she gave.
+  double topUp() {
+    final day = dayKey(now());
+    if (p['wallet_day'] == day) return 0;
+    final add = p['wallet_day'] == null ? startMoney : pocketMoney;
+    p['wallet_day'] = day;
+    _setWallet(wallet + add);
+    p['pocket'] = {'day': day, 'added': add};
+    return add;
+  }
+
+  /// What Mum added this morning (0 if nothing, or not today).
+  double pocketToday() {
+    final x = p['pocket'];
+    return x is Map && x['day'] == dayKey(now()) ? ((x['added'] ?? 0) as num).toDouble() : 0;
+  }
+
+  /// Paid at the market.
+  void pay(double v) => _setWallet(wallet - v);
+
+  /// Money in: a sale at your own stall, the change from Mum's list.
+  void receive(double v) => _setWallet(wallet + v);
+
+  /// From your wallet into your savings jar (for goals). Returns what was saved.
+  double saveToJar(double amount) {
+    final v = (math.min(math.max(0.0, amount), wallet) * 100).round() / 100;
+    if (v <= 0) return 0;
+    _setWallet(wallet - v);
+    addToJar(v);
+    return v;
+  }
+
+  /// Does Mum pay for this one? An item on her list today that hasn't been bought yet.
+  bool mumPays(String stall, String item) {
+    final key = '$stall/$item';
+    final t = today();
+    final onList = (t['items'] as List).any((i) => '${(i as Map)['stall']}/${i['item']}' == key);
+    final bought = (_map('daily')['bought'] as Map?) ?? const {};
+    return onList && !bought.containsKey(key);
+  }
+
+  /// Mum paid for one of her list items at [price] (after the haggle has been recorded). When both are done, you keep
+  /// the change: what's left of her budget goes into your wallet (over budget, the extra comes out of it). Returns
+  /// Mum's note about the change, once.
+  String? mumPaid(String stall, String item, double price) {
+    final d = _map('daily');
+    final paid = (d['mum_paid'] ??= <String, Object?>{}) as Map;
+    paid['$stall/$item'] = price;
+    final t = today();
+    final keys = [for (final i in (t['items'] as List).cast<Map>()) '${i['stall']}/${i['item']}'];
+    if (d['change_given'] == true || !keys.every(paid.containsKey)) return null;
+    d['change_given'] = true;
+    final spent = keys.fold<double>(0, (a, k) => a + (paid[k] as num).toDouble());
+    final change = (((t['budget'] as num).toDouble() - spent) * 100).round() / 100;
+    if (change > 0) {
+      receive(change);
+      return '👛 Mum: Keep the change! ${_money(change)} into your wallet.';
+    }
+    if (change < 0) {
+      final extra = math.min(-change, wallet);
+      pay(extra);
+      return extra > 0 ? '👛 Mum: You went over, so ${_money(extra)} comes out of your wallet ah.' : null;
+    }
+    return null;
+  }
+
   // ---------------------------------------------------------------- stock for your own stall
   static const stockMax = 10;
+
+  /// Would a deal on this item go into your stock? (Not a day's rental or a catering order, not a legendary item.)
+  bool goesToStock(String stall, String item) =>
+      !notForResale.contains('$stall/$item') &&
+      (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().any((i) => i['id'] == item);
+
+  /// Room left in your stock.
+  int get stockRoom => stockMax - stock.length;
 
   /// Things that can't be resold at your own stall (a day's rental; a catering order).
   static const notForResale = {'tan/bicycle', 'rosnah/tray'};
@@ -615,6 +709,7 @@ class Progress {
         'emoji': item['emoji'],
         'cost': (record['deal'] as num).toDouble(),
         'fair': (item['fair'] as num).toDouble(),
+        'ask': (item['ask'] as num).toDouble(),
         'from': _stalls['${record['stall']}']?['name'],
       });
     }
