@@ -24,6 +24,7 @@ from pydantic import BaseModel, ValidationError, Field
 from .accounts import SAVE_MAX, AccountError, Accounts
 from .arcade import Arcade
 from .hawker_rush import HawkerRush
+from .rush_rooms import RoomError, RushRooms
 from .coop import CoopError, Rooms
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
 from .engine import Haggle, Item, Personality, State
@@ -60,9 +61,14 @@ PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/
                 "/ai/coop/create", "/ai/coop/join", "/ai/coop/send", "/ai/coop/pull", "/ai/coop/leave",
                 # 🏆 the arcade's leaderboards (Caspar's Arcade on GitHub Pages)
                 "/ai/arcade/ceiling-punch/ticket", "/ai/arcade/ceiling-punch/score", "/ai/arcade/ceiling-punch/top",
-                "/ai/arcade/hawker-rush/ticket", "/ai/arcade/hawker-rush/score", "/ai/arcade/hawker-rush/top"}
+                "/ai/arcade/hawker-rush/ticket", "/ai/arcade/hawker-rush/score", "/ai/arcade/hawker-rush/top",
+                # 👫 Hawker Rush co-op rooms (friends sharing one stall)
+                "/ai/arcade/hawker-rush/room/create", "/ai/arcade/hawker-rush/room/join", "/ai/arcade/hawker-rush/room/send",
+                "/ai/arcade/hawker-rush/room/pull", "/ai/arcade/hawker-rush/room/leave"}
 ARCADE_TICKETS_PER_MINUTE = 240  # (everyone on the public side shares one address)
 ARCADE_SCORES_PER_MINUTE = 90
+RUSH_ROOMS_PER_MINUTE = 40     # new rooms and joins (everyone on the public side shares one address)
+RUSH_ROOM_CALLS_PER_MINUTE = 1500  # per player in a room (a phone sends and hears several frames a second)
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
 PUBLIC_AI_PER_DAY = 600        # per account (a haggle move is about 2 calls)
@@ -111,6 +117,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     accounts = accounts or Accounts(os.environ.get("HH_ACCOUNTS_DB", str(ROOT / "server" / "var" / "accounts.db")))
     arcade = arcade or Arcade(os.environ.get("HH_ARCADE_DB", str(ROOT / "server" / "var" / "arcade.db")))
     rush = HawkerRush(arcade)
+    rush_rooms = RushRooms()
     gate = GATE if gate is None else gate
     gateway_logins = GATEWAY_LOGINS if gateway_logins is None else {x.lower() for x in gateway_logins}
     admin_logins = ADMIN_LOGINS if admin_logins is None else {x.lower() for x in admin_logins}
@@ -638,6 +645,28 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         if game == "hawker-rush":
             return await rush_call(rush.top, body.get("mode"), name)
         return arcade.board(game, market_today(), name[:20] if isinstance(name, str) else "")
+
+    @app.post("/ai/arcade/hawker-rush/room/{what}")
+    async def rush_room(what: str, request: Request):
+        """👫 Co-op rooms for Hawker Rush: create, join, send, pull (waits a few seconds for news), leave."""
+        body = await _small_json(request, 16 * 1024)
+        token = body.get("token") if isinstance(body.get("token"), str) else ""
+        code = body.get("code", "")
+        try:
+            if what in ("create", "join"):
+                limit("rush-room-new:" + client_ip(request), RUSH_ROOMS_PER_MINUTE)
+                return rush_rooms.create(body.get("name")) if what == "create" else rush_rooms.join(code, body.get("name"))
+            if what not in ("send", "pull", "leave"):
+                raise HTTPException(404, "Not Found")
+            limit("rush-room:" + token[:48], RUSH_ROOM_CALLS_PER_MINUTE)
+            if what == "send":
+                return rush_rooms.send(code, token, body.get("msg"))
+            if what == "pull":
+                after = body.get("after", 0)
+                return await rush_rooms.pull(code, token, after if type(after) is int else 0)
+            return rush_rooms.leave(code, token)
+        except RoomError as exc:
+            raise HTTPException(exc.code, exc.message) from exc
 
     @app.post("/ai/legendary")
     def legendary(request: Request):
