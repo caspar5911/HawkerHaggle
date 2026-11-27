@@ -42,3 +42,11 @@ cd server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt 
 
 When changing the game rules or prompts: change `server/hh`, run its tests, regenerate the fixtures and prompts,
 port the change to `app/lib/core`, and run `flutter test`.
+
+### Hawker Rush leaderboards
+
+The existing `hawker-haggle.service` runs Hawker Rush and Ceiling Punch on the same API. Hawker Rush requires Node 24 on the service PATH or an absolute executable path in `HH_ARCADE_NODE` in `server/.env`. It runs a local replay worker per submission and uses the existing `HH_ARCADE_DB` and signing key. SQLite creates the two Hawker Rush tables on startup. Keep the database and its sibling `.key` private when backing them up. The nightly market backup currently covers only the accounts and market databases.
+
+Before releasing a rules change, copy the matching `games/hawker-rush/public/engine.mjs` from caspars-arcade into `server/hh/hawker_rush_rules/engine.mjs` and compare the files with `cmp`. Change the engine version on both sides when replay rules change. From `server/`, run `.venv/bin/python -m pytest -q tests/test_hawker_rush.py tests/test_arcade.py` with the service's Node executable. These tests use temporary databases and verify both ranked modes end to end.
+
+After installing the reviewed server revision and restarting the existing user service, send an OPTIONS preflight and POST `{"mode":"daily"}` or `{"mode":"speed"}` to `/ai/arcade/hawker-rush/top` on the arcade's configured server. Use the arcade page's Origin and check the allowed origin, Singapore period, and entries. Also POST `{}` to `/ai/arcade/ceiling-punch/top` to verify existing clients. Rankings accept the best verified result per submitted nickname in each period.

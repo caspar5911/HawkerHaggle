@@ -23,6 +23,7 @@ from pydantic import BaseModel, ValidationError, Field
 
 from .accounts import SAVE_MAX, AccountError, Accounts
 from .arcade import Arcade
+from .hawker_rush import HawkerRush
 from .coop import CoopError, Rooms
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
 from .engine import Haggle, Item, Personality, State
@@ -58,7 +59,8 @@ PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/
                 "/ai/admin/legend", "/ai/admin/legend/create", "/ai/admin/legend/delete",
                 "/ai/coop/create", "/ai/coop/join", "/ai/coop/send", "/ai/coop/pull", "/ai/coop/leave",
                 # 🏆 the arcade's leaderboards (Caspar's Arcade on GitHub Pages)
-                "/ai/arcade/ceiling-punch/ticket", "/ai/arcade/ceiling-punch/score", "/ai/arcade/ceiling-punch/top"}
+                "/ai/arcade/ceiling-punch/ticket", "/ai/arcade/ceiling-punch/score", "/ai/arcade/ceiling-punch/top",
+                "/ai/arcade/hawker-rush/ticket", "/ai/arcade/hawker-rush/score", "/ai/arcade/hawker-rush/top"}
 ARCADE_TICKETS_PER_MINUTE = 240  # (everyone on the public side shares one address)
 ARCADE_SCORES_PER_MINUTE = 90
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
@@ -108,6 +110,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     ai = ai or AI()
     accounts = accounts or Accounts(os.environ.get("HH_ACCOUNTS_DB", str(ROOT / "server" / "var" / "accounts.db")))
     arcade = arcade or Arcade(os.environ.get("HH_ARCADE_DB", str(ROOT / "server" / "var" / "arcade.db")))
+    rush = HawkerRush(arcade)
     gate = GATE if gate is None else gate
     gateway_logins = GATEWAY_LOGINS if gateway_logins is None else {x.lower() for x in gateway_logins}
     admin_logins = ADMIN_LOGINS if admin_logins is None else {x.lower() for x in admin_logins}
@@ -549,13 +552,15 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         body = await _small_json(request)
         return coop_call(lambda: rooms.leave(row["id"], str(body.get("code", ""))[:10]))
 
-    async def _small_json(request: Request) -> dict:
-        raw = await request.body()
-        if len(raw) > 12 * 1024:
-            raise HTTPException(413, "Too big.")
+    async def _small_json(request: Request, max_bytes: int = 12 * 1024) -> dict:
+        raw = bytearray()
+        async for chunk in request.stream():
+            if len(raw) + len(chunk) > max_bytes:
+                raise HTTPException(413, "Too big.")
+            raw.extend(chunk)
         try:
             body = json.loads(raw or b"{}")
-        except ValueError:
+        except (ValueError, RecursionError):
             raise HTTPException(400, "Bad request.")
         if not isinstance(body, dict):
             raise HTTPException(400, "Bad request.")
@@ -584,15 +589,26 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
 
     # ------------------------------------------------------------------ 🏆 arcade leaderboards
     def arcade_game(game: str) -> str:
-        if game != "ceiling-punch":
+        if game not in ("ceiling-punch", "hawker-rush"):
             raise HTTPException(404, "Not Found")
         return game
 
+    async def rush_call(fn, *args):
+        try:
+            return await asyncio.to_thread(fn, *args)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
+
     @app.post("/ai/arcade/{game}/ticket")
-    def arcade_ticket(game: str, request: Request):
+    async def arcade_ticket(game: str, request: Request):
         """A new run's tower: a seed in a signed, one-use ticket (only runs started with one can be saved)."""
         arcade_game(game)
         limit("arcade-ticket:" + client_ip(request), ARCADE_TICKETS_PER_MINUTE)
+        if game == "hawker-rush":
+            body = await _small_json(request)
+            return await rush_call(rush.ticket, body.get("mode"))
         return arcade.ticket()
 
     @app.post("/ai/arcade/{game}/score")
@@ -600,15 +616,10 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         """Save a run: it's replayed here from its taps, and only the floor the replay reaches counts."""
         arcade_game(game)
         limit("arcade-score:" + client_ip(request), ARCADE_SCORES_PER_MINUTE)
-        raw = await request.body()
-        if len(raw) > 64 * 1024:
-            raise HTTPException(413, "Too big.")
-        try:
-            body = json.loads(raw or b"{}")
-        except ValueError:
-            raise HTTPException(400, "Bad request.")
-        if not isinstance(body, dict):
-            raise HTTPException(400, "Bad request.")
+        if game == "hawker-rush":
+            body = await _small_json(request, 128 * 1024)
+            return await rush_call(rush.submit, body)
+        body = await _small_json(request, 64 * 1024)
         seed, floor, engine = body.get("seed"), body.get("floor"), body.get("engine")
         if not all(isinstance(v, int) and not isinstance(v, bool) for v in (seed, floor, engine)):
             raise HTTPException(400, "Bad request.")
@@ -624,6 +635,8 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         limit("arcade-top:" + client_ip(request), ARCADE_TICKETS_PER_MINUTE)
         body = await _small_json(request)
         name = body.get("name", "")
+        if game == "hawker-rush":
+            return await rush_call(rush.top, body.get("mode"), name)
         return arcade.board(game, market_today(), name[:20] if isinstance(name, str) else "")
 
     @app.post("/ai/legendary")
