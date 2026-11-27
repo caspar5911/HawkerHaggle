@@ -2,7 +2,7 @@
 
 Scores are never taken on trust. Each run's tower comes from here (a seed in a signed, one-use ticket), and a score
 is the exact list of taps (as engine ticks): the run is replayed here with the same rules as the browser
-(`games/ceiling-punch/public/engine.mjs` in the RuleReaper repo, ported exactly, fixture-tested), and only the floor
+(`games/ceiling-punch/public/engine.mjs` in the caspars-arcade repo, ported exactly, fixture-tested), and only the floor
 the replay reaches counts. Names are cleaned. Nothing about the player is stored but the name they typed.
 """
 from __future__ import annotations

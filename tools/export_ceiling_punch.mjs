@@ -1,5 +1,5 @@
 // Fixtures for the Ceiling Punch replay check on the server (server/hh/arcade.py): towers and whole runs made by the
-// browser's own engine. Run from the repo root, with the RuleReaper repo next to this one (or RULEREAPER=path):
+// browser's own engine. Run from the repo root, with the caspars-arcade repo checked out at ../RuleReaper (or RULEREAPER=path):
 //   node tools/export_ceiling_punch.mjs > server/tests/fixtures/ceiling_punch.json
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
