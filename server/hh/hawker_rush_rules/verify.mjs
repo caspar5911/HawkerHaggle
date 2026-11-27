@@ -17,6 +17,7 @@ function validAction(action) {
     case 'bin-burnt': return owns(E.STATIONS, a) && b === -1;
     case 'bin-dish': return index(a, E.PREP) && b === -1;
     case 'serve': return index(a, E.PREP) && index(b, E.SEATS, -1);
+    case 'call': return a === 0 && b === -1;
     default: return false;
   }
 }
@@ -28,6 +29,7 @@ function verify({mode, period, actions}) {
     if (actions[i][0] < actions[i - 1][0]) return null;
     if (i >= 32 && actions[i][0] - actions[i - 32][0] < 30) return null;
   }
+  // (leaderboard runs are always solo: the spec has no players)
   const spec = mode === 'daily' ? E.daily(period).spec : E.speedRun(new Date(period + 'T00:00:00Z')).spec;
   const shift = E.createShift(spec);
   let i = 0;

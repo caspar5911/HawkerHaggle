@@ -35,28 +35,24 @@ def ticket(client, mode):
     return response.json()
 
 
+# Reference runs from the browser engine (rules version 2): serve the first customer, an input every three ticks.
+RUNS = {"daily_fast":[[130,"cook","grill",-1],[133,"base","plate",-1],[136,"add","peanut",0],[139,"base","plate",-1],[142,"add","rice",1],[145,"add","chicken",1],[148,"add","cucumber",1],[151,"serve",1,-1],[253,"add","satay",0],[256,"serve",0,-1]],"daily_slow":[[280,"cook","grill",-1],[283,"base","plate",-1],[286,"add","peanut",0],[289,"base","plate",-1],[292,"add","rice",1],[295,"add","chicken",1],[298,"add","cucumber",1],[301,"serve",1,-1],[328,"base","cup",-1],[331,"add","kopi",1],[334,"add","milk",1],[337,"add","ice",1],[340,"serve",1,-1],[343,"base","plate",-1],[346,"add","rice",1],[349,"add","chicken",1],[352,"add","cucumber",1],[355,"add","chilli",1],[358,"serve",1,-1]],"speed_fast":[[130,"cook","pot",-1],[133,"cook","grill",-1],[136,"cook","grill",-1],[139,"base","bowl",-1],[142,"add","soy",0],[145,"base","plate",-1],[148,"add","peanut",1],[151,"base","plate",-1],[154,"add","peanut",2],[241,"add","eggs",0],[244,"serve",0,-1]],"speed_slow":[[600,"cook","pot",-1],[603,"cook","grill",-1],[606,"cook","grill",-1],[609,"base","bowl",-1],[612,"add","soy",0],[615,"base","plate",-1],[618,"add","peanut",1],[621,"base","plate",-1],[624,"add","peanut",2],[711,"add","eggs",0],[714,"serve",0,-1]]}
+VALUES = {"daily_fast": 1506, "daily_slow": 1270, "speed_fast": 26383, "speed_slow": 27023}
+
+
 def run(t, name="Chef", slow=False):
-    # Serve Sunday's first customer's two cups, three ticks between inputs.
-    extra = [["add", "kopi", 0]] if t["mode"] == "daily" else [
-        ["add", "teh", 0], ["add", "milk", 0], ["add", "ice", 0]]
-    actions = [["base", "cup", 0], ["add", "kopi", 0], ["add", "milk", 0], ["serve", 0, 0],
-               ["base", "cup", 0], *extra, ["serve", 0, 0]]
-    if t["mode"] == "daily":
-        start, value = (280, 480) if slow else (130, 527)
-    else:
-        start, value = (600, 25990) if slow else (130, 25823)
-    return {**t, "name": name, "value": value,
-            "actions": [[start + 3 * i, *a] for i, a in enumerate(actions, 1)]}
+    key = f"{t['mode']}_{'slow' if slow else 'fast'}"
+    return {**t, "name": name, "value": VALUES[key], "actions": RUNS[key]}
 
 
 @pytest.mark.parametrize("mode,period,first,second", [
-    ("daily", "2026-11-29", 527, 480), ("speed", "2026-11-23", 25823, 25990)])
+    ("daily", "2026-11-29", 1506, 1270), ("speed", "2026-11-23", 26383, 27023)])
 def test_leaderboard_replays_and_keeps_each_nicknames_best(web, mode, period, first, second):
     client, clock = web
     bodies = [run(ticket(client, mode), "Bea", True), run(ticket(client, mode), "Chef", True),
               run(ticket(client, mode), "cHEF")]
     assert len({b["ticket"] for b in bodies}) == 3
-    assert all(b["period"] == period and b["engine"] == 1 for b in bodies)
+    assert all(b["period"] == period and b["engine"] == 2 for b in bodies)
     clock[0] += 130
     for body in bodies:
         response = post(client, "score", body)
@@ -93,11 +89,11 @@ def test_tickets_carry_start_period_across_singapore_midnight_and_monday(web):
 
 
 @pytest.mark.parametrize("change", [
-    {"mode": "speed"}, {"mode": []}, {"engine": True}, {"engine": 2}, {"period": "2026-11-30"}, {"value": 528},
+    {"mode": "speed"}, {"mode": []}, {"engine": True}, {"engine": 1}, {"period": "2026-11-30"}, {"value": 1507},
     {"ticket": "unknown"}, {"name": "x"}, {"actions": None}, {"actions": [[True, "base", "cup", 0]]},
     {"actions": [[550, "base", "cup"], [120, "add", "milk"]]}, {"actions": [[10, "mystery", "cup"]]},
     {"actions": [[120, "serve", 0, 0]]}, {"actions": [[3600, "base", "cup"]]},
-    {"actions": [[10, "base", "cup", 3]]}, {"actions": [[0, "base", {"key": [1]}]]}, {"actions": [[0, "base", "cup"]] * 3000},
+    {"actions": [[10, "base", "cup", 3]]}, {"actions": [[10, "call", 1, -1]]}, {"actions": [[10, "call", 0, 2]]}, {"actions": [[0, "base", {"key": [1]}]]}, {"actions": [[0, "base", "cup"]] * 3000},
 ])
 def test_invalid_submissions_leave_ticket_usable(web, change):
     client, clock = web
@@ -141,7 +137,7 @@ def test_expiry_and_request_limits(web):
 
 def test_idle_completed_shifts_leave_board_empty(web):
     client, clock = web
-    for mode, value in [("daily", 0), ("speed", 27763)]:
+    for mode, value in [("daily", 0), ("speed", 28023)]:
         t = ticket(client, mode)
         clock[0] += 130
         r = post(client, "score", {**t, "name": "Chef", "actions": [], "value": value})
