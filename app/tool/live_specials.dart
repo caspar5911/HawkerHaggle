@@ -21,9 +21,8 @@ Future<void> main() async {
   final fails = <String>[], soft = <String>[], rejected = <String>[];
   for (final MapEntry(key: st, value: list) in specials.entries) {
     for (final x in list) {
-      final day = [
-        for (var w = 0; w < 2; w++) DateTime(2026, 12, 2 + 7 * w, 10),
-      ].firstWhere((d) => specialFor(st, d)?['id'] == x['id']);
+      final day = [for (var w = 0; w < 2; w++) DateTime(2026, 12, 2 + 7 * w, 10)]
+          .firstWhere((d) => specialFor(st, d)?['id'] == x['id']);
       final g = Game(
         content: content,
         store: MemoryKeyValue(),

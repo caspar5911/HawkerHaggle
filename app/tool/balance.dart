@@ -84,6 +84,7 @@ Future<void> main(List<String> args) async {
   final per = args.isEmpty ? 40 : int.parse(args.first);
   final helpers = args.contains('helpers'); // own the haggling helpers from the shop
   final weekly = args.contains('specials'); // 🗓️ the weekly specials instead of the stalls' own things
+  final mood = args.contains('grumpy') ? 'grumpy' : (args.contains('happy') ? 'happy' : null); // 😄/😤 every stall
   final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
   final players = <String, Player>{
     'pays full price': payer,
@@ -116,6 +117,7 @@ Future<void> main(List<String> args) async {
             walletOn: false, // (how fair the haggling is: money doesn't come into it)
           );
           await g.load();
+          g.moodOverride = mood;
           if (helpers) {
             // 🍀 the lucky charm and 🌸 the flowers from the shop: more patience and a better mood from the start
             g.progress.addToJar(140);

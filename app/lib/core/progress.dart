@@ -2,14 +2,13 @@
 /// stall unlocks, tips and backstories. Everything lives in the player's profile on the phone.
 library;
 
-import 'specials.dart';
-
 import 'dart:math' as math;
 
 import 'arcs.dart';
 import 'challenges.dart';
 import 'legendary.dart';
 import 'softspots.dart';
+import 'specials.dart';
 import 'treats.dart';
 
 /// Base stalls: open from the start, and the only ones the daily list uses (so it's the same list for everyone).
@@ -683,6 +682,27 @@ class Progress {
 
   bool softSpotFound(String stall) => _map('soft_spots')[stall] == true;
 
+  /// 💬 Has this pitch (or reason) been used before? A line counts once: the same words again never score.
+  /// Remembers the last 40, by their words (case, spaces and punctuation don't matter).
+  bool pitchUsedBefore(String text) {
+    final key = pitchKey(text);
+    final list = (p['pitches'] ??= <Object>[]) as List;
+    return list.contains(key);
+  }
+
+  void rememberPitch(String text) {
+    final list = (p['pitches'] ??= <Object>[]) as List;
+    final key = pitchKey(text);
+    list.remove(key);
+    list.add(key);
+    while (list.length > 40) {
+      list.removeAt(0);
+    }
+  }
+
+  static String pitchKey(String text) =>
+      text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+
   // ---------------------------------------------------------------- wallet
   /// Mum's money: to start with, then each new market day (an allowance, so saving is yours to do; topping up to a
   /// fixed amount would let you save it all every night and have it refilled).
@@ -918,7 +938,8 @@ class Progress {
       (item == null ? null : anySpecial(stall, item));
 
   /// Would a deal on this item go into your stock? (Not a day's rental or a catering order, not a legendary item.)
-  bool goesToStock(String stall, String item) => !notForResale.contains('$stall/$item') && itemOf(stall, item) != null;
+  bool goesToStock(String stall, String item) =>
+      item == 'mystery' || (!notForResale.contains('$stall/$item') && itemOf(stall, item) != null);
 
   /// Room left in your stock.
   int get stockRoom => stockLimit - stock.length;
@@ -931,9 +952,10 @@ class Progress {
   /// A deal at the market: what you bought becomes stock for your own stall, at what you paid per piece.
   void _addStock(Map record, int qty) {
     if (record['result'] != 'deal' || record['deal'] == null) return;
-    final key = '${record['stall']}/${record['item']}';
+    final id = '${record['inside'] ?? record['item']}'; // 📦 a mystery box: what was inside
+    final key = '${record['stall']}/$id';
     if (notForResale.contains(key)) return;
-    final item = itemOf('${record['stall']}', '${record['item']}');
+    final item = itemOf('${record['stall']}', id);
     if (item == null) return;
     final list = (p['stock'] ??= <Object>[]) as List;
     for (var i = 0; i < qty; i++) {

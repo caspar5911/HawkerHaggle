@@ -956,6 +956,16 @@ class _StallCard extends StatelessWidget {
                         ],
                       ),
                       Text('${stall['stall']} · ${stall['place']}', style: const TextStyle(color: Palette.soft)),
+                      if (!locked && stall['mood_today'] != null)
+                        Text(
+                          stall['mood_today'] == 'happy' ? '😄 In a great mood today!' : '😤 Grumpy today…',
+                          key: ValueKey('mood_${stall['id']}'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: stall['mood_today'] == 'happy' ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                          ),
+                        ),
                       const SizedBox(height: 10),
                       for (final it in items)
                         Padding(
@@ -989,7 +999,10 @@ class _StallCard extends StatelessWidget {
                                               ? (it['sold_out'] == true
                                                     ? '✨ legendary · yours today!'
                                                     : '✨ legendary · today only · asking ${money(it['ask'] as num)}')
+                                              : it['mystery'] == true && it['sold_out'] == true
+                                              ? "📦 yours today! Another one soon"
                                               : '${it['special'] == true ? '🗓️ this week only · ' : ''}'
+                                                    '${it['mystery'] == true ? "📦 what's inside? · today only · " : ''}'
                                                     'asking ${money(it['ask'] as num)}'
                                                     '${it['best_paid'] is num ? ' · 📒 your best ${money(it['best_paid'] as num)}' : ''}'
                                                     '${it['short'] == true ? ' · 👛 more than you have' : ''}'
@@ -1724,7 +1737,8 @@ class _HaggleScreenState extends State<HaggleScreen> {
                             g == null ||
                             g['done'] == true ||
                             widget.item['legendary'] == true ||
-                            widget.item['special'] == true
+                            widget.item['special'] == true ||
+                            widget.item['mystery'] == true
                         ? null
                         : _invite,
                   ),
@@ -2740,7 +2754,7 @@ class _ResultState extends State<_Result> {
     } catch (_) {}
     // a legendary item is gone tomorrow (a weekly special next week), so its link would lead nowhere
     final legendary = g['legendary'] == true || widget.item['legendary'] == true;
-    final special = widget.item['special'] == true;
+    final special = widget.item['special'] == true || widget.item['mystery'] == true;
     final link = legendary || special
         ? ''
         : challengeLink(
