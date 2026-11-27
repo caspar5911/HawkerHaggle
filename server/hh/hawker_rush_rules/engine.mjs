@@ -1,0 +1,506 @@
+// Hawker Rush (v2): run a hawker stall. Customers sit at the counter and order; you build each dish yourself, step by
+// step: a cup, then kopi, then condensed milk; a plate, then toast from the toaster (it burns!), kaya and butter...
+// then serve it to the customer. Quick service earns tips; serving in a row builds a combo.
+// Deterministic: a seed and the list of actions replay exactly (for checked leaderboards).
+
+export const TICK = 1 / 30;
+export const SEATS = 4;
+export const QUEUE_MAX = 3;
+export const DAYS = 15;
+export const SHIFT = 120; // seconds in a story or daily shift
+export const SPEED_CUSTOMERS = 15; // a speed run: serve them all, as fast as you can
+
+// ---------------------------------------------------------------------------------------------------- the kitchen
+// bases: what a dish is built in
+export const BASES = { cup: { name: 'Cup' }, plate: { name: 'Plate' }, bowl: { name: 'Bowl' } };
+
+// ingredients: what goes into which base (cooked ones come from a cooking station)
+export const INGREDIENTS = {
+  kopi: { name: 'Kopi', base: 'cup' },
+  teh: { name: 'Teh', base: 'cup' },
+  milk: { name: 'Condensed milk', base: 'cup' },
+  ice: { name: 'Ice', base: 'cup' },
+  toast: { name: 'Toast', base: 'plate', cooked: 'toaster' },
+  kaya: { name: 'Kaya', base: 'plate' },
+  butter: { name: 'Butter', base: 'plate' },
+  eggs: { name: 'Soft-boiled eggs', base: 'bowl', cooked: 'pot' },
+  soy: { name: 'Soy sauce', base: 'bowl' },
+  rice: { name: 'Rice', base: 'plate' },
+  chicken: { name: 'Chicken', base: 'plate' },
+  cucumber: { name: 'Cucumber', base: 'plate' },
+  chilli: { name: 'Chilli', base: 'plate' },
+  satay: { name: 'Satay', base: 'plate', cooked: 'grill' },
+  peanut: { name: 'Peanut sauce', base: 'plate' },
+};
+
+// cooking stations: they cook one thing (it burns if left ready too long)
+export const STATIONS = {
+  toaster: { name: 'Toaster', makes: 'toast', cook: 3.2, burn: 5, slots: 2 },
+  pot: { name: 'Egg pot', makes: 'eggs', cook: 3.6, burn: 6, slots: 2 },
+  grill: { name: 'Satay grill', makes: 'satay', cook: 4, burn: 4.5, slots: 2 },
+};
+
+// dishes: a base and exactly these ingredients (in any order); `day` it joins the menu
+export const DISHES = {
+  kopi: { name: 'Kopi', base: 'cup', has: ['kopi', 'milk'], price: 2, day: 1 },
+  kopiO: { name: 'Kopi-O', base: 'cup', has: ['kopi'], price: 1.5, day: 2 },
+  toast: { name: 'Kaya toast', base: 'plate', has: ['toast', 'kaya', 'butter'], price: 3, day: 2 },
+  eggs: { name: 'Soft-boiled eggs', base: 'bowl', has: ['eggs', 'soy'], price: 2, day: 3 },
+  teh: { name: 'Teh', base: 'cup', has: ['teh', 'milk'], price: 2, day: 4 },
+  kopiPeng: { name: 'Kopi peng', base: 'cup', has: ['kopi', 'milk', 'ice'], price: 2.5, day: 5 },
+  rice: { name: 'Chicken rice', base: 'plate', has: ['rice', 'chicken', 'cucumber'], price: 5, day: 6 },
+  riceChilli: { name: 'Chicken rice + chilli', base: 'plate', has: ['rice', 'chicken', 'cucumber', 'chilli'], price: 5.5, day: 7 },
+  satay: { name: 'Satay', base: 'plate', has: ['satay', 'peanut'], price: 5, day: 8 },
+  tehPeng: { name: 'Teh peng', base: 'cup', has: ['teh', 'milk', 'ice'], price: 2.5, day: 9 },
+};
+
+// the counter's prep spots (where dishes are built)
+export const PREP = 3;
+
+// customers (patience: a share of the usual)
+export const PEOPLE = [
+  { id: 'uncle', name: 'Uncle', patience: 1.15 },
+  { id: 'auntie', name: 'Auntie', patience: 1.2 },
+  { id: 'office', name: 'Office worker', patience: .8 },
+  { id: 'student', name: 'Student', patience: 1 },
+  { id: 'worker', name: 'Construction worker', patience: .9 },
+  { id: 'kid', name: 'Kid', patience: .95 },
+  { id: 'tourist', name: 'Tourist', patience: 1.1 },
+];
+
+export const UPGRADES = {
+  prep: { name: 'Bigger counter', what: 'One more spot to build dishes on', costs: [120] },
+  fast: { name: 'Faster stoves', what: 'Toast, eggs and satay cook 15% faster', costs: [80, 260, 520] },
+  timer: { name: 'Kitchen timer', what: 'Food takes 2 s longer to burn', costs: [60, 200] },
+  slots: { name: 'Extra burners', what: 'Toaster, pot and grill cook one more at once', costs: [180, 520] },
+  fan: { name: 'Standing fan', what: 'Customers wait 12% longer', costs: [90, 320, 640] },
+  tipjar: { name: 'Tip jar', what: 'Tips are 20% bigger', costs: [110, 400] },
+};
+
+export const DECOR = {
+  lanterns: { name: 'Red lanterns', cost: 300 },
+  plants: { name: 'Potted plants', cost: 500 },
+  sign: { name: 'Shop signboard', cost: 900 },
+  neon: { name: 'Neon sign', cost: 1500 },
+};
+
+export const BURNT_COST = 1; // binning burnt food
+export const WASTE_COST = .5; // binning a dish you built
+
+// ---------------------------------------------------------------------------------------------------- dice
+function mulberry32(a) {
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function hash(text) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
+
+const round2 = v => Math.round(v * 100) / 100;
+
+// ---------------------------------------------------------------------------------------------------- menu and customers
+export function menuFor(day) {
+  return Object.keys(DISHES).filter(d => DISHES[d].day <= day);
+}
+
+export function newOn(day) {
+  return Object.keys(DISHES).filter(d => DISHES[d].day === day);
+}
+
+/** The ingredients, bases and stations a day needs (the kitchen shows only these). */
+export function kitchenFor(day) {
+  const bases = new Set(), ingredients = new Set(), stations = new Set();
+  for (const d of menuFor(day)) {
+    bases.add(DISHES[d].base);
+    for (const i of DISHES[d].has) {
+      if (INGREDIENTS[i].cooked) stations.add(INGREDIENTS[i].cooked);
+      else ingredients.add(i);
+    }
+  }
+  return { bases: [...bases], ingredients: [...ingredients], stations: [...stations] };
+}
+
+/** How many steps a dish takes (a base, each ingredient; cooking counts double): for patience. */
+export function steps(dish) {
+  return 1 + DISHES[dish].has.reduce((n, i) => n + (INGREDIENTS[i].cooked ? 2 : 1), 0);
+}
+
+/**
+ * The customers of a shift. `mode`: 'day' (a story or daily shift), or 'speed' (a speed run: a steady line of
+ * customers, every dish on the menu).
+ */
+export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {} } = {}) {
+  const rng = mulberry32(hash(`hawker-rush-2:${mode}:${seed}:${day}`));
+  const speed = mode === 'speed';
+  const menu = menuFor(speed ? DAYS : day);
+  const fresh = speed ? [] : newOn(day);
+  const count = speed ? SPEED_CUSTOMERS : Math.min(30, 6 + Math.round(day * 1.3));
+  const span = SHIFT - 22;
+  const hard = speed ? .2 : Math.min(.3, day * .018);
+  const people = [];
+  let at = 1.5;
+  for (let i = 0; i < count; i++) {
+    if (i > 0) at = speed ? at + 1.2 + rng() * 1.3 : (rng() < .2 ? at + .6 : at + (span / count) * (.55 + rng() * .9));
+    if (!speed && at > SHIFT - 20) break;
+    const big = speed ? (rng() < .35 ? 1 : 0) : day === 1 ? 0 : day < 4 ? (rng() < .3 ? 1 : 0) : (rng() < .2 ? 2 : rng() < .5 ? 1 : 0);
+    const order = [];
+    for (let k = 0; k <= big; k++) {
+      order.push(fresh.length && rng() < .35 ? fresh[Math.floor(rng() * fresh.length)] : menu[Math.floor(rng() * menu.length)]);
+    }
+    const who = PEOPLE[Math.floor(rng() * PEOPLE.length)];
+    const work = order.reduce((n, d) => n + steps(d), 0);
+    const patience = (16 + 4 * work) * who.patience * (1 - hard) * (1 + .12 * (upgrades.fan ?? 0));
+    people.push({ id: i, at: round2(at), who: who.id, order, patience: round2(patience) });
+  }
+  return people;
+}
+
+/** The stars of a day: a share of what every order is worth before tips. */
+export function goals(people) {
+  const worth = people.reduce((s, p) => s + p.order.reduce((t, d) => t + DISHES[d].price, 0), 0);
+  return [Math.round(worth * .55), Math.round(worth * .85), Math.round(worth * 1.1)];
+}
+
+export function starsFor(coins, goal) {
+  return goal.filter(g => coins >= g).length;
+}
+
+// ---------------------------------------------------------------------------------------------------- a shift
+/** A new shift. `spec`: { day, seed, mode: 'day'|'speed', upgrades }. */
+export function createShift(spec = {}) {
+  const { day = 1, seed = 1, mode = 'day', upgrades = {} } = spec;
+  const people = schedule({ day, seed, mode, upgrades });
+  const kitchen = kitchenFor(mode === 'speed' ? DAYS : day);
+  const stations = {};
+  for (const id of kitchen.stations) {
+    stations[id] = { slots: Array.from({ length: STATIONS[id].slots + (upgrades.slots ?? 0) }, () => null) };
+  }
+  return {
+    day, seed, mode, upgrades, kitchen,
+    t: 0, ticks: 0, phase: 'running',
+    arrivals: people, next: 0,
+    seats: Array.from({ length: SEATS }, () => null),
+    queue: [],
+    prep: Array.from({ length: PREP + (upgrades.prep ?? 0) }, () => null),
+    stations,
+    coins: 0, tips: 0, served: 0, dishes: 0, lost: 0, passed: 0, burnt: 0, wasted: 0, combo: 0, bestCombo: 0,
+    goal: goals(people),
+    events: [],
+  };
+}
+
+const cookTime = (shift, id) => STATIONS[id].cook * .85 ** (shift.upgrades.fast ?? 0);
+const burnTime = (shift, id) => STATIONS[id].burn + 2 * (shift.upgrades.timer ?? 0);
+
+/** What a dish on the counter is (a dish id when it's exactly a dish, else null). */
+export function dishOf(item) {
+  if (!item) return null;
+  for (const [id, d] of Object.entries(DISHES)) {
+    if (d.base === item.base && d.has.length === item.has.length && d.has.every(i => item.has.includes(i))) return id;
+  }
+  return null;
+}
+
+/** Which dishes this item could still become (by adding more). */
+export function couldBe(item) {
+  return Object.keys(DISHES).filter(id => {
+    const d = DISHES[id];
+    return d.base === item.base && item.has.every(i => d.has.includes(i));
+  });
+}
+
+/** The dishes the seated customers still need (who needs it most first). */
+export function wanted(shift) {
+  const out = [];
+  shift.seats.forEach((c, seat) => {
+    if (!c || c.leaving) return;
+    c.order.forEach((d, k) => {
+      if (!c.got[k]) out.push({ dish: d, seat, left: c.left });
+    });
+  });
+  return out.sort((a, b) => a.left - b.left);
+}
+
+/** Where a tapped ingredient should go: the best dish on the counter to add it to (or -1). */
+export function autoSpot(shift, ingredient) {
+  const base = INGREDIENTS[ingredient].base;
+  const need = wanted(shift).map(w => w.dish);
+  let best = -1, bestScore = -1;
+  shift.prep.forEach((item, i) => {
+    if (!item || item.base !== base || item.has.includes(ingredient)) return;
+    const options = couldBe({ base, has: [...item.has, ingredient] });
+    if (!options.length) return;
+    // a dish someone is waiting for is best; then any dish it could still become
+    const score = options.some(d => need.includes(d)) ? 2 : 1;
+    if (score > bestScore) {
+      best = i;
+      bestScore = score;
+    }
+  });
+  return best;
+}
+
+/** Put a base (a cup, a plate, a bowl) on the counter. `spot`: which one (-1: the first free). */
+export function placeBase(shift, base, spot = -1) {
+  if (shift.phase !== 'running' || !shift.kitchen.bases.includes(base)) return false;
+  const i = spot >= 0 ? spot : shift.prep.indexOf(null);
+  if (i < 0 || i >= shift.prep.length || shift.prep[i]) {
+    shift.events.push({ type: 'counter-full' });
+    return false;
+  }
+  shift.prep[i] = { base, has: [] };
+  shift.events.push({ type: 'base', spot: i, base });
+  return true;
+}
+
+/** Add an ingredient (from its jar, or a cooked one from its station) to a dish on the counter. */
+export function addIngredient(shift, ingredient, spot = -1) {
+  if (shift.phase !== 'running') return false;
+  const ing = INGREDIENTS[ingredient];
+  if (!ing) return false;
+  let slot = -1;
+  if (ing.cooked) {
+    const st = shift.stations[ing.cooked];
+    if (!st) return false;
+    st.slots.forEach((it, k) => { // (the ready one closest to burning)
+      if (it && it.state === 'ready' && (slot < 0 || it.t > st.slots[slot].t)) slot = k;
+    });
+    if (slot < 0) return false;
+  } else if (!shift.kitchen.ingredients.includes(ingredient)) return false;
+  const i = spot >= 0 ? spot : autoSpot(shift, ingredient);
+  const item = shift.prep[i];
+  if (!item || item.base !== ing.base || item.has.includes(ingredient) ||
+      !couldBe({ base: item.base, has: [...item.has, ingredient] }).length) {
+    shift.events.push({ type: 'wrong', ingredient, spot: i });
+    return false;
+  }
+  item.has.push(ingredient);
+  if (ing.cooked) shift.stations[ing.cooked].slots[slot] = null;
+  shift.events.push({ type: 'add', ingredient, spot: i, dish: dishOf(item) });
+  return true;
+}
+
+/** Start cooking at a station (bread in the toaster, eggs in the pot, satay on the grill). */
+export function cook(shift, id) {
+  if (shift.phase !== 'running' || !shift.stations[id]) return false;
+  const slots = shift.stations[id].slots;
+  const free = slots.indexOf(null);
+  if (free < 0) {
+    shift.events.push({ type: 'station-full', station: id });
+    return false;
+  }
+  slots[free] = { t: 0, state: 'cooking' };
+  shift.events.push({ type: 'cook', station: id, slot: free });
+  return true;
+}
+
+/** Bin burnt food at a station. */
+export function binBurnt(shift, id) {
+  const slots = shift.stations[id]?.slots;
+  const k = slots ? slots.findIndex(it => it && it.state === 'burnt') : -1;
+  if (k < 0 || shift.phase !== 'running') return false;
+  slots[k] = null;
+  shift.coins = round2(Math.max(0, shift.coins - BURNT_COST));
+  shift.events.push({ type: 'bin-burnt', station: id, slot: k });
+  return true;
+}
+
+/** Bin a dish from the counter (a mistake). */
+export function binDish(shift, spot) {
+  if (shift.phase !== 'running' || !shift.prep[spot]) return false;
+  shift.prep[spot] = null;
+  shift.coins = round2(Math.max(0, shift.coins - WASTE_COST));
+  shift.wasted++;
+  shift.events.push({ type: 'bin-dish', spot });
+  return true;
+}
+
+/** Who should get a finished dish: `seat` if they want it, else whoever wants it and has least patience left. */
+export function servingFor(shift, dish, seat = -1) {
+  const wants = s => {
+    const c = shift.seats[s];
+    return c && !c.leaving && c.order.some((d, k) => d === dish && !c.got[k]);
+  };
+  if (seat >= 0) return wants(seat) ? seat : -1;
+  let best = -1;
+  shift.seats.forEach((c, s) => {
+    if (wants(s) && (best < 0 || c.left < shift.seats[best].left)) best = s;
+  });
+  return best;
+}
+
+/** Serve a finished dish from the counter (to `seat`, or whoever needs it most). */
+export function serve(shift, spot, seat = -1) {
+  if (shift.phase !== 'running') return false;
+  const dish = dishOf(shift.prep[spot]);
+  const to = dish ? servingFor(shift, dish, seat) : -1;
+  if (to < 0) {
+    shift.events.push({ type: dish ? 'not-wanted' : 'not-ready', spot, seat });
+    return false;
+  }
+  shift.prep[spot] = null;
+  const c = shift.seats[to];
+  c.got[c.order.findIndex((d, k) => d === dish && !c.got[k])] = true;
+  shift.dishes++;
+  shift.events.push({ type: 'serve', spot, seat: to, dish });
+  if (c.got.every(Boolean)) pay(shift, to);
+  return true;
+}
+
+function pay(shift, seat) {
+  const c = shift.seats[seat];
+  const base = c.order.reduce((s, d) => s + DISHES[d].price, 0);
+  const quick = Math.max(0, c.left / c.patience);
+  const tip = base * .6 * quick * (1 + .2 * (shift.upgrades.tipjar ?? 0));
+  const combo = 1 + Math.min(.5, shift.combo * .1);
+  const amount = round2((base + tip) * combo);
+  shift.coins = round2(shift.coins + amount);
+  shift.tips = round2(shift.tips + amount - base);
+  shift.served++;
+  shift.combo++;
+  shift.bestCombo = Math.max(shift.bestCombo, shift.combo);
+  c.leaving = 'happy';
+  c.leaveAt = shift.t + 1.2; // (a moment to eat and smile)
+  shift.events.push({ type: 'paid', seat, amount, combo: shift.combo, perfect: quick > .6 });
+}
+
+function seatSomeone(shift, person) {
+  const free = shift.seats.indexOf(null);
+  if (free < 0) return false;
+  shift.seats[free] = { ...person, left: person.patience, got: person.order.map(() => false), since: shift.t };
+  shift.events.push({ type: 'arrive', seat: free });
+  return true;
+}
+
+/** One tick: customers arrive and wait, food cooks (and burns), the clock runs. */
+export function step(shift) {
+  if (shift.phase !== 'running') return;
+  shift.ticks++;
+  shift.t = shift.ticks / 30;
+  while (shift.next < shift.arrivals.length && shift.arrivals[shift.next].at <= shift.t) {
+    const p = shift.arrivals[shift.next++];
+    if (!seatSomeone(shift, p)) {
+      if (shift.queue.length < QUEUE_MAX || shift.mode === 'speed') shift.queue.push(p);
+      else {
+        shift.passed++;
+        shift.events.push({ type: 'passed' });
+      }
+    }
+  }
+  shift.seats.forEach((c, i) => {
+    if (!c) return;
+    if (c.leaving) {
+      if (shift.t >= c.leaveAt) shift.seats[i] = null;
+      return;
+    }
+    c.left -= TICK;
+    if (c.left <= 0) {
+      c.left = 0;
+      c.leaving = 'angry';
+      c.leaveAt = shift.t + 1;
+      shift.lost++;
+      shift.combo = 0;
+      shift.events.push({ type: 'angry', seat: i });
+    }
+  });
+  while (shift.queue.length && shift.seats.includes(null)) seatSomeone(shift, shift.queue.shift());
+  for (const [id, st] of Object.entries(shift.stations)) {
+    st.slots.forEach((it, k) => {
+      if (!it) return;
+      it.t += TICK;
+      if (it.state === 'cooking' && it.t >= cookTime(shift, id)) {
+        it.state = 'ready';
+        it.t = 0;
+        shift.events.push({ type: 'ready', station: id, slot: k });
+      } else if (it.state === 'ready' && it.t >= burnTime(shift, id)) {
+        it.state = 'burnt';
+        shift.burnt++;
+        shift.events.push({ type: 'burnt', station: id, slot: k });
+      }
+    });
+  }
+  const everyoneDone = shift.next >= shift.arrivals.length && !shift.queue.length && shift.seats.every(c => !c);
+  if ((shift.mode === 'speed' && everyoneDone) || (shift.mode !== 'speed' && shift.t >= SHIFT)) {
+    shift.phase = 'over';
+    shift.events.push({ type: 'over' });
+  }
+}
+
+/** A cooking slot's progress: 0..1 while cooking; how close to burning while ready. */
+export function progress(shift, id, it) {
+  if (it.state === 'cooking') return Math.min(1, it.t / cookTime(shift, id));
+  if (it.state === 'ready') return Math.min(1, it.t / burnTime(shift, id));
+  return 1;
+}
+
+/** The speed run's time, in seconds (each customer who left angry, or walked past, adds 10 s). */
+export function speedTime(shift) {
+  return Math.round((shift.t + 10 * (shift.lost + shift.passed)) * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------------------------------- actions and replays
+/**
+ * Every player action, as recorded for a replay: [tick, kind, a, b].
+ * kinds: 'base' (base, spot), 'add' (ingredient, spot), 'cook' (station), 'serve' (spot, seat),
+ * 'bin-dish' (spot), 'bin-burnt' (station).
+ */
+export function act(shift, kind, a, b = -1) {
+  switch (kind) {
+    case 'base': return placeBase(shift, a, b);
+    case 'add': return addIngredient(shift, a, b);
+    case 'cook': return cook(shift, a);
+    case 'serve': return serve(shift, a, b);
+    case 'bin-dish': return binDish(shift, a);
+    case 'bin-burnt': return binBurnt(shift, a);
+    default: return false;
+  }
+}
+
+/** Replay a shift from its actions (for checking a score). */
+export function replay(spec, actions, limit = 30 * 60 * 30) {
+  const shift = createShift(spec);
+  let i = 0;
+  while (shift.phase === 'running' && shift.ticks < limit) {
+    while (i < actions.length && actions[i][0] <= shift.ticks) {
+      const [, kind, a, b] = actions[i++];
+      act(shift, kind, a, b);
+    }
+    step(shift);
+    shift.events.length = 0;
+  }
+  return shift;
+}
+
+// ---------------------------------------------------------------------------------------------------- daily, speed run, shop
+export function dayKey(date = new Date()) {
+  return new Date(date.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+export const FIRST_DAILY = '2026-11-27';
+
+/** Today's daily rush: the same shift for everyone (every dish, a standard stall). */
+export function daily(day = dayKey()) {
+  return {
+    key: day,
+    number: Math.round((Date.parse(day) - Date.parse(FIRST_DAILY)) / 86400000) + 1,
+    spec: { day: 12, seed: 'daily-' + day, mode: 'day', upgrades: {} },
+  };
+}
+
+/** This week's speed run: the same 15 customers for everyone (Monday to Sunday, Singapore time). */
+export function speedRun(date = new Date()) {
+  const d = new Date(Date.parse(dayKey(date)));
+  const monday = new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * 86400000).toISOString().slice(0, 10);
+  return { key: monday, spec: { day: DAYS, seed: 'speed-' + monday, mode: 'speed', upgrades: {} } };
+}
+
+export function upgradeCost(id, level = 0) {
+  return UPGRADES[id].costs[level] ?? null;
+}
