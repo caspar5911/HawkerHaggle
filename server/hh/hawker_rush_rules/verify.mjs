@@ -17,6 +17,9 @@ function validAction(action) {
     case 'bin-burnt': return owns(E.STATIONS, a) && b === -1;
     case 'bin-dish': return index(a, E.PREP) && b === -1;
     case 'serve': return index(a, E.PREP) && index(b, E.SEATS, -1);
+    case 'cook-dish': return index(a, E.PREP) && b === -1;
+    case 'flip': return owns(E.STATIONS, a) && b === -1;
+    case 'take': return owns(E.STATIONS, a) && index(b, E.PREP, -1);
     default: return false;
   }
 }
