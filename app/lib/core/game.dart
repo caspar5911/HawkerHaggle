@@ -18,6 +18,7 @@ import 'reader.dart';
 import 'shop.dart';
 import 'softspots.dart';
 import 'specials.dart';
+import 'tournament.dart';
 import 'treats.dart';
 import 'voice.dart';
 
@@ -332,6 +333,60 @@ class Game {
   }
 
   Map<String, Object?> today() => progress.today();
+
+  /// 🏆 This week's tournament, from the market server's board (null when not logged in): the item, the top three,
+  /// your best, and a prize the first time this week you're on top with at least one other player.
+  Future<Map<String, Object?>?> tournament(Map? board) async {
+    final t = tournamentItem(now(), content);
+    if (t == null) return null;
+    final row = ((board?['items'] as List?) ?? const []).cast<Map>().where(
+      (x) => x['stall'] == t.stall && x['item'] == t.item['id'],
+    );
+    final top = row.isEmpty ? const <Object>[] : (row.first['top'] as List? ?? const []);
+    final players = row.isEmpty ? 0 : ((row.first['players'] ?? 0) as num).toInt();
+    final first = top.isEmpty ? null : top.first as Map;
+    final week = weekStartKey(now());
+    String? prize;
+    if (board != null && first?['you'] == true && players >= 2 && _profile['tournament_won'] != week) {
+      _profile['tournament_won'] = week;
+      progress.reward(tournamentPrize, 'tournament');
+      prize = "🏆 You're top of this week's tournament! +${money(tournamentPrize)}";
+      await _save();
+    }
+    return {
+      'stall': t.stall,
+      'stall_name': _stalls[t.stall]?['name'],
+      'item': t.item['id'],
+      'name': t.item['name'],
+      'emoji': t.item['emoji'],
+      'week': week,
+      'top': top,
+      'players': players,
+      'you': row.isEmpty ? null : row.first['you'],
+      'prize': tournamentPrize,
+      'won': _profile['tournament_won'] == week,
+      'prize_now': ?prize,
+    };
+  }
+
+  /// 📖 Your story so far.
+  Map<String, Object?> career() => progress.career();
+
+  /// 📖 Claim a chapter you reached.
+  Future<Map<String, Object?>> claimCareer(String id) async {
+    final r = progress.claimCareer(id);
+    if (r == null) throw GameError(409, "📖 That chapter isn't ready yet. Keep playing!");
+    await _save();
+    return {...progress.career(), 'claimed': id, 'prize': r.prize, 'mum': r.mum, 'wallet': progress.wallet};
+  }
+
+  /// ⚡ Start the market rush (Mum's whole list against the clock).
+  Future<Map<String, Object?>> startRush() async {
+    if (!progress.startRush()) throw GameError(409, "⚡ The rush is once a day, before you start Mum's list.");
+    await _save();
+    return progress.today();
+  }
+
   List<Map<String, Object?>> history() => progress.history();
   Map<String, Object?> challenges() => Challenges(progress).summary();
   Map<String, Object?> historyItem(String id) =>
@@ -403,6 +458,7 @@ class Game {
 
   Map<String, Object?> stalls() {
     final mystery = mysteryToday();
+    final tour = tournamentItem(now(), content); // 🏆
     final wedding = progress.wedding;
     final legend = legendaryToday(now(), events: legendEvents);
     final best = <String, int>{};
@@ -448,6 +504,7 @@ class Game {
                     'short': true,
                   // 🚲 a day's rental: back by 6pm, so it won't go into your stock to sell
                   if (Progress.notForResale.contains('${s['id']}/${i['id']}')) 'rental': true,
+                  if (tour != null && tour.stall == s['id'] && tour.item['id'] == i['id']) 'tournament': true,
                 },
               // 🗓️ this week's special (a different one each week)
               if (specialFor('${s['id']}', now()) case final x?)

@@ -196,6 +196,10 @@ class Api {
   });
   Future<int> reportCount() => _run((g) => g.reports.length);
   Future<Map<String, dynamic>> today() => _run((g) => Map<String, dynamic>.from(g.today()));
+  Future<Map<String, dynamic>> career() => _run((g) => Map<String, dynamic>.from(g.career()));
+  Future<Map<String, dynamic>> claimCareer(String id) =>
+      _run((g) async => Map<String, dynamic>.from(await g.claimCareer(id)));
+  Future<Map<String, dynamic>> startRush() => _run((g) async => Map<String, dynamic>.from(await g.startRush()));
   Future<Map<String, dynamic>> guide() => _run((g) => Map<String, dynamic>.from(g.guide()));
   Future<List<Map<String, dynamic>>> stickers() =>
       _run((g) => [for (final s in g.stickers()) Map<String, dynamic>.from(s)]);
@@ -459,7 +463,9 @@ class Api {
         (by['${g['stall']}'] ??= []).add(g);
       }
       _game!.gossip = by;
-      return b;
+      // 🏆 this week's tournament (and its prize, the first time you're on top)
+      final t = await _game!.tournament(b);
+      return {...b, 'tournament': ?t};
     } on AccountError {
       return null;
     }
