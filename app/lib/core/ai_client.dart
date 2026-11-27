@@ -226,8 +226,13 @@ class AiClient {
   }
 
   /// Persuasion moments: score the customer's pitch 0..2 (null: no AI answer). Malformed answers count as 0.
-  Future<int?> judgePitch({required Map stall, required Map item, required String pitch}) async {
-    final system = pitchPrompt
+  Future<int?> judgePitch({
+    required Map stall,
+    required Map item,
+    required String pitch,
+    bool unprompted = false, // 💬 a reason they gave without being challenged
+  }) async {
+    final system = (unprompted ? reasonPrompt : pitchPrompt)
         .replaceAll('{name}', '${stall['name']}')
         .replaceAll('{persona}', '${stall['persona']}')
         .replaceAll('{item}', '${item['name']}');

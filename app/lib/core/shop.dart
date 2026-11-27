@@ -35,10 +35,12 @@ class Customer {
     required this.lines,
     this.clue = '',
     this.loves = const {},
+    this.chatty = false,
   });
   final String id, name, persona, voice;
   final String clue; // what you can tell by looking at them (shown at your stall)
   final Set<String> loves; // the kinds of things they love (see kindOf): they pay more for those
+  final bool chatty; // loves a chat: two friendly chats warm them up, a bit more each
   final Map<String, String> look;
   final double most; // the most they'll pay, as a share of the fair price (a little random around it)
   final double opens; // their first offer, as a share of the fair price
@@ -50,6 +52,11 @@ class Customer {
 /// What kind of thing it is, for what customers love: fresh food, souvenirs, toys and gadgets, premium things.
 String kindOf(String key) => switch (key) {
   'mei/durian' || 'lim/prawns' || 'lee/scallops' || 'kumar/saffron' || 'wong/radio' || 'wong/tiffin' => 'premium',
+  'lim/crab' || 'lee/abalone' || 'wong/camera' || 'wong/alarmclock' => 'premium',
+  'mei/pineapple' || 'mei/coconut' || 'lim/squid' || 'siti/lapis' || 'rosnah/dadar' || 'kumar/ghee' => 'fresh',
+  'tan/kaya' => 'fresh',
+  'siti/sarong' || 'lee/puer' || 'kumar/cardamom' || 'rosnah/sambal' || 'tan/biscuits' => 'souvenir',
+  'raj/earbuds' || 'raj/cable' || 'boy/kite' || 'boy/robot' || 'faiz/baseballcap' || 'faiz/boots' => 'toy',
   'mei/mango' || 'lim/pomfret' || 'siti/kueh' || 'rosnah/ondeh' || 'rosnah/tray' || 'tan/eggs' || 'mango' => 'fresh',
   'siti/scarf' || 'lee/oolong' || 'kumar/masala' || 'scarf' => 'souvenir',
   'raj/case' || 'raj/powerbank' || 'boy/rccar' || 'boy/yoyo' || 'faiz/sneakers' || 'faiz/jersey' || 'case' => 'toy',
@@ -70,7 +77,7 @@ const customers = [
     opens: 0.55,
     patience: 5,
     step: 0.35,
-    clue: '👴 Counts every cent',
+    clue: '👴 Counts every cent · likes fresh food',
     loves: {'fresh'},
     lines: {
       'greet': ['Boss, this {item}. {offer} can or not?', 'Aiyah, {item} how much? I give you {offer}.'],
@@ -93,7 +100,7 @@ const customers = [
     opens: 0.75,
     patience: 6,
     step: 0.5,
-    clue: '📸 On holiday, happy to spend',
+    clue: '📸 On holiday · likes souvenirs',
     loves: {'souvenir'},
     lines: {
       'greet': ['Oh wow, a {item}! Would you take {offer}?', 'Hello! This {item} is lovely. {offer}, maybe?'],
@@ -116,7 +123,7 @@ const customers = [
     opens: 0.5,
     patience: 6,
     step: 0.3,
-    clue: '🎒 A small allowance',
+    clue: '🎒 Small allowance · likes toys and gadgets',
     loves: {'toy'},
     lines: {
       'greet': ['Boss, {item} for my girlfriend. Student price {offer}?', 'Eh boss, {offer} for the {item} can?'],
@@ -139,7 +146,7 @@ const customers = [
     opens: 0.9,
     patience: 4,
     step: 0.6,
-    clue: '💎 Wants the best, money no problem',
+    clue: '💎 Likes fine things',
     loves: {'premium'},
     lines: {
       'greet': ['Darling, the {item}. {offer}, quickly ah.', '{item}, {offer}? I am in a hurry.'],
@@ -150,6 +157,99 @@ const customers = [
       'happy': ['Hm, charming. {offer}?', 'Sweet talker. {offer}.'],
       'impatient': ["Darling, I don't have all day. {offer}.", 'Quickly ah. {offer}.'],
       'walk': ['Too slow. I go elsewhere.', "Forget it, I don't have time."],
+    },
+  ),
+  Customer(
+    'chef',
+    'Chef Ah Huat',
+    'A busy restaurant chef who knows ingredients well. Pays well for fine ingredients, but cannot be fooled on quality.',
+    "Brisk and businesslike, a little proud of his cooking. Says 'quality first', 'can' and 'okay, deal'.",
+    {'skin': '#D9A877', 'hair': '#3E2723', 'shirt': '#FFFFFF', 'apron': '#FFFFFF', 'accessory': 'beanie'},
+    most: 1.15,
+    opens: 0.6,
+    patience: 4,
+    step: 0.4,
+    clue: '👨‍🍳 A chef · likes fine ingredients',
+    loves: {'premium'},
+    lines: {
+      'greet': ['This {item}, for my kitchen. {offer}?', 'Boss, {item}. I can do {offer}.'],
+      'raise': ['{ask}? Hmm. {offer}, quality first but.', '{ask} too much. {offer} can.'],
+      'annoyed': ['{ask}? I cook for a living, not rich!', 'Wah, {ask}? Cannot lah.'],
+      'accept': ['Okay, deal. {price}.', '{price}, can. Pack it nicely.'],
+      'thanks': ['{price}, good stuff. Thanks.', 'Okay, {price}. My customers will be happy.'],
+      'happy': ['Haha, you know your stuff. {offer}?', 'Good eye. Still, {offer}.'],
+      'impatient': ['Boss, my kitchen is waiting. {offer}.', 'No time to chat. {offer}, yes or no?'],
+      'walk': ['Never mind, I go to the next stall.', 'Too much for my kitchen. Bye.'],
+    },
+  ),
+  Customer(
+    'office',
+    'Darren from the office',
+    'A young office worker on his lunch break, always in a hurry. Decides fast and likes gadgets, but walks off if you take too long.',
+    "Quick and casual, always checking the time. Says 'bro', 'quick quick' and 'okay can'.",
+    {'skin': '#E8C4A0', 'hair': '#212121', 'shirt': '#5C6BC0', 'apron': '#5C6BC0', 'accessory': 'glasses'},
+    most: 1.05,
+    opens: 0.75,
+    patience: 3,
+    step: 0.55,
+    clue: '💼 In a hurry · likes gadgets',
+    loves: {'toy'},
+    lines: {
+      'greet': ['Bro, {item}, {offer}? Quick quick.', 'Lunch break bro. {item}, {offer} can?'],
+      'raise': ['{ask}? Okay, {offer}, quick.', 'Bro, {ask} a bit much. {offer}?'],
+      'annoyed': ['{ask}?! Bro, seriously?', '{ask}? No way lah.'],
+      'accept': ['Okay can, {price}. Done.', '{price}, okay. Quick, I need to go.'],
+      'thanks': ['{price}, nice. Thanks bro!', 'Okay {price}, shiok. Bye!'],
+      'happy': ['Haha okay. {offer}, can?', 'Nice. {offer} then?'],
+      'impatient': ['Bro, my lunch is ending. {offer}.', 'No time, bro. {offer}?'],
+      'walk': ['Aiya, no time. Next time bro.', 'Lunch is over. Bye!'],
+    },
+  ),
+  Customer(
+    'ahma',
+    'Ah Ma Lian',
+    "A sweet grandma who loves to chat with stallholders and buys fresh food for her grandchildren. A good chat puts her in a generous mood.",
+    "Warm and chatty, a little slow. Calls the seller 'boy' or 'girl', says 'aiyo', 'good good' and talks about her grandchildren.",
+    {'skin': '#EBC9A5', 'hair': '#E0E0E0', 'shirt': '#8D6E63', 'apron': '#D7CCC8', 'accessory': 'bun'},
+    most: 1.05,
+    opens: 0.6,
+    patience: 5,
+    step: 0.35,
+    clue: '👵 Loves a chat · likes fresh food',
+    loves: {'fresh'},
+    chatty: true,
+    lines: {
+      'greet': ['Aiyo, nice {item}. For my grandson. {offer} can?', 'Boy ah, this {item}. Ah Ma give you {offer}.'],
+      'raise': ['{ask}? Aiyo, so ex. {offer} lah.', '{ask}... Ah Ma pension small. {offer}?'],
+      'annoyed': ['Aiyo, {ask}? You bully old lady ah?', '{ask}? Ah Ma faint already!'],
+      'accept': ['Okay, okay, {price}. Good good.', '{price}, can. You good child.'],
+      'thanks': ['{price}, good good. Thank you, boy.', 'Okay, {price}. My grandson will like it.'],
+      'happy': ['Hehe, you so sweet. {offer} can?', 'Aiyo, you talk nice. Okay, {offer}?'],
+      'impatient': ['Aiyo, Ah Ma tired already. {offer}.', 'Okay lah, enough talk. {offer}?'],
+      'walk': ['Aiyo, never mind. Ah Ma go home.', 'Too ex for Ah Ma. Bye bye.'],
+    },
+  ),
+  Customer(
+    'auntie',
+    'Auntie Bee',
+    'A sharp auntie who bargains hard for everything and loves batik and good tea. Starts very low, comes up slowly, and has lots of patience.',
+    "Sharp and cheeky, never takes the first price. Says 'aiyo', 'cannot lah', 'last price?' and 'I come here every week'.",
+    {'skin': '#E3B78F', 'hair': '#4E342E', 'shirt': '#00897B', 'apron': '#B2DFDB', 'accessory': 'flower'},
+    most: 1.0,
+    opens: 0.45,
+    patience: 6,
+    step: 0.25,
+    clue: '🛍️ Bargains hard · likes batik and tea',
+    loves: {'souvenir'},
+    lines: {
+      'greet': ['Aiyo, {item} how much? {offer}, last price.', 'I come every week, you know. {item}, {offer}.'],
+      'raise': ['{ask}? Cannot lah. {offer}.', 'Aiyo {ask}! Okay, {offer}, last price?'],
+      'annoyed': ['{ask}?! You think I tourist ah?', 'Wah, {ask}? I go other stall!'],
+      'accept': ['Okay lah, {price}. Next time cheaper ah.', 'Hmm. {price}, okay.'],
+      'thanks': ['{price}, okay. I come back next week.', 'Can, {price}. Thank you ah.'],
+      'happy': ['Hehe, sweet talk. Still {offer} lah.', 'You funny. {offer}?'],
+      'impatient': ['Aiyo, talk talk. {offer}, yes or no?', 'Enough lah. {offer}.'],
+      'walk': ['Too ex. I go other stall.', 'Aiyo, cannot. Bye.'],
     },
   ),
 ];
@@ -209,8 +309,8 @@ class Sale {
   /// A friendly word or a small free gift: the first one makes them a bit more generous; more just costs patience.
   String chat() {
     chats++;
-    if (chats == 1) {
-      most = _half(most * 1.05);
+    if (chats <= (customer.chatty ? 2 : 1)) {
+      most = _half(most * (customer.chatty ? 1.08 : 1.05));
       return 'happy';
     }
     patience -= 1;

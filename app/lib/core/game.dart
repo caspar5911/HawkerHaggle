@@ -17,6 +17,8 @@ import 'py.dart' show plainDigits;
 import 'reader.dart';
 import 'shop.dart';
 import 'softspots.dart';
+import 'specials.dart';
+import 'tournament.dart';
 import 'treats.dart';
 import 'voice.dart';
 
@@ -133,6 +135,10 @@ class _Session {
   bool challenged = false; // they challenged the customer to convince them (the next typed message is the pitch)
   bool pitched = false; // a persuasion moment happened this haggle (at most one)
   int? pitchScore;
+  String moodToday = ''; // 😄 happy / 😤 grumpy: the stallholder's mood of the day ('' most days)
+  Map? mysteryInside; // 📦 a mystery box: what's inside (revealed when you buy it)
+  bool reasoned = false; // 💬 a reason they gave unasked was scored this haggle (at most one)
+  int? reasonScore;
   bool reopened = false; // a "best price" reopened by really winning them over (at most once a haggle)
   bool reopenNow = false; // ...just now (the next reply says so)
   String firmNote = ''; // why their price just became a "best price" (shown once)
@@ -153,6 +159,50 @@ class _Session {
   String coach = ''; // the tip for next time (when it ends)
 }
 
+/// 💬 Does a typed message sound like a reason or a story (enough words, and words that give a why)? Only those are
+/// sent to be scored, so a plain "cheaper lah" or "20 can?" never costs an extra AI call.
+bool _soundsLikeAReason(String text) {
+  final words = text.toLowerCase().split(RegExp(r'[^a-z]+')).where((w) => w.isNotEmpty).toList();
+  if (words.length < 7) return false;
+  const why = {
+    'because',
+    'cos',
+    'cause',
+    'since',
+    'for',
+    'my',
+    'birthday',
+    'mum',
+    'mom',
+    'mother',
+    'grandma',
+    'grandson',
+    'son',
+    'daughter',
+    'family',
+    'kids',
+    'friend',
+    'school',
+    'saving',
+    'promise',
+    'every',
+    'always',
+    'remember',
+    'love',
+    'loves',
+    'favourite',
+    'favorite',
+    'gift',
+    'present',
+    'party',
+    'wedding',
+    'sick',
+    'help',
+    'deserve',
+  };
+  return words.any(why.contains);
+}
+
 /// Sweet-talk: what one friend says before the other makes the offer, for a tag-team combo.
 const _sweet = {'compliment', 'smalltalk', 'regular'};
 
@@ -165,6 +215,13 @@ String surpriseNote(String event, String name, int rivalLeft) => switch (event) 
     rivalLeft > 0
         ? '👵 Auntie Rose wants the last one too: $rivalLeft move${rivalLeft == 1 ? '' : 's'} left!'
         : '👵 Auntie Rose got it…',
+  _ => '',
+};
+
+/// 😄/😤 The banner for a stallholder's mood of the day.
+String moodNote(String mood, String name) => switch (mood) {
+  'happy' => '😄 $name is in a great mood today: a good day to haggle!',
+  'grumpy' => '😤 $name is grumpy today: be nice, or try another day.',
   _ => '',
 };
 
@@ -276,6 +333,60 @@ class Game {
   }
 
   Map<String, Object?> today() => progress.today();
+
+  /// 🏆 This week's tournament, from the market server's board (null when not logged in): the item, the top three,
+  /// your best, and a prize the first time this week you're on top with at least one other player.
+  Future<Map<String, Object?>?> tournament(Map? board) async {
+    final t = tournamentItem(now(), content);
+    if (t == null) return null;
+    final row = ((board?['items'] as List?) ?? const []).cast<Map>().where(
+      (x) => x['stall'] == t.stall && x['item'] == t.item['id'],
+    );
+    final top = row.isEmpty ? const <Object>[] : (row.first['top'] as List? ?? const []);
+    final players = row.isEmpty ? 0 : ((row.first['players'] ?? 0) as num).toInt();
+    final first = top.isEmpty ? null : top.first as Map;
+    final week = weekStartKey(now());
+    String? prize;
+    if (board != null && first?['you'] == true && players >= 2 && _profile['tournament_won'] != week) {
+      _profile['tournament_won'] = week;
+      progress.reward(tournamentPrize, 'tournament');
+      prize = "🏆 You're top of this week's tournament! +${money(tournamentPrize)}";
+      await _save();
+    }
+    return {
+      'stall': t.stall,
+      'stall_name': _stalls[t.stall]?['name'],
+      'item': t.item['id'],
+      'name': t.item['name'],
+      'emoji': t.item['emoji'],
+      'week': week,
+      'top': top,
+      'players': players,
+      'you': row.isEmpty ? null : row.first['you'],
+      'prize': tournamentPrize,
+      'won': _profile['tournament_won'] == week,
+      'prize_now': ?prize,
+    };
+  }
+
+  /// 📖 Your story so far.
+  Map<String, Object?> career() => progress.career();
+
+  /// 📖 Claim a chapter you reached.
+  Future<Map<String, Object?>> claimCareer(String id) async {
+    final r = progress.claimCareer(id);
+    if (r == null) throw GameError(409, "📖 That chapter isn't ready yet. Keep playing!");
+    await _save();
+    return {...progress.career(), 'claimed': id, 'prize': r.prize, 'mum': r.mum, 'wallet': progress.wallet};
+  }
+
+  /// ⚡ Start the market rush (Mum's whole list against the clock).
+  Future<Map<String, Object?>> startRush() async {
+    if (!progress.startRush()) throw GameError(409, "⚡ The rush is once a day, before you start Mum's list.");
+    await _save();
+    return progress.today();
+  }
+
   List<Map<String, Object?>> history() => progress.history();
   Map<String, Object?> challenges() => Challenges(progress).summary();
   Map<String, Object?> historyItem(String id) =>
@@ -346,6 +457,8 @@ class Game {
   }
 
   Map<String, Object?> stalls() {
+    final mystery = mysteryToday();
+    final tour = tournamentItem(now(), content); // 🏆
     final wedding = progress.wedding;
     final legend = legendaryToday(now(), events: legendEvents);
     final best = <String, int>{};
@@ -373,6 +486,7 @@ class Game {
             'hearts': progress.hearts(s['id'] as String),
             'locked': !progress.unlocked(s['id'] as String),
             'new': progress.isNewStall(s['id'] as String), // 🆕 opened for you, never visited yet
+            if (moodOfDay('${s['id']}') case final m when m.isNotEmpty) 'mood_today': m,
             'unlock_at': progress.unlockAt(s['id'] as String),
             'unlock_days': progress.unlockDays(s['id'] as String),
             'items': [
@@ -390,6 +504,31 @@ class Game {
                     'short': true,
                   // 🚲 a day's rental: back by 6pm, so it won't go into your stock to sell
                   if (Progress.notForResale.contains('${s['id']}/${i['id']}')) 'rental': true,
+                  if (tour != null && tour.stall == s['id'] && tour.item['id'] == i['id']) 'tournament': true,
+                },
+              // 🗓️ this week's special (a different one each week)
+              if (specialFor('${s['id']}', now()) case final x?)
+                {
+                  'id': x['id'],
+                  'name': x['name'],
+                  'emoji': x['emoji'],
+                  'ask': x['ask'],
+                  'stars': best['${s['id']}/${x['id']}'] ?? 0,
+                  'best_paid': ?bestPaid['${s['id']}/${x['id']}'],
+                  'special': true,
+                  if (walletOn && (x['ask'] as num) > progress.wallet) 'short': true,
+                },
+              // 📦 today's mystery box, at its stall
+              if (mystery != null && mystery.stall == s['id'])
+                {
+                  'id': 'mystery',
+                  'name': mystery.box['name'],
+                  'emoji': mystery.box['emoji'],
+                  'ask': mystery.box['ask'],
+                  'stars': 0,
+                  'mystery': true,
+                  if (mysteryBoughtToday) 'sold_out': true,
+                  if (walletOn && (mystery.box['ask'] as num) > progress.wallet) 'short': true,
                 },
               // today's legendary item, at its stall (for this day only)
               if (legend != null && legend.stall == s['id']) _legendView(legend.item, legend.key),
@@ -435,6 +574,58 @@ class Game {
     'legendary': true,
     'sold_out': progress.legendBought(key),
   };
+
+  /// 📦 Today's mystery box, if there is one: one day in three, at one stall (not Ah Ma Tan's: her bicycle is a
+  /// rental). Priced like the stall's cheaper thing; inside is one of its two things, the pricier one 1 time in 3, so
+  /// it's never worse than buying the cheaper one.
+  ({String stall, Map box, Map cheap, Map dear})? mysteryToday() {
+    final day = dayKey(now());
+    final h = stableHash('hawker-haggle-mystery-$day');
+    if (h % 3 != 0) return null;
+    final stalls = [
+      for (final s in content['stalls'] as List)
+        if ((s as Map)['id'] != 'tan' && (s['items'] as List).length >= 2) s,
+    ];
+    if (stalls.isEmpty) return null;
+    final st = stalls[(h ~/ 3) % stalls.length];
+    final items = [...(st['items'] as List).cast<Map>()]
+      ..sort((a, b) => (a['fair'] as num).compareTo(b['fair'] as num));
+    final cheap = items.first, dear = items.last;
+    return (
+      stall: '${st['id']}',
+      cheap: cheap,
+      dear: dear,
+      box: {
+        'id': 'mystery',
+        'name': 'mystery box',
+        'emoji': '📦',
+        'fair': cheap['fair'],
+        'ask': cheap['ask'],
+        'floor': cheap['floor'],
+        'single': true,
+        'facts': [
+          'A sealed mystery box: one of the things at this stall is inside',
+          "You won't say which one: that's the fun of it",
+          'Sometimes it is the better one',
+          'No peeking, and no swapping once it is opened',
+        ],
+      },
+    );
+  }
+
+  bool get mysteryBoughtToday => _profile['mystery_bought'] == dayKey(now());
+
+  /// (Tools and tests: every stall in this mood.)
+  String? moodOverride;
+
+  /// 😄/😤 A stallholder's mood of the day: the same for everyone that day, at a stall or two (none without surprises).
+  /// In a great mood: friendlier and more patient. Grumpy: cooler and less patient (but still fair).
+  String moodOfDay(String stallId) {
+    if (moodOverride != null) return moodOverride!;
+    if (!surprises) return '';
+    final h = stableHash('hawker-haggle-mood-$stallId-${dayKey(now())}') % 100;
+    return h < 10 ? 'happy' : (h < 18 ? 'grumpy' : '');
+  }
 
   /// Delete my data: everything this app kept on the phone.
   Future<void> deleteAll() async {
@@ -490,10 +681,18 @@ class Game {
   /// What the AI should know beyond the chat: the market surprise and how well she knows this customer.
   String _notes(_Session ss, [String extra = '']) => [
     ss.festival?.wish ?? '',
+    if (ss.mysteryInside != null)
+      'This is a sealed mystery box with one of your things inside. Never say or hint which one; keep it fun and '
+          'mysterious.',
     if (ss.legendary)
       'This is a rare legendary item that you only have today. You are very proud of it and in no hurry to sell it '
           'cheap; it is worth every cent.',
     surpriseForAi(ss.h.s.event, ss.h.s.rivalLeft),
+    switch (ss.moodToday) {
+      'happy' => "You're in a wonderful mood today (good news at home): extra cheerful and friendly.",
+      'grumpy' => "You're a bit grumpy today (you slept badly): short and a little cranky, but never rude or unfair.",
+      _ => '',
+    },
     progress.memoryNote('${ss.stall['id']}', '${_profile['name']}'),
     extra,
   ].where((x) => x.isNotEmpty).join(' ');
@@ -637,7 +836,10 @@ class Game {
       'surprise': h.s.event,
       'surprise_note': h.s.event == 'festival' && ss.festival != null
           ? '${ss.festival!.emoji} ${ss.festival!.name}: prices are up, everyone is cheerful!'
+          : (h.s.event.isEmpty && ss.moodToday.isNotEmpty)
+          ? moodNote(ss.moodToday, '${ss.stall['name']}')
           : surpriseNote(h.s.event, '${ss.stall['name']}', h.s.rivalLeft),
+      if (ss.moodToday.isNotEmpty) 'mood_today': ss.moodToday,
       'guess': ss.guess,
       'found': _takeFound(ss), // a soft spot found just now (once)
       'challenge': ss.challenged, // "convince me!": the next typed message is a pitch
@@ -778,8 +980,26 @@ class Game {
     }
     if (surprise == 'none') surprise = ''; // tests: no surprise on purpose
     final items = stall['items'] as List;
+    // 🗓️ this week's special (one from another week is gone: say so, rather than haggle for something else)
+    final special = specialFor(stallId, now());
+    final isSpecial = !wantsLegend && special != null && special['id'] == itemId;
+    if (!wantsLegend && !isSpecial && itemId != null && anySpecial(stallId, itemId) != null) {
+      throw GameError(409, "🗓️ That was last week's special. There's something new at ${stall['name']} this week!");
+    }
+    // 📦 today's mystery box (once a day)
+    final mystery = itemId == 'mystery' && !wantsLegend ? mysteryToday() : null;
+    if (itemId == 'mystery' && !wantsLegend) {
+      if (mystery == null || mystery.stall != stallId) {
+        throw GameError(409, "📦 No mystery box at ${stall['name']}'s today. Look out for one another day!");
+      }
+      if (mysteryBoughtToday) throw GameError(409, "📦 You already got today's mystery box. Another one soon!");
+    }
     final item = wantsLegend
         ? legend!.item
+        : mystery != null
+        ? mystery.box
+        : isSpecial
+        ? special
         : (items.firstWhere((i) => (i as Map)['id'] == itemId, orElse: () => items.first)) as Map;
     final seed = _rnd.nextInt(1 << 31);
     final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';
@@ -800,6 +1020,18 @@ class Game {
     ss.festival = fest;
     // the very first haggle: a sure, friendly first win (no surprise, and she's in a good mood)
     if (haggleCount == 0 && !wantsLegend) ss.h.warm(1.0);
+    if (mystery != null) {
+      ss.mysteryInside = stableSeed('$seed-mystery') % 3 == 0 ? mystery.dear : mystery.cheap;
+    }
+    // 😄/😤 the stallholder's mood of the day
+    if ((haggleCount > 0 || moodOverride != null) && !wantsLegend) ss.moodToday = moodOfDay(stallId);
+    if (ss.moodToday == 'happy') {
+      ss.h.warm(1.0);
+      ss.h.s.patience += 10;
+    } else if (ss.moodToday == 'grumpy') {
+      ss.h.warm(-0.8);
+      ss.h.s.patience -= 15;
+    }
     // from the shop: 🍀 more patience, 🌸 a better mood (session rules, like a friend's warmer start)
     if (progress.owns('charm')) ss.h.s.patience += 10;
     if (progress.owns('flowers')) ss.h.warm(0.5);
@@ -1005,14 +1237,32 @@ class Game {
         if (progress.findSoftSpot('${stall['id']}')) ss.found = spot.topic;
       }
       // a persuasion moment: the AI scores the pitch, and a good one warms them (once a haggle, within limits)
+      // (💬 the same words as an earlier pitch never score again)
       if (ss.challenged) {
         ss.challenged = false;
         if (typed.isNotEmpty && kind != 'rude') {
-          final score = await ai.judgePitch(stall: stall, item: item, pitch: typed) ?? 0;
+          final used = progress.pitchUsedBefore(typed);
+          final score = used ? 0 : (await ai.judgePitch(stall: stall, item: item, pitch: typed) ?? 0);
+          progress.rememberPitch(typed);
           ss.pitchScore = score;
           h.warm(0.9 * score);
           if (score >= 2) _reopen(ss);
           if (score > 0) ss.nice++;
+        }
+      } else if (ai.enabled &&
+          !ss.reasoned &&
+          typed.isNotEmpty &&
+          const {'plead', 'smalltalk', 'pity', 'compliment', 'regular', 'offer'}.contains(kind) &&
+          _soundsLikeAReason(typed) &&
+          !progress.pitchUsedBefore(typed)) {
+        // 💬 a reason or story they gave without being asked: scored once a haggle, a little less than a pitch
+        ss.reasoned = true;
+        final score = await ai.judgePitch(stall: stall, item: item, pitch: typed, unprompted: true) ?? 0;
+        progress.rememberPitch(typed);
+        if (score > 0) {
+          ss.reasonScore = score;
+          h.warm(0.6 * score);
+          ss.nice++;
         }
       }
       bool? callBack;
@@ -1075,7 +1325,7 @@ class Game {
     }
     String? said;
     var aiLine = false;
-    // A persuasion moment now and then (about 1 haggle in 4, after a couple of moves), only with the AI, never in a
+    // A persuasion moment now and then (about 1 haggle in 2, after a couple of moves), only with the AI, never in a
     // rush (Auntie Rose, low patience). Decided from the haggle's own seed, so it never touches the game's dice.
     final challengeNow =
         useAi &&
@@ -1085,7 +1335,7 @@ class Game {
         h.s.rounds == 2 &&
         h.s.event != 'rival' &&
         h.s.patience > 50 &&
-        stableSeed('${ss.seed}-pitch') % 4 == 0;
+        stableSeed('${ss.seed}-pitch') % 2 == 0;
     if (useAi) {
       said = await ai.say(
         stall: stall,
@@ -1131,6 +1381,12 @@ class Game {
                 'Their pitch was a fair try: you soften a little.',
                 'Their pitch really won you over: say so warmly.',
               ][ss.pitchScore!],
+            if (ss.reasonScore != null && ss.chat.where((m) => m['reason'] == true).isEmpty)
+              const [
+                '',
+                'Their reason was fair: you soften a little; you may say so.',
+                'Their reason really touched you: say so warmly, in character.',
+              ][ss.reasonScore!],
             if (challengeNow) 'End your reply by challenging them, in one short sentence, to convince you why you should give them a better price.',
             if (ss.twistNote.isNotEmpty) '${ss.twistNote} React to it in character, briefly.',
             if (ss.comboNow)
@@ -1172,6 +1428,7 @@ class Game {
       if (heard.reading.isNotEmpty || heard.also.isNotEmpty) ...{'reading': heard.reading, 'also': heard.also},
       if (ss.softSpot && ss.chat.where((m) => m['soft_spot'] == true).isEmpty) 'soft_spot': true,
       if (ss.pitchScore != null && ss.chat.where((m) => m['pitch'] == true).isEmpty) 'pitch': true,
+      if (ss.reasonScore != null && ss.chat.where((m) => m['reason'] == true).isEmpty) 'reason': true,
       if (friendName.isNotEmpty) 'friend': friendName,
     });
     ss.chat.add({'who': 'them', 'text': said, 'ask': h.s.ask, if (aiLine) 'ai': true});
@@ -1205,6 +1462,7 @@ class Game {
           if (ss.combos > 0) 'combos': ss.combos,
           if (ss.events.contains('final') || ss.events.contains('budget_best') || event == 'final') 'heard_final': true,
           if (ss.legendary) ...{'legendary': true, 'item_name': item['name'], 'emoji': item['emoji']},
+          if (ss.mysteryInside != null && h.s.result == 'deal') 'inside': ss.mysteryInside!['id'],
           if (ss.guess != null) 'guess': ss.guess,
           if (ss.festival != null) 'festival_week': ss.festival!.id,
         },
@@ -1215,6 +1473,15 @@ class Game {
       );
       final extra = <String>[];
       final fresh = <String>{...r.stickers, ...ss.comboStickers};
+      if (ss.mysteryInside != null && h.s.result == 'deal') {
+        _profile['mystery_bought'] = dayKey(now());
+        final x = ss.mysteryInside!;
+        final dear = (x['fair'] as num) > (item['fair'] as num);
+        extra.add(
+          '📦 You open the box… ${x['emoji']} ${plainName('${x['name']}')}!'
+          '${dear ? ' The better one, lucky you!' : ''}',
+        );
+      }
       if (ss.legendary && h.s.result == 'deal') {
         progress.buyLegend(ss.legendKey);
         progress.earn('legend', fresh);

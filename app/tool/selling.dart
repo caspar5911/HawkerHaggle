@@ -44,7 +44,17 @@ void main() {
     );
   }
   // 2. sellers
-  const reads = {'taitai': 1.1, 'tourist': 1.05, 'uncle': 0.95, 'student': 0.85};
+  // (what a careful seller guesses from the clue: never their real limit)
+  const reads = {
+    'taitai': 1.1,
+    'tourist': 1.05,
+    'uncle': 0.95,
+    'student': 0.85,
+    'chef': 1.05,
+    'office': 0.95,
+    'ahma': 0.95,
+    'auntie': 0.9,
+  };
   double readsPrice(Sale s) =>
       s.product.fair * reads[s.customer.id]! * (s.customer.loves.contains(kindOf(s.product.id)) ? 1.2 : 1.0);
   String reader(Sale s, int t) => t < 2 ? 'ask:${readsPrice(s)}' : 'take';
@@ -58,6 +68,7 @@ void main() {
     'reads the customer, never passes': ((_) => true, reader),
     'waits for a buyer who loves it': (loves, reader),
     'waits for the taitai': ((s) => s.customer.id == 'taitai', reader),
+    'waits for the taitai or the chef': ((s) => s.customer.id == 'taitai' || s.customer.id == 'chef', reader),
     'takes the first offer': ((_) => true, (s, t) => 'take'),
   };
   out('\n| seller (3 "Not today" a day) | sold | walked | passed a day | profit a thing sold | ⭐ avg |');

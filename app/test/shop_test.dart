@@ -42,7 +42,11 @@ int play(Sale s, String style, math.Random rnd) {
           case 1:
             s.chat();
           default:
-            if (rnd.nextInt(4) == 0) s.take();
+            if (rnd.nextInt(4) == 0) {
+              s.take();
+            } else {
+              moves--; // (waiting: not a move)
+            }
         }
     }
   }
@@ -62,6 +66,8 @@ void main() {
             final moves = play(s, style, rnd);
             expect(s.done, isTrue, reason: '${c.id}/${p.id}/$style never ended');
             expect(moves, lessThanOrEqualTo(12));
+            // (every move costs patience, except a sale, the first friendly chat(s), and their own offer)
+            expect(moves, lessThanOrEqualTo(c.patience + (c.chatty ? 2 : 1) + 1), reason: '${c.id}/$style');
             results['$style/${s.result}'] = (results['$style/${s.result}'] ?? 0) + 1;
             if (s.result == 'sold') {
               expect(s.price, isNotNull);

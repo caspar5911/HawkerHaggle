@@ -29,6 +29,7 @@ Future<void> main(List<String> args) async {
     ai: AiClient(cfg, log: rejected.add),
     surprises: false, // the base cases need plain haggles
     unlockAll: true,
+    walletOn: false, // (how she reads and answers: money doesn't come into it)
   );
   await game.load();
   const stalls = ['mei', 'lim', 'raj', 'siti'];
@@ -158,7 +159,14 @@ Future<void> main(List<String> args) async {
     (DateTime(2027, 2, 4, 9), ['new year', 'gong xi', 'huat', 'cny', 'prosper']),
     (DateTime(2026, 12, 23, 9), ['christmas', 'xmas']),
   ]) {
-    final fg = Game(content: content, store: MemoryKeyValue(), ai: AiClient(cfg), now: () => day, unlockAll: true);
+    final fg = Game(
+      content: content,
+      store: MemoryKeyValue(),
+      ai: AiClient(cfg),
+      now: () => day,
+      unlockAll: true,
+      walletOn: false,
+    );
     await fg.load();
     final g = await fg.start('mei', 'mango', 'festival');
     final said = '${g['line']}'.toLowerCase();

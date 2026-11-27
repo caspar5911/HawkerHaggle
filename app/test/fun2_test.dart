@@ -51,7 +51,7 @@ class FakeAi extends AiClient {
   int score;
   String? judgeRaw;
   final notes = <String>[];
-  int judged = 0;
+  int judged = 0, reasons = 0;
 
   @override
   Future<Heard> understand(
@@ -85,8 +85,14 @@ class FakeAi extends AiClient {
   }
 
   @override
-  Future<int?> judgePitch({required Map stall, required Map item, required String pitch}) async {
+  Future<int?> judgePitch({
+    required Map stall,
+    required Map item,
+    required String pitch,
+    bool unprompted = false,
+  }) async {
     judged++;
+    if (unprompted) reasons++;
     return score;
   }
 
@@ -218,7 +224,7 @@ void main() {
   });
 
   group('persuasion moments', () {
-    test('only with the AI, about one haggle in four, never touching the dice; a good pitch warms them', () async {
+    test('only with the AI, about one haggle in two, never touching the dice; a good pitch warms them', () async {
       final ai = FakeAi(score: 2);
       final g = await newGame(ai: ai);
       var challenged = 0, haggles = 0;
@@ -232,16 +238,78 @@ void main() {
           challenged++;
           expect(ai.notes.last, contains('challenging them'));
           final mood = (r['mood'] as num).toDouble();
-          final p = await g.move(id, text: 'Auntie, your durian is the reason my grandma smiles every Sunday!');
+          final p = await g.move(
+            id,
+            text:
+                'Auntie, your durian is the reason my grandma smiles, story ${String.fromCharCode(97 + i % 26)}${String.fromCharCode(97 + i ~/ 26)}',
+          );
           expect(p['pitch_score'], 2);
           expect(p['challenge'], isFalse);
           expect((p['mood'] as num).toDouble(), greaterThan(mood - 0.01));
           expect(ai.notes.last, contains('won you over'));
         }
       }
-      expect(challenged / haggles, inInclusiveRange(0.1, 0.45));
+      expect(challenged / haggles, inInclusiveRange(0.3, 0.7));
       expect(ai.judged, challenged);
     });
+
+    test('💬 the same pitch twice: the second time it scores nothing (and the AI is not even asked)', () async {
+      final ai = FakeAi(score: 2);
+      final g = await newGame(ai: ai);
+      const line = 'Auntie, your durian is the reason my grandma smiles every Sunday!';
+      final scores = <int>[];
+      for (var i = 0; i < 60 && scores.length < 2; i++) {
+        var r = await g.start('mei', 'durian', 'none');
+        final id = r['id'] as String;
+        r = await g.move(id, text: 'hello auntie how are you');
+        r = await g.move(id, text: 'business good today?');
+        if (r['challenge'] == true) {
+          final before = ai.judged;
+          final p = await g.move(
+            id,
+            text: scores.isEmpty ? line : '  AUNTIE, your durian is the reason my GRANDMA smiles every sunday ',
+          );
+          scores.add((p['pitch_score'] as num).toInt());
+          if (scores.length == 2) expect(ai.judged, before, reason: 'a repeat is not sent to the AI');
+        }
+      }
+      expect(scores, [2, 0]);
+    });
+
+    test(
+      '💬 a reason given unasked: scored once a haggle, warms them; short or plain messages are never sent',
+      () async {
+        final ai = FakeAi(score: 2);
+        final g = await newGame(ai: ai);
+        var r = await g.start('mei', 'durian', 'none');
+        final id = r['id'] as String;
+        r = await g.move(id, text: 'cheaper lah auntie');
+        r = await g.move(id, text: '20 can?');
+        expect(ai.reasons, 0, reason: 'no reason in those');
+        final mood = (r['mood'] as num).toDouble();
+        r = await g.move(id, text: "Auntie, it's for my grandma's birthday, she loves your durians the most");
+        expect(ai.reasons, 1);
+        expect((r['mood'] as num).toDouble(), greaterThan(mood));
+        expect(ai.notes.last, contains('really touched you'));
+        r = await g.move(id, text: 'And my grandson also loves durian because he is just like his grandma');
+        expect(ai.reasons, 1, reason: 'once a haggle');
+        // (the same reason in another haggle: not again)
+        final r2 = await g.start('mei', 'durian', 'none');
+        await g.move(
+          r2['id'] as String,
+          text: "Auntie, it's for my grandma's birthday, she loves your durians the most",
+        );
+        expect(ai.reasons, 1);
+        // (no AI: nothing is judged)
+        final plain = await newGame();
+        final r3 = await plain.start('mei', 'durian', 'none');
+        final x = await plain.move(
+          r3['id'] as String,
+          text: "Auntie, it's for my grandma's birthday, she loves your durians",
+        );
+        expect(x.containsKey('reason'), isFalse);
+      },
+    );
 
     test('a tap lets the challenge lapse; no AI, no challenges', () async {
       final ai = FakeAi(score: 2);

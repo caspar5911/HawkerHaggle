@@ -93,6 +93,8 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
       // friends: this week's board (also what the stallholders gossip about)
       final b = await widget.api.board();
       if (mounted && b != null) setState(() => _board = b);
+      // 🏆 the weekly tournament's prize, the first time you're on top
+      if (b?['tournament'] case {'prize_now': final String won}) _toastMarket(won);
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
     }
@@ -110,6 +112,8 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
 
   String _boardLine() {
     final n = (_board?['items'] as List? ?? const []).length;
+    final t = _board?['tournament'];
+    if (t is Map) return "🏆 This week's tournament: ${t['emoji']} ${t['name']}. Top hagglers and best prices";
     return n == 0 ? "This week's top hagglers: be the first!" : "This week's top hagglers and best prices";
   }
 
@@ -372,7 +376,19 @@ class _MarketScreenState extends State<MarketScreen> with WidgetsBindingObserver
         onVisit: () =>
             wedding['stage'] == 1 && wedding['ready'] == true ? _openById('lim', 'prawns') : _openById('mei', 'mango'),
       ),
-    if (_today != null) TodayCard(today: _today!, onItem: _openById),
+    if (_today != null)
+      TodayCard(
+        today: _today!,
+        onItem: _openById,
+        onRush: () async {
+          try {
+            final t = await widget.api.startRush();
+            if (mounted) setState(() => _today = t);
+          } on ApiError catch (e) {
+            _toastMarket(e.message);
+          }
+        },
+      ),
     if (_error != null) _Oops(message: _error!, retry: _load),
     if (_me == null && _error == null)
       const Padding(
@@ -956,12 +972,24 @@ class _StallCard extends StatelessWidget {
                         ],
                       ),
                       Text('${stall['stall']} · ${stall['place']}', style: const TextStyle(color: Palette.soft)),
+                      if (!locked && stall['mood_today'] != null)
+                        Text(
+                          stall['mood_today'] == 'happy' ? '😄 In a great mood today!' : '😤 Grumpy today…',
+                          key: ValueKey('mood_${stall['id']}'),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: stall['mood_today'] == 'happy' ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                          ),
+                        ),
                       const SizedBox(height: 10),
                       for (final it in items)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Bouncy(
-                            key: (it as Map)['legendary'] == true ? const ValueKey('legend_item') : null,
+                            key: (it as Map)['legendary'] == true
+                                ? const ValueKey('legend_item')
+                                : (it['special'] == true ? ValueKey('special_${it['id']}') : null),
                             onTap: () => onItem(stall, it),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -987,7 +1015,12 @@ class _StallCard extends StatelessWidget {
                                               ? (it['sold_out'] == true
                                                     ? '✨ legendary · yours today!'
                                                     : '✨ legendary · today only · asking ${money(it['ask'] as num)}')
-                                              : 'asking ${money(it['ask'] as num)}'
+                                              : it['mystery'] == true && it['sold_out'] == true
+                                              ? "📦 yours today! Another one soon"
+                                              : '${it['special'] == true ? '🗓️ this week only · ' : ''}'
+                                                    '${it['mystery'] == true ? "📦 what's inside? · today only · " : ''}'
+                                                    '${it['tournament'] == true ? "🏆 this week's tournament · " : ''}'
+                                                    'asking ${money(it['ask'] as num)}'
                                                     '${it['best_paid'] is num ? ' · 📒 your best ${money(it['best_paid'] as num)}' : ''}'
                                                     '${it['short'] == true ? ' · 👛 more than you have' : ''}'
                                                     '${it['rental'] == true ? ' · 🚲 a rental (not for resale)' : ''}',
@@ -1715,7 +1748,16 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     face: _face,
                     react: _react,
                     coop: _friend.isEmpty ? (_room == null ? '' : 'Code $_room') : _friend,
-                    onInvite: _intro || g == null || g['done'] == true ? null : _invite,
+                    // (co-op rooms are for the stalls' own items: not a legendary item or a weekly special)
+                    onInvite:
+                        _intro ||
+                            g == null ||
+                            g['done'] == true ||
+                            widget.item['legendary'] == true ||
+                            widget.item['special'] == true ||
+                            widget.item['mystery'] == true
+                        ? null
+                        : _invite,
                   ),
                 ),
                 Expanded(
@@ -2727,9 +2769,10 @@ class _ResultState extends State<_Result> {
     try {
       name = '${(await widget.api.me())['name'] ?? ''}';
     } catch (_) {}
-    // a legendary item is gone tomorrow, so its link would lead nowhere
+    // a legendary item is gone tomorrow (a weekly special next week), so its link would lead nowhere
     final legendary = g['legendary'] == true || widget.item['legendary'] == true;
-    final link = legendary
+    final special = widget.item['special'] == true || widget.item['mystery'] == true;
+    final link = legendary || special
         ? ''
         : challengeLink(
             stall: '${widget.stall['id']}',
@@ -2740,7 +2783,7 @@ class _ResultState extends State<_Result> {
     final text =
         'I got the ${legendary ? '✨ legendary ' : ''}${widget.item['name']} for ${money(g['deal'] as num)}${_each(g)} at '
         '${widget.stall['name']}\'s stall${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} '
-        '${legendary ? 'Only today!' : 'Can you beat me? Try here: $link'} #HawkerHaggle';
+        '${legendary ? 'Only today!' : (special ? 'Only this week!' : 'Can you beat me? Try here: $link')} #HawkerHaggle';
     try {
       await shareBrag(text, await capturePng(_card));
     } catch (_) {
@@ -3688,6 +3731,9 @@ class _Morning extends StatelessWidget {
     'list': "📝 Mum's change",
     'orders': '📋 orders',
     'streak': '🔥 streak',
+    'rush': '⚡ rush',
+    'tournament': '🏆 tournament',
+    'career': '📖 your story',
   };
   @override
   Widget build(BuildContext context) {

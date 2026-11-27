@@ -5,7 +5,7 @@ const events = <String, String>{
   "greet": "You greet the customer and say the asking price.",
   "counter": "The customer offered {offer}. You refuse it but come down to {ask}.",
   "final": "The customer offered {offer}. You won't go lower than {ask}. If they said that's all they have, say kindly you understand but still can't.",
-  "insulted": "The customer offered only {offer}, which insults you. Your price stays {ask}.",
+  "insulted": "The customer offered only {offer}, which is far too low: it offends you. Show clearly that you're offended (not just 'not enough'), in character and without being nasty; your price stays {ask}.",
   "accept": "The customer confirmed: sold at {deal}. Close the deal happily.",
   "confirm": "You agree to sell at {deal}, but the customer has NOT confirmed yet. Say yes happily, then END with a question asking them to confirm at {deal} (e.g. '..., deal or not?'). Don't say it's sold or wrap it yet.",
   "unsure": "The customer isn't ready to confirm yet. Tell them to take their time; the price is still {ask}.",

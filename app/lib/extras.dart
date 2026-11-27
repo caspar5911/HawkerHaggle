@@ -1,5 +1,6 @@
 // Screens and cards for the game around the haggles: Mum's list, the sticker book, stallholder profiles,
 // market-surprise banners, result extras and the brag card to share.
+import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -15,11 +16,80 @@ import 'widgets.dart';
 
 const _title = TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Palette.ink);
 
+/// ⚡ The market rush: time left, ticking every second.
+class RushClock extends StatefulWidget {
+  const RushClock({super.key, required this.ends});
+  final DateTime ends;
+  @override
+  State<RushClock> createState() => _RushClockState();
+}
+
+class _RushClockState extends State<RushClock> {
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _t = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final left = widget.ends.difference(DateTime.now()).inSeconds;
+    final text = left <= 0
+        ? "⚡ Time's up! Finish the list anyway"
+        : '⚡ Rush! ${left ~/ 60}:${(left % 60).toString().padLeft(2, '0')} left';
+    return Text(
+      text,
+      key: const ValueKey('rush_clock'),
+      style: TextStyle(fontWeight: FontWeight.w800, color: left <= 30 ? const Color(0xFFC62828) : Palette.ink),
+    );
+  }
+}
+
 /// Mum's daily shopping list on the market screen.
 class TodayCard extends StatelessWidget {
-  const TodayCard({super.key, required this.today, required this.onItem});
+  const TodayCard({super.key, required this.today, required this.onItem, this.onRush});
   final Map<String, dynamic> today;
   final void Function(String stall, String item) onItem;
+  final VoidCallback? onRush; // ⚡ start the market rush
+
+  /// ⚡ The rush on Mum's list: a button to start it, the clock while it runs, or how it went.
+  Widget _rush(Map r) {
+    final Widget child;
+    if (r['can'] == true) {
+      if (onRush == null) return const SizedBox.shrink();
+      child = Bouncy(
+        key: const ValueKey('rush_start'),
+        onTap: onRush!,
+        child: Pill(
+          text: 'Rush it! Both in ${(r['seconds'] as num) ~/ 60} min for ${money(r['prize'] as num)}',
+          icon: '⚡',
+          color: Palette.gold,
+        ),
+      );
+    } else if (r['won'] == true) {
+      child = Text(
+        '⚡ Rush done! +${money(r['prize'] as num)}',
+        style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2E7D32)),
+      );
+    } else if (r['late'] == true) {
+      child = const Text('⚡ Too slow for the rush today. Try again tomorrow!', style: TextStyle(color: Palette.soft));
+    } else if (r['ends'] != null) {
+      child = RushClock(ends: DateTime.parse('${r['ends']}'));
+    } else {
+      return const SizedBox.shrink();
+    }
+    return Padding(padding: const EdgeInsets.only(top: 6), child: child);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +120,7 @@ class TodayCard extends StatelessWidget {
                 ),
             ],
           ),
+          if (today['rush'] is Map) _rush(today['rush'] as Map),
           const SizedBox(height: 8),
           for (final i in items)
             Padding(
@@ -1333,7 +1404,7 @@ class BoardScreen extends StatefulWidget {
   const BoardScreen({super.key, required this.api, required this.stalls, required this.onBeat});
   final Api api;
   final List<Map> stalls;
-  final void Function(String stall, String item, Map target) onBeat;
+  final void Function(String stall, String item, Map? target) onBeat; // (null: just play it)
   @override
   State<BoardScreen> createState() => _BoardScreenState();
 }
@@ -1388,6 +1459,7 @@ class _BoardScreenState extends State<BoardScreen> {
                   ListView(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                     children: [
+                      _tournament(),
                       const Text(
                         'The lowest price each player paid this week (Monday to Sunday), from everyone with an approved '
                         'account on this market. Beat a friend\'s price to take the top spot!',
@@ -1413,12 +1485,72 @@ class _BoardScreenState extends State<BoardScreen> {
     );
   }
 
+  /// 🏆 This week's tournament: the item, the top three, and a button to play it.
+  Widget _tournament() {
+    final t = _b?['tournament'];
+    if (t is! Map) return const SizedBox.shrink();
+    final top = (t['top'] as List? ?? const []).cast<Map>();
+    final f = _find('${t['stall']}', '${t['item']}');
+    return Container(
+      key: const ValueKey('tournament'),
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1C9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Palette.gold, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "🏆 This week's tournament: ${t['emoji']} ${t['name']}",
+            style: const TextStyle(fontWeight: FontWeight.w800, color: Palette.ink),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            "The lowest price at ${t['stall_name']}'s this week wins. Top of the board (with at least one other "
+            'player) earns ${money(t['prize'] as num)}, once a week.${t['won'] == true ? ' 🏆 You won it this week!' : ''}',
+            style: const TextStyle(color: Palette.ink, height: 1.35, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          if (top.isEmpty)
+            const Text('No one yet: be the first!', style: TextStyle(color: Palette.soft))
+          else
+            for (final (i, x) in top.indexed)
+              Text(
+                '${['🥇', '🥈', '🥉'][i.clamp(0, 2)]} ${x['name']}  ${money(x['price'] as num)}${x['you'] == true ? '  (you)' : ''}',
+                style: TextStyle(fontWeight: x['you'] == true ? FontWeight.w800 : FontWeight.w600, color: Palette.ink),
+              ),
+          if (f != null) ...[
+            const SizedBox(height: 8),
+            Bouncy(
+              key: const ValueKey('tournament_play'),
+              onTap: () {
+                Navigator.of(context).pop();
+                widget.onBeat(
+                  '${f.stall['id']}',
+                  '${f.item['id']}',
+                  top.isEmpty || top.first['you'] == true
+                      ? null
+                      : {'name': top.first['name'], 'price': top.first['price']},
+                );
+              },
+              child: const Pill(text: 'Play it', icon: '🏆', color: Palette.gold),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   /// The week's best hagglers: stars, counting each player's best on each item once.
   Widget _hagglers() {
     final top = (_b?['hagglers'] as List?)?.cast<Map>();
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        _tournament(),
         const Text(
           'Stars this week (Monday to Sunday). Your best on each item counts once, so haggling well at many stalls '
           'beats playing one item over and over. Starts again every Monday!',
@@ -2013,6 +2145,7 @@ class ShopPanel extends StatefulWidget {
 
 class _ShopPanelState extends State<ShopPanel> {
   Map<String, dynamic>? _j;
+  Map<String, dynamic>? _career; // 📖 your story
 
   @override
   void initState() {
@@ -2022,7 +2155,90 @@ class _ShopPanelState extends State<ShopPanel> {
 
   Future<void> _load() async {
     final j = await widget.api.jar();
-    if (mounted) setState(() => _j = j);
+    final c = await widget.api.career();
+    if (mounted) {
+      setState(() {
+        _j = j;
+        _career = c;
+      });
+    }
+  }
+
+  /// 📖 Claim a chapter of your story: its reward and a word from Mum.
+  Future<void> _claim(Map c) async {
+    try {
+      final r = await widget.api.claimCareer('${c['id']}');
+      if (!mounted) return;
+      Sfx.play('star', volume: 0.7);
+      await _load();
+      if (!mounted) return;
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text('${c['emoji']} ${c['title']}'),
+          content: Text('👩 Mum: ${r['mum']}\n\n+${money(r['prize'] as num)}'),
+          actions: [TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Yay!'))],
+        ),
+      ).ignore();
+    } on ApiError catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// 📖 "From Mum's errands to your own hawker stall": the chapters so far, and the next one.
+  Widget _story(Map<String, dynamic> c) {
+    final chapters = (c['chapters'] as List).cast<Map>();
+    return Container(
+      key: const ValueKey('career'),
+      margin: const EdgeInsets.only(top: 10, bottom: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "📖 Your story: from Mum's errands to your own hawker stall (${c['done']}/${chapters.length})",
+            style: const TextStyle(fontWeight: FontWeight.w800, color: Palette.ink),
+          ),
+          const SizedBox(height: 6),
+          for (final ch in chapters)
+            if (ch['claimed'] == true || ch['reached'] == true || ch['id'] == (c['next'] as Map?)?['id'])
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Text(
+                      ch['claimed'] == true ? '✅' : (ch['reached'] == true ? '🎁' : '🔜'),
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('${ch['emoji']}', style: const TextStyle(fontSize: 18)),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        ch['claimed'] == true ? '${ch['title']}' : '${ch['title']}: ${ch['how']}',
+                        style: TextStyle(
+                          color: Palette.ink,
+                          fontWeight: ch['reached'] == true && ch['claimed'] != true
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                    if (ch['reached'] == true && ch['claimed'] != true)
+                      Bouncy(
+                        key: ValueKey('claim_${ch['id']}'),
+                        onTap: () => _claim(ch),
+                        child: Pill(text: '+${money(ch['prize'] as num)}', icon: '🎁', color: Palette.gold),
+                      ),
+                  ],
+                ),
+              ),
+          if (c['next'] == null)
+            const Text('🎉 Your whole story is done. Mum is so proud!', style: TextStyle(color: Palette.soft)),
+        ],
+      ),
+    );
   }
 
   /// 👛 Save some of your wallet into the jar.
@@ -2146,6 +2362,7 @@ class _ShopPanelState extends State<ShopPanel> {
                   style: const TextStyle(fontSize: 40, fontWeight: FontWeight.w800, color: Palette.ink),
                 ),
               ),
+              if (_career != null) _story(_career!),
               if (j['earn'] is List) _EarnCard(ways: (j['earn'] as List).cast<Map>()),
               if (j['wallet'] is num) ...[
                 const Text(

@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:hawker_haggle/core/specials.dart';
 import 'package:hawker_haggle/core/game.dart';
 
 typedef Player = Future<Map> Function(Game g, Map r, math.Random rnd);
@@ -82,6 +83,8 @@ Future<Map> lowballer(Game g, Map r, math.Random rnd) async {
 Future<void> main(List<String> args) async {
   final per = args.isEmpty ? 40 : int.parse(args.first);
   final helpers = args.contains('helpers'); // own the haggling helpers from the shop
+  final weekly = args.contains('specials'); // 🗓️ the weekly specials instead of the stalls' own things
+  final mood = args.contains('grumpy') ? 'grumpy' : (args.contains('happy') ? 'happy' : null); // 😄/😤 every stall
   final content = jsonDecode(File('assets/content/stalls.json').readAsStringSync()) as Map<String, dynamic>;
   final players = <String, Player>{
     'pays full price': payer,
@@ -99,9 +102,13 @@ Future<void> main(List<String> args) async {
     var n = 0, deals = 0, stars = 0, three = 0, refused = 0, lost = 0;
     var off = 0.0;
     for (final st in (content['stalls'] as List).cast<Map>()) {
-      for (final it in (st['items'] as List).cast<Map>()) {
+      for (final it in weekly ? (specials['${st['id']}'] ?? const <Map>[]) : (st['items'] as List).cast<Map>()) {
+        // (a day in a week when this special is on)
+        final day = [for (var w = 0; w < 2; w++) DateTime(2026, 12, 2 + 7 * w, 10)]
+            .firstWhere((d) => !weekly || specialFor('${st['id']}', d)?['id'] == it['id']);
         for (var k = 0; k < per; k++) {
           final g = Game(
+            now: () => day,
             content: content,
             store: MemoryKeyValue(),
             random: math.Random(rnd.nextInt(1 << 30)),
@@ -110,6 +117,7 @@ Future<void> main(List<String> args) async {
             walletOn: false, // (how fair the haggling is: money doesn't come into it)
           );
           await g.load();
+          g.moodOverride = mood;
           if (helpers) {
             // 🍀 the lucky charm and 🌸 the flowers from the shop: more patience and a better mood from the start
             g.progress.addToJar(140);
@@ -117,6 +125,7 @@ Future<void> main(List<String> args) async {
             await g.buyGoal('flowers');
           }
           final r0 = await g.start('${st['id']}', '${it['id']}');
+          if (weekly && r0['ask'] != it['ask']) throw StateError('${st['id']}/${it['id']}: not the special');
           final r = await play(g, r0, rnd);
           n++;
           final s = ((r['stars'] ?? 0) as num).toInt();

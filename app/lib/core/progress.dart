@@ -8,6 +8,7 @@ import 'arcs.dart';
 import 'challenges.dart';
 import 'legendary.dart';
 import 'softspots.dart';
+import 'specials.dart';
 import 'treats.dart';
 
 /// Base stalls: open from the start, and the only ones the daily list uses (so it's the same list for everyone).
@@ -202,7 +203,7 @@ class Progress {
   /// How this customer haggled last time at this stall, in words (no numbers), so the stallholder can tease them.
   String howTheyHaggled(String stall) {
     final last = _haggles.lastWhere((h) => h['stall'] == stall, orElse: () => const {});
-    final item = (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().where((i) => i['id'] == last['item']);
+    final item = [?itemOf(stall, last['item'] as String?)];
     if (last.isEmpty || item.isEmpty) return '';
     if (last['result'] == 'walked') return 'Last time they walked away without buying; you may tease them about it.';
     if (last['result'] != 'deal' || last['deal'] == null) return '';
@@ -221,11 +222,10 @@ class Progress {
     if (lvl == 0) return '';
     final f = _friend(stall);
     final visits = ((f['visits'] ?? 0) as num).toInt();
-    final lastItem = (_stalls[stall]?['items'] as List? ?? const [])
-        .cast<Map>()
-        .where((i) => i['id'] == f['last_item'])
-        .map((i) => plainName('${i['name']}'))
-        .firstOrNull;
+    final lastItem = switch (itemOf(stall, f['last_item'] as String?)) {
+      final i? => plainName('${i['name']}'),
+      null => null,
+    };
     final name = playerName.replaceAll(RegExp(r'\d+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim(); // number-free
     return [
       'You know this customer${lvl >= 2 && name.isNotEmpty ? ', $name' : ''}: they have come to your stall ${visits > 5 ? 'many times' : 'a few times'}.',
@@ -311,6 +311,7 @@ class Progress {
       'complete': done,
       'under': done && spent <= budget,
       'streak': streak(),
+      'rush': _rushView(day, picks, bought),
       'tip': tips.isEmpty ? '' : tips[h % tips.length],
       // Mum's nudge to a stall that opened for you and you haven't tried (the list itself stays everyone's)
       if (_stalls.keys.where(isNewStall).firstOrNull case final s?)
@@ -366,9 +367,166 @@ class Progress {
     _earn('list_done', newStickers);
     if (spent <= budget) _earn('list_under', newStickers);
     if (streak() >= 3) _earn('streak3', newStickers);
+    final rush = _rushFinish();
+    if (rush != null) return rush;
     return spent <= budget
         ? 'Mum: Wah, so clever! ${_money(spent)}, under budget. Mum very proud of you 🥰'
         : 'Mum: Aiyo, ${_money(spent - budget)} over budget! Next time bargain harder ah 😤';
+  }
+
+  // ---------------------------------------------------------------- 📖 your story
+  /// 📖 "From Mum's errands to your own hawker stall": chapters reached by playing, each with a word from Mum and a
+  /// reward you claim. (id, emoji, title, how to reach it, reward, what Mum says)
+  static const careerChapters = <(String, String, String, String, double, String)>[
+    (
+      'helper',
+      '🧺',
+      "Mum's little helper",
+      "Finish Mum's list",
+      5,
+      "You did all my shopping! Next time, try selling something at your own little stall.",
+    ),
+    (
+      'seller',
+      '🏷️',
+      'Your first sale',
+      'Sell something at your own stall',
+      5,
+      'Your first customer! Every big hawker started with one.',
+    ),
+    (
+      'friend',
+      '❤️',
+      'A friend at the market',
+      'Two hearts with a stallholder',
+      10,
+      'The aunties and uncles like you. Friends give better prices, you know.',
+    ),
+    (
+      'awning',
+      '⛱️',
+      'A real stall',
+      'Buy the awning for your stall',
+      10,
+      'Wah, your stall looks like a real one now. Customers will stop and look!',
+    ),
+    (
+      'regulars',
+      '📋',
+      'Customers who count on you',
+      'Finish three customer orders',
+      15,
+      'People order from you now. That means they trust you. Keep your promises!',
+    ),
+    (
+      'scooter',
+      '🛵',
+      'On the road',
+      'Buy the scooter for deliveries',
+      20,
+      'Deliveries! Your stall sells even when you are at school.',
+    ),
+    ('stall2', '🏪', 'Two stalls', 'Buy a second stall', 50, 'Two stalls! Mum is so proud. Your grandpa would be too.'),
+    (
+      'wall',
+      '👑',
+      'Your name on the wall',
+      'Get your name on the hawker centre wall',
+      100,
+      'Your name on the wall of the hawker centre! From my little helper to a real hawker. 🥹',
+    ),
+  ];
+
+  bool _careerReached(String id) => switch (id) {
+    'helper' => _stickers['list_done'] != null,
+    'seller' => ((((p['shop'] as Map?)?['sales']) ?? 0) as num) > 0,
+    'friend' => _stalls.keys.any((s) => hearts(s) >= 2),
+    'regulars' => (((p['orders_done']) ?? 0) as num) >= 3,
+    'awning' || 'scooter' || 'stall2' || 'wall' => owns(id),
+    _ => false,
+  };
+
+  /// Your story so far: every chapter, reached or not, claimed or not; the next one to aim for.
+  Map<String, Object?> career() {
+    final claimed = _map('career');
+    final list = [
+      for (final (id, emoji, title, how, prize, mum) in careerChapters)
+        {
+          'id': id,
+          'emoji': emoji,
+          'title': title,
+          'how': how,
+          'prize': prize,
+          'reached': _careerReached(id),
+          'claimed': claimed[id] != null,
+          if (claimed[id] != null) 'mum': mum,
+        },
+    ];
+    return {
+      'chapters': list,
+      'done': list.where((c) => c['claimed'] == true).length,
+      'to_claim': list.where((c) => c['reached'] == true && c['claimed'] != true).length,
+      'next': list.where((c) => c['reached'] != true).firstOrNull,
+    };
+  }
+
+  /// Claim a chapter you reached: its reward and Mum's word. Null if it isn't reached or was claimed.
+  ({double prize, String mum})? claimCareer(String id) {
+    final c = careerChapters.where((x) => x.$1 == id).firstOrNull;
+    if (c == null || !_careerReached(id)) return null;
+    final claimed = _map('career');
+    if (claimed[id] != null) return null;
+    claimed[id] = dayKey(now());
+    reward(c.$5, 'career');
+    return (prize: c.$5, mum: c.$6);
+  }
+
+  // ---------------------------------------------------------------- ⚡ market rush
+  /// ⚡ Market rush: Mum's whole list within [rushSeconds] of starting it, for a bonus. Once a day, before you start
+  /// her list. (Under budget or not, the bonus is for being quick; Mum still says what she thinks of the price.)
+  static const rushSeconds = 240;
+  static const rushPrize = 5.0;
+
+  Map<String, Object?>? _rushView(String day, List<Map> picks, Map bought) {
+    final r = p['rush'];
+    final started = r is Map && r['day'] == day;
+    if (!started) {
+      // (only before her list is started, and not when it's done)
+      final none = picks.every((i) => !bought.containsKey('${i['stall']}/${i['item']}'));
+      return none ? {'can': true, 'seconds': rushSeconds, 'prize': rushPrize} : null;
+    }
+    if (r['won'] == true) return {'won': true, 'prize': rushPrize};
+    final left = rushSeconds - now().difference(DateTime.parse('${r['start']}')).inSeconds;
+    if (r['late'] == true || left <= 0) return {'late': true};
+    return {
+      'left': left,
+      'ends': DateTime.parse('${r['start']}').add(const Duration(seconds: rushSeconds)).toIso8601String(),
+    };
+  }
+
+  /// Start the rush (once a day, before Mum's list is started). Returns false if it can't start now.
+  bool startRush() {
+    final t = today();
+    final rush = t['rush'];
+    if (rush is! Map || rush['can'] != true) return false;
+    p['rush'] = {'day': t['date'], 'start': now().toIso8601String()};
+    return true;
+  }
+
+  /// Mum's list just got done: in time for the rush? (null: no rush today)
+  String? _rushFinish() {
+    final r = p['rush'];
+    if (r is! Map || r['day'] != dayKey(now()) || r['won'] == true || r['late'] == true) return null;
+    final took = now().difference(DateTime.parse('${r['start']}')).inSeconds;
+    if (took > rushSeconds) {
+      r['late'] = true;
+      return "Mum: All done! A bit slow for the rush, but never mind, thank you ah. Try again tomorrow ⚡";
+    }
+    r['won'] = true;
+    r['took'] = took;
+    reward(rushPrize, 'rush');
+    return 'Mum: Wah, so fast! ⚡ All done in ${took ~/ 60}:${(took % 60).toString().padLeft(2, '0')}. '
+        'Here, ${_money(rushPrize)} for being so quick!';
   }
 
   // ---------------------------------------------------------------- stickers
@@ -528,6 +686,7 @@ class Progress {
         for (final i in (s as Map)['items'] as List) '${s['id']}/${(i as Map)['id']}': (s, i),
         for (final l in legendaryByStall[s['id']] ?? const <Map<String, Object>>[])
           '${s['id']}/${l['id']}': (s, l as Map),
+        for (final x in specials[s['id']] ?? const <Map<String, Object>>[]) '${s['id']}/${x['id']}': (s, x as Map),
       },
     };
     return [
@@ -680,6 +839,27 @@ class Progress {
   }
 
   bool softSpotFound(String stall) => _map('soft_spots')[stall] == true;
+
+  /// 💬 Has this pitch (or reason) been used before? A line counts once: the same words again never score.
+  /// Remembers the last 40, by their words (case, spaces and punctuation don't matter).
+  bool pitchUsedBefore(String text) {
+    final key = pitchKey(text);
+    final list = (p['pitches'] ??= <Object>[]) as List;
+    return list.contains(key);
+  }
+
+  void rememberPitch(String text) {
+    final list = (p['pitches'] ??= <Object>[]) as List;
+    final key = pitchKey(text);
+    list.remove(key);
+    list.add(key);
+    while (list.length > 40) {
+      list.removeAt(0);
+    }
+  }
+
+  static String pitchKey(String text) =>
+      text.toLowerCase().replaceAll(RegExp(r'[^a-z0-9 ]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
 
   // ---------------------------------------------------------------- wallet
   /// Mum's money: to start with, then each new market day (an allowance, so saving is yours to do; topping up to a
@@ -857,6 +1037,7 @@ class Progress {
     final pay = ((o['pay'] ?? 0) as num).toDouble();
     reward(pay, 'orders');
     o['state'] = 'done';
+    p['orders_done'] = ((p['orders_done'] ?? 0) as num).toInt() + 1;
     return pay;
   }
 
@@ -910,10 +1091,14 @@ class Progress {
   /// How many things your stock holds: 10, 15 with the bigger shelf, 25 with the storeroom.
   int get stockLimit => owns('storeroom') ? 25 : (owns('shelf') ? 15 : stockMax);
 
+  /// A stall's thing by id: one of its own items, or one of its weekly specials (this week's or an earlier one).
+  Map? itemOf(String stall, String? item) =>
+      (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().where((i) => i['id'] == item).firstOrNull ??
+      (item == null ? null : anySpecial(stall, item));
+
   /// Would a deal on this item go into your stock? (Not a day's rental or a catering order, not a legendary item.)
   bool goesToStock(String stall, String item) =>
-      !notForResale.contains('$stall/$item') &&
-      (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().any((i) => i['id'] == item);
+      item == 'mystery' || (!notForResale.contains('$stall/$item') && itemOf(stall, item) != null);
 
   /// Room left in your stock.
   int get stockRoom => stockLimit - stock.length;
@@ -926,12 +1111,10 @@ class Progress {
   /// A deal at the market: what you bought becomes stock for your own stall, at what you paid per piece.
   void _addStock(Map record, int qty) {
     if (record['result'] != 'deal' || record['deal'] == null) return;
-    final key = '${record['stall']}/${record['item']}';
+    final id = '${record['inside'] ?? record['item']}'; // 📦 a mystery box: what was inside
+    final key = '${record['stall']}/$id';
     if (notForResale.contains(key)) return;
-    final item = (_stalls['${record['stall']}']?['items'] as List? ?? const [])
-        .cast<Map>()
-        .where((i) => i['id'] == record['item'])
-        .firstOrNull;
+    final item = itemOf('${record['stall']}', id);
     if (item == null) return;
     final list = (p['stock'] ??= <Object>[]) as List;
     for (var i = 0; i < qty; i++) {
