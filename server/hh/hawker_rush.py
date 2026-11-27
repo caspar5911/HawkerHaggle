@@ -13,7 +13,7 @@ from threading import BoundedSemaphore
 
 from .arcade import Arcade, clean_arcade_name, TICKET_HOURS
 
-ENGINE = 2  # the Hawker Rush rules version (v3 rules: rush waves, the call bell, closing early)
+ENGINE = 3  # the Hawker Rush rules version (rush waves, free seats fill by themselves, closing early)
 SINGAPORE = dt.timezone(dt.timedelta(hours=8))
 WORKER = Path(__file__).with_name("hawker_rush_rules") / "verify.mjs"
 MAX_ACTIONS = 2500

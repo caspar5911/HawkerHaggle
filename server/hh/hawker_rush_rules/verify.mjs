@@ -17,7 +17,6 @@ function validAction(action) {
     case 'bin-burnt': return owns(E.STATIONS, a) && b === -1;
     case 'bin-dish': return index(a, E.PREP) && b === -1;
     case 'serve': return index(a, E.PREP) && index(b, E.SEATS, -1);
-    case 'call': return a === 0 && b === -1;
     default: return false;
   }
 }
