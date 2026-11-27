@@ -961,7 +961,9 @@ class _StallCard extends StatelessWidget {
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8),
                           child: Bouncy(
-                            key: (it as Map)['legendary'] == true ? const ValueKey('legend_item') : null,
+                            key: (it as Map)['legendary'] == true
+                                ? const ValueKey('legend_item')
+                                : (it['special'] == true ? ValueKey('special_${it['id']}') : null),
                             onTap: () => onItem(stall, it),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -987,7 +989,8 @@ class _StallCard extends StatelessWidget {
                                               ? (it['sold_out'] == true
                                                     ? '✨ legendary · yours today!'
                                                     : '✨ legendary · today only · asking ${money(it['ask'] as num)}')
-                                              : 'asking ${money(it['ask'] as num)}'
+                                              : '${it['special'] == true ? '🗓️ this week only · ' : ''}'
+                                                    'asking ${money(it['ask'] as num)}'
                                                     '${it['best_paid'] is num ? ' · 📒 your best ${money(it['best_paid'] as num)}' : ''}'
                                                     '${it['short'] == true ? ' · 👛 more than you have' : ''}'
                                                     '${it['rental'] == true ? ' · 🚲 a rental (not for resale)' : ''}',
@@ -1715,7 +1718,15 @@ class _HaggleScreenState extends State<HaggleScreen> {
                     face: _face,
                     react: _react,
                     coop: _friend.isEmpty ? (_room == null ? '' : 'Code $_room') : _friend,
-                    onInvite: _intro || g == null || g['done'] == true ? null : _invite,
+                    // (co-op rooms are for the stalls' own items: not a legendary item or a weekly special)
+                    onInvite:
+                        _intro ||
+                            g == null ||
+                            g['done'] == true ||
+                            widget.item['legendary'] == true ||
+                            widget.item['special'] == true
+                        ? null
+                        : _invite,
                   ),
                 ),
                 Expanded(
@@ -2727,9 +2738,10 @@ class _ResultState extends State<_Result> {
     try {
       name = '${(await widget.api.me())['name'] ?? ''}';
     } catch (_) {}
-    // a legendary item is gone tomorrow, so its link would lead nowhere
+    // a legendary item is gone tomorrow (a weekly special next week), so its link would lead nowhere
     final legendary = g['legendary'] == true || widget.item['legendary'] == true;
-    final link = legendary
+    final special = widget.item['special'] == true;
+    final link = legendary || special
         ? ''
         : challengeLink(
             stall: '${widget.stall['id']}',
@@ -2740,7 +2752,7 @@ class _ResultState extends State<_Result> {
     final text =
         'I got the ${legendary ? '✨ legendary ' : ''}${widget.item['name']} for ${money(g['deal'] as num)}${_each(g)} at '
         '${widget.stall['name']}\'s stall${saved > 0 ? ' ($saved% off)' : ''}! ${'⭐' * (g['stars'] as num).toInt()} '
-        '${legendary ? 'Only today!' : 'Can you beat me? Try here: $link'} #HawkerHaggle';
+        '${legendary ? 'Only today!' : (special ? 'Only this week!' : 'Can you beat me? Try here: $link')} #HawkerHaggle';
     try {
       await shareBrag(text, await capturePng(_card));
     } catch (_) {

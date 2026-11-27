@@ -2,6 +2,8 @@
 /// stall unlocks, tips and backstories. Everything lives in the player's profile on the phone.
 library;
 
+import 'specials.dart';
+
 import 'dart:math' as math;
 
 import 'arcs.dart';
@@ -202,7 +204,7 @@ class Progress {
   /// How this customer haggled last time at this stall, in words (no numbers), so the stallholder can tease them.
   String howTheyHaggled(String stall) {
     final last = _haggles.lastWhere((h) => h['stall'] == stall, orElse: () => const {});
-    final item = (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().where((i) => i['id'] == last['item']);
+    final item = [?itemOf(stall, last['item'] as String?)];
     if (last.isEmpty || item.isEmpty) return '';
     if (last['result'] == 'walked') return 'Last time they walked away without buying; you may tease them about it.';
     if (last['result'] != 'deal' || last['deal'] == null) return '';
@@ -221,11 +223,10 @@ class Progress {
     if (lvl == 0) return '';
     final f = _friend(stall);
     final visits = ((f['visits'] ?? 0) as num).toInt();
-    final lastItem = (_stalls[stall]?['items'] as List? ?? const [])
-        .cast<Map>()
-        .where((i) => i['id'] == f['last_item'])
-        .map((i) => plainName('${i['name']}'))
-        .firstOrNull;
+    final lastItem = switch (itemOf(stall, f['last_item'] as String?)) {
+      final i? => plainName('${i['name']}'),
+      null => null,
+    };
     final name = playerName.replaceAll(RegExp(r'\d+'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim(); // number-free
     return [
       'You know this customer${lvl >= 2 && name.isNotEmpty ? ', $name' : ''}: they have come to your stall ${visits > 5 ? 'many times' : 'a few times'}.',
@@ -528,6 +529,7 @@ class Progress {
         for (final i in (s as Map)['items'] as List) '${s['id']}/${(i as Map)['id']}': (s, i),
         for (final l in legendaryByStall[s['id']] ?? const <Map<String, Object>>[])
           '${s['id']}/${l['id']}': (s, l as Map),
+        for (final x in specials[s['id']] ?? const <Map<String, Object>>[]) '${s['id']}/${x['id']}': (s, x as Map),
       },
     };
     return [
@@ -910,10 +912,13 @@ class Progress {
   /// How many things your stock holds: 10, 15 with the bigger shelf, 25 with the storeroom.
   int get stockLimit => owns('storeroom') ? 25 : (owns('shelf') ? 15 : stockMax);
 
+  /// A stall's thing by id: one of its own items, or one of its weekly specials (this week's or an earlier one).
+  Map? itemOf(String stall, String? item) =>
+      (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().where((i) => i['id'] == item).firstOrNull ??
+      (item == null ? null : anySpecial(stall, item));
+
   /// Would a deal on this item go into your stock? (Not a day's rental or a catering order, not a legendary item.)
-  bool goesToStock(String stall, String item) =>
-      !notForResale.contains('$stall/$item') &&
-      (_stalls[stall]?['items'] as List? ?? const []).cast<Map>().any((i) => i['id'] == item);
+  bool goesToStock(String stall, String item) => !notForResale.contains('$stall/$item') && itemOf(stall, item) != null;
 
   /// Room left in your stock.
   int get stockRoom => stockLimit - stock.length;
@@ -928,10 +933,7 @@ class Progress {
     if (record['result'] != 'deal' || record['deal'] == null) return;
     final key = '${record['stall']}/${record['item']}';
     if (notForResale.contains(key)) return;
-    final item = (_stalls['${record['stall']}']?['items'] as List? ?? const [])
-        .cast<Map>()
-        .where((i) => i['id'] == record['item'])
-        .firstOrNull;
+    final item = itemOf('${record['stall']}', '${record['item']}');
     if (item == null) return;
     final list = (p['stock'] ??= <Object>[]) as List;
     for (var i = 0; i < qty; i++) {

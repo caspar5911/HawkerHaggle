@@ -3,6 +3,8 @@
 /// The only network use is the optional AI endpoint (see ai_client.dart).
 library;
 
+import 'specials.dart';
+
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -391,6 +393,18 @@ class Game {
                   // 🚲 a day's rental: back by 6pm, so it won't go into your stock to sell
                   if (Progress.notForResale.contains('${s['id']}/${i['id']}')) 'rental': true,
                 },
+              // 🗓️ this week's special (a different one each week)
+              if (specialFor('${s['id']}', now()) case final x?)
+                {
+                  'id': x['id'],
+                  'name': x['name'],
+                  'emoji': x['emoji'],
+                  'ask': x['ask'],
+                  'stars': best['${s['id']}/${x['id']}'] ?? 0,
+                  'best_paid': ?bestPaid['${s['id']}/${x['id']}'],
+                  'special': true,
+                  if (walletOn && (x['ask'] as num) > progress.wallet) 'short': true,
+                },
               // today's legendary item, at its stall (for this day only)
               if (legend != null && legend.stall == s['id']) _legendView(legend.item, legend.key),
             ],
@@ -778,8 +792,16 @@ class Game {
     }
     if (surprise == 'none') surprise = ''; // tests: no surprise on purpose
     final items = stall['items'] as List;
+    // 🗓️ this week's special (one from another week is gone: say so, rather than haggle for something else)
+    final special = specialFor(stallId, now());
+    final isSpecial = !wantsLegend && special != null && special['id'] == itemId;
+    if (!wantsLegend && !isSpecial && itemId != null && anySpecial(stallId, itemId) != null) {
+      throw GameError(409, "🗓️ That was last week's special. There's something new at ${stall['name']} this week!");
+    }
     final item = wantsLegend
         ? legend!.item
+        : isSpecial
+        ? special
         : (items.firstWhere((i) => (i as Map)['id'] == itemId, orElse: () => items.first)) as Map;
     final seed = _rnd.nextInt(1 << 31);
     final id = '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${_rnd.nextInt(1 << 20).toRadixString(36)}';

@@ -52,6 +52,11 @@ class Customer {
 /// What kind of thing it is, for what customers love: fresh food, souvenirs, toys and gadgets, premium things.
 String kindOf(String key) => switch (key) {
   'mei/durian' || 'lim/prawns' || 'lee/scallops' || 'kumar/saffron' || 'wong/radio' || 'wong/tiffin' => 'premium',
+  'lim/crab' || 'lee/abalone' || 'wong/camera' || 'wong/alarmclock' => 'premium',
+  'mei/pineapple' || 'mei/coconut' || 'lim/squid' || 'siti/lapis' || 'rosnah/dadar' || 'kumar/ghee' => 'fresh',
+  'tan/kaya' => 'fresh',
+  'siti/sarong' || 'lee/puer' || 'kumar/cardamom' || 'rosnah/sambal' || 'tan/biscuits' => 'souvenir',
+  'raj/earbuds' || 'raj/cable' || 'boy/kite' || 'boy/robot' || 'faiz/baseballcap' || 'faiz/boots' => 'toy',
   'mei/mango' || 'lim/pomfret' || 'siti/kueh' || 'rosnah/ondeh' || 'rosnah/tray' || 'tan/eggs' || 'mango' => 'fresh',
   'siti/scarf' || 'lee/oolong' || 'kumar/masala' || 'scarf' => 'souvenir',
   'raj/case' || 'raj/powerbank' || 'boy/rccar' || 'boy/yoyo' || 'faiz/sneakers' || 'faiz/jersey' || 'case' => 'toy',
