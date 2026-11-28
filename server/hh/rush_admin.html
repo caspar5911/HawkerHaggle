@@ -68,6 +68,7 @@ const money = c => '$' + (c / 100).toFixed(2);
 const seconds = c => (c / 100).toFixed(2) + ' s';
 const when = iso => iso ? new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 let data = null;
+const STALLS = { kopitiam: 'Kopitiam', drinks: 'Drinks stall', prata: 'Prata stall', chickenrice: 'Chicken rice', banmian: 'Ban mian', ckt: 'Char kway teow' };
 
 function note(text, err = false) {
   $('note').hidden = !text;
@@ -120,7 +121,7 @@ function renderPlayers() {
     el('span', { className: 'acts' },
       el('button', { textContent: 'Reset password', onclick: () => reset(a.username) }),
       el('button', { className: 'bad', textContent: 'Remove', onclick: () => remove(a.username) })),
-    el('span', { className: 'facts', textContent: (a.day ? `Day ${a.day} · ${'$' + Number(a.wallet).toFixed(2)} · level ${a.level} · ` : 'No progress saved · ') +
+    el('span', { className: 'facts', textContent: (a.day ? `${a.stall ? (STALLS[a.stall] ?? a.stall) + ' day' : 'Day'} ${a.day} · ${'$' + Number(a.wallet).toFixed(2)} · level ${a.level} · ` : 'No progress saved · ') +
       `joined ${when(a.created)} · last in ${when(a.last_used)}` }))));
   if (!list.length) $('players').append(el('p', { className: 'muted', textContent: q ? 'No one matches.' : 'No accounts yet.' }));
 }
