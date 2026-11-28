@@ -155,6 +155,54 @@ class RushAccounts:
             db.execute("DELETE FROM rush_accounts WHERE id = ?", (row["id"],))
         return {"ok": True}
 
+    # ------------------------------------------------------------------ 👑 the owner's admin (only from the owner's login)
+    def list(self) -> list[dict]:
+        """Every account, newest first, with a glance at its progress."""
+        with self._db() as db:
+            rows = db.execute("SELECT a.username, a.created_at, a.last_used, p.data, p.updated_at FROM rush_accounts a "
+                              "LEFT JOIN rush_progress p ON p.account_id = a.id ORDER BY a.id DESC").fetchall()
+        out = []
+        for r in rows:
+            glance = {}
+            try:
+                if not r["data"]:
+                    raise ValueError  # (nothing saved yet)
+                data = json.loads(r["data"])
+                xp = data.get("xp") if isinstance(data.get("xp"), int) else 0
+                glance = {"day": data.get("day") if isinstance(data.get("day"), int) else 1,
+                          "wallet": data.get("wallet") if isinstance(data.get("wallet"), (int, float)) else 0,
+                          "level": max(1, int((1 + (1 + 4 * max(0, xp) / 15) ** .5) / 2))}
+            except (ValueError, TypeError, AttributeError):
+                pass
+            out.append({"username": r["username"], "created": r["created_at"], "last_used": r["last_used"],
+                        "saved": r["updated_at"], **glance})
+        return out
+
+    def _account(self, db, username):
+        row = db.execute("SELECT id, username FROM rush_accounts WHERE username = ?",
+                         (username.strip() if isinstance(username, str) else "",)).fetchone()
+        if row is None:
+            raise RushAccountError(404, "No account with that username.")
+        return row
+
+    def reset_password(self, username) -> dict:
+        """A new temporary password for a player who forgot theirs (every phone of theirs is logged out)."""
+        temp = "-".join("".join(secrets.choice("abcdefghjkmnpqrstuvwxyz23456789") for _ in range(4)) for _ in range(3))
+        with self._db() as db:
+            row = self._account(db, username)
+            db.execute("UPDATE rush_accounts SET pw = ? WHERE id = ?", (hash_pw(temp), row["id"]))
+            db.execute("DELETE FROM rush_logins WHERE account_id = ?", (row["id"],))
+        self.fails.pop(row["username"].lower(), None)
+        return {"username": row["username"], "password": temp}
+
+    def remove(self, username) -> dict:
+        with self._db() as db:
+            row = self._account(db, username)
+            for table in ("rush_progress", "rush_logins"):
+                db.execute(f"DELETE FROM {table} WHERE account_id = ?", (row["id"],))
+            db.execute("DELETE FROM rush_accounts WHERE id = ?", (row["id"],))
+        return {"ok": True, "username": row["username"]}
+
     # ------------------------------------------------------------------ progress
     def load(self, token) -> dict:
         row = self.who(token)
