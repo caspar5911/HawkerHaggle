@@ -100,6 +100,28 @@ class HawkerRush:
              **({"you": True} if name.casefold() == r["player"] else {})}
             for i, r in enumerate(rows, 1)]}
 
+    # 👑 the owner's admin: this week's Speed Run and today's Daily Rush, and taking an entry off (a rude name, say)
+    def admin_boards(self):
+        now = self.arcade.clock()
+        out = {}
+        for mode in ("daily", "speed"):
+            period = period_for(mode, now)
+            order = "DESC" if mode == "daily" else "ASC"
+            with self.arcade._db() as db:
+                rows = db.execute(f"SELECT player, name, value FROM rush_bests WHERE mode=? AND period=? "
+                                  f"ORDER BY value {order}, at, player LIMIT 50", (mode, period)).fetchall()
+            out[mode] = {"period": period, "entries": [{"player": r["player"], "name": r["name"], "value": r["value"]} for r in rows]}
+        return out
+
+    def admin_unlist(self, mode, period, player):
+        if mode not in ("daily", "speed") or not isinstance(period, str) or not isinstance(player, str):
+            raise ValueError("Bad entry.")
+        with self.arcade._db() as db:
+            gone = db.execute("DELETE FROM rush_bests WHERE mode=? AND period=? AND player=?", (mode, period, player)).rowcount
+        if not gone:
+            raise ValueError("That entry isn't on the board.")
+        return {"ok": True}
+
     def submit(self, body):
         now = self.arcade.clock()
         mode, period = body.get("mode"), body.get("period")

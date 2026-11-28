@@ -707,6 +707,32 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         body = await _small_json(request, 66 * 1024)
         return rush_account_call(rush_accounts.save, token, body.get("data"), body.get("rev"))
 
+    # 👑 the owner's Hawker Rush admin: only from the owner's own Tailscale login (to anyone else it doesn't exist)
+    ADMIN_PAGE = (Path(__file__).with_name("rush_admin.html")).read_text()
+
+    def owner_only(request: Request) -> None:
+        if not admin_ok(request):
+            raise HTTPException(404, "Not Found")
+
+    @app.get("/ai/arcade/hawker-rush/admin")
+    def rush_admin_page(request: Request):
+        owner_only(request)
+        return HTMLResponse(ADMIN_PAGE, headers={"Cache-Control": "no-store", "X-Robots-Tag": "noindex"})
+
+    @app.post("/ai/arcade/hawker-rush/admin/{what}")
+    async def rush_admin(what: str, request: Request):
+        owner_only(request)
+        body = await _small_json(request, 2 * 1024)
+        if what == "overview":
+            return {"accounts": rush_accounts.list(), "stats": rush_stats.summary(30, market_today()), "boards": rush.admin_boards()}
+        if what == "reset":
+            return rush_account_call(rush_accounts.reset_password, body.get("username"))
+        if what == "remove":
+            return rush_account_call(rush_accounts.remove, body.get("username"))
+        if what == "unlist":
+            return await rush_call(rush.admin_unlist, body.get("mode"), body.get("period"), body.get("player"))
+        raise HTTPException(404, "Not Found")
+
     @app.post("/ai/arcade/hawker-rush/room/{what}")
     async def rush_room(what: str, request: Request):
         """👫 Co-op rooms for Hawker Rush: create, join, send, pull (waits a few seconds for news), leave."""

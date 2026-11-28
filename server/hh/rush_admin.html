@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Hawker Rush · Owner</title>
+<style>
+  :root { --ink: #5a3a28; --muted: #9a7a62; --ground: #fff3e4; --panel: #fffaf3; --line: #f0cfa8; --accent: #de6f2a; --good: #3f9a5a; --bad: #c9473a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 14px 14px 40px; background: var(--ground); color: var(--ink); font: 15px/1.4 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { margin: 4px 0 2px; font-size: 1.6rem; }
+  h2 { margin: 22px 0 8px; font-size: 1.15rem; }
+  .sub { color: var(--muted); margin: 0 0 8px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px; box-shadow: 0 3px 0 var(--line); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px; box-shadow: 0 3px 0 var(--line); }
+  .tile b { display: block; font-size: 1.5rem; color: var(--accent); }
+  .tile small { color: var(--muted); }
+  input { width: 100%; padding: 10px 12px; border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); font: inherit; }
+  button { border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; background: #fff; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+  button.bad { color: var(--bad); border-color: #efb3a8; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 6px 4px; border-bottom: 1px dashed var(--line); text-align: left; vertical-align: top; }
+  th { color: var(--muted); font-size: .8rem; font-weight: 700; }
+  td small { color: var(--muted); }
+  .player { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+  .player:last-child { border-bottom: 0; }
+  .player .name { font-weight: 800; }
+  .player .facts { color: var(--muted); font-size: .85rem; }
+  .player .acts { order: 3; display: flex; gap: 6px; flex-wrap: wrap; }
+  .player .facts { order: 2; }
+  .note { margin: 8px 0; padding: 8px 12px; border-radius: 12px; background: #fff4d6; border: 1px solid #f0c96a; }
+  .note.err { background: #ffe8e4; border-color: #efb3a8; }
+  .temp { font: 700 1.2rem ui-monospace, monospace; letter-spacing: .05em; color: var(--accent); }
+  .bar { height: 8px; border-radius: 4px; background: var(--accent); }
+  .muted { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>👑 Hawker Rush · Owner</h1>
+  <p class="sub">Only opens from your own Tailscale login. Players never see this page.</p>
+  <div id="note" class="note" hidden></div>
+
+  <h2>📊 The last 30 days</h2>
+  <div id="tiles" class="tiles"></div>
+  <div class="card" style="margin-top:10px">
+    <b>Story days</b> <span class="muted">(shifts played, average stars, customers lost, quit part-way)</span>
+    <table id="days"><thead><tr><th>Day</th><th>Shifts</th><th>Stars</th><th>Lost</th><th>Quit</th></tr></thead><tbody></tbody></table>
+    <p class="muted" style="margin:8px 0 0">Furthest day reached: <span id="furthest"></span></p>
+  </div>
+
+  <h2>👤 Players <span id="count" class="muted"></span></h2>
+  <div class="card">
+    <input id="search" placeholder="Search a username" autocomplete="off" spellcheck="false">
+    <div id="players"></div>
+  </div>
+
+  <h2>🏆 Leaderboards</h2>
+  <div id="boards"></div>
+  <p class="muted" style="margin-top:18px"><button id="reload" type="button">↻ Refresh</button></p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const money = c => '$' + (c / 100).toFixed(2);
+const seconds = c => (c / 100).toFixed(2) + ' s';
+const when = iso => iso ? new Date(iso).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+let data = null;
+
+function note(text, err = false) {
+  $('note').hidden = !text;
+  $('note').className = 'note' + (err ? ' err' : '');
+  $('note').replaceChildren(...(Array.isArray(text) ? text : [text ?? '']));
+}
+
+async function call(what, body = {}) {
+  const r = await fetch('/ai/arcade/hawker-rush/admin/' + what, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const out = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(out.detail || 'Something went wrong.');
+  return out;
+}
+
+function el(tag, props = {}, ...kids) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...kids);
+  return e;
+}
+
+function render() {
+  const s = data.stats;
+  $('tiles').replaceChildren(...[
+    ['Players', s.players], ['Came back another day', s.came_back], ['Accounts', data.accounts.length],
+    ['Shifts', Object.values(s.modes).reduce((a, b) => a + b, 0)],
+  ].map(([label, value]) => el('div', { className: 'tile' }, el('b', { textContent: value }), el('small', { textContent: label }))));
+  $('days').tBodies[0].replaceChildren(...s.story_days.map(d => el('tr', {},
+    el('td', { textContent: d.day }), el('td', { textContent: d.shifts }), el('td', { textContent: d.stars.toFixed(1) + '★' }),
+    el('td', { textContent: d.lost.toFixed(1) }), el('td', { textContent: d.quit }))));
+  if (!s.story_days.length) $('days').tBodies[0].append(el('tr', {}, el('td', { colSpan: 5, className: 'muted', textContent: 'No shifts yet.' })));
+  $('furthest').textContent = Object.entries(s.furthest_day).map(([day, n]) => `day ${day}: ${n}`).join(' · ') || '—';
+  renderPlayers();
+  $('boards').replaceChildren(...['speed', 'daily'].map(mode => {
+    const board = data.boards[mode];
+    const rows = board.entries.map((e, i) => el('tr', {},
+      el('td', { textContent: i + 1 }), el('td', { textContent: e.name }), el('td', { textContent: mode === 'daily' ? money(e.value) : seconds(e.value) }),
+      el('td', {}, el('button', { className: 'bad', textContent: 'Remove', onclick: () => unlist(mode, board.period, e) }))));
+    return el('div', { className: 'card', style: 'margin-bottom:10px' },
+      el('b', { textContent: mode === 'daily' ? `Daily Rush · ${board.period}` : `Speed Run · week of ${board.period}` }),
+      rows.length ? el('table', {}, el('tbody', {}, ...rows)) : el('p', { className: 'muted', textContent: 'Empty so far.' }));
+  }));
+}
+
+function renderPlayers() {
+  const q = $('search').value.trim().toLowerCase();
+  const list = data.accounts.filter(a => !q || a.username.toLowerCase().includes(q));
+  $('count').textContent = `(${data.accounts.length})`;
+  $('players').replaceChildren(...list.slice(0, 200).map(a => el('div', { className: 'player' },
+    el('span', { className: 'name', textContent: a.username }),
+    el('span', { className: 'acts' },
+      el('button', { textContent: 'Reset password', onclick: () => reset(a.username) }),
+      el('button', { className: 'bad', textContent: 'Remove', onclick: () => remove(a.username) })),
+    el('span', { className: 'facts', textContent: (a.day ? `Day ${a.day} · ${'$' + Number(a.wallet).toFixed(2)} · level ${a.level} · ` : 'No progress saved · ') +
+      `joined ${when(a.created)} · last in ${when(a.last_used)}` }))));
+  if (!list.length) $('players').append(el('p', { className: 'muted', textContent: q ? 'No one matches.' : 'No accounts yet.' }));
+}
+
+async function load() {
+  try {
+    data = await call('overview');
+    render();
+  } catch (e) {
+    note(e.message, true);
+  }
+}
+
+async function reset(username) {
+  if (!confirm(`Give ${username} a new temporary password? Their phones will be logged out.`)) return;
+  try {
+    const r = await call('reset', { username });
+    note([`New password for ${r.username}: `, el('span', { className: 'temp', textContent: r.password }), ' — tell them, and ask them to change it in Account › Change password.']);
+  } catch (e) {
+    note(e.message, true);
+  }
+}
+
+async function remove(username) {
+  if (!confirm(`Remove the account ${username} and its saved progress? This can't be undone.`)) return;
+  try {
+    await call('remove', { username });
+    note(`Removed ${username}.`);
+    await load();
+  } catch (e) {
+    note(e.message, true);
+  }
+}
+
+async function unlist(mode, period, entry) {
+  if (!confirm(`Take “${entry.name}” off the ${mode === 'daily' ? 'Daily Rush' : 'Speed Run'} board?`)) return;
+  try {
+    await call('unlist', { mode, period, player: entry.player });
+    note(`Took “${entry.name}” off the board.`);
+    await load();
+  } catch (e) {
+    note(e.message, true);
+  }
+}
+
+$('search').addEventListener('input', () => data && renderPlayers());
+$('reload').addEventListener('click', () => { note(''); load(); });
+load();
+</script>
+</body>
+</html>
