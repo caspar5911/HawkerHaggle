@@ -24,6 +24,7 @@ from pydantic import BaseModel, ValidationError, Field
 from .accounts import SAVE_MAX, AccountError, Accounts
 from .arcade import Arcade
 from .hawker_rush import HawkerRush
+from .rush_accounts import RushAccountError, RushAccounts
 from .rush_stats import RushStats
 from .rush_rooms import RoomError, RushRooms
 from .coop import CoopError, Rooms
@@ -67,11 +68,18 @@ PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/
                 "/ai/arcade/hawker-rush/room/create", "/ai/arcade/hawker-rush/room/join", "/ai/arcade/hawker-rush/room/send",
                 "/ai/arcade/hawker-rush/room/pull", "/ai/arcade/hawker-rush/room/leave",
                 # 📊 anonymous play stats (no names or addresses; players can switch it off)
-                "/ai/arcade/hawker-rush/stats"}
+                "/ai/arcade/hawker-rush/stats",
+                # 🏪 Hawker Rush accounts (its own, separate from Hawker Haggle's) and their progress
+                "/ai/arcade/hawker-rush/account/signup", "/ai/arcade/hawker-rush/account/login",
+                "/ai/arcade/hawker-rush/account/me", "/ai/arcade/hawker-rush/account/logout",
+                "/ai/arcade/hawker-rush/account/password", "/ai/arcade/hawker-rush/account/delete",
+                "/ai/arcade/hawker-rush/progress", "/ai/arcade/hawker-rush/progress/save"}
 ARCADE_TICKETS_PER_MINUTE = 240  # (everyone on the public side shares one address)
 ARCADE_SCORES_PER_MINUTE = 90
 RUSH_ROOMS_PER_MINUTE = 40     # new rooms and joins (everyone on the public side shares one address)
 RUSH_ROOM_CALLS_PER_MINUTE = 1500  # per player in a room (a phone sends and hears several frames a second)
+RUSH_ACCOUNT_PER_MINUTE = 60   # Hawker Rush sign-ups, logins, password changes (everyone together: one address)
+RUSH_SAVES_PER_MINUTE = 30     # per Hawker Rush login (the game saves after shifts and purchases)
 RUSH_STATS_PER_MINUTE = 600    # everyone together (they share one address); each phone is also capped per day
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
@@ -122,6 +130,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     arcade = arcade or Arcade(os.environ.get("HH_ARCADE_DB", str(ROOT / "server" / "var" / "arcade.db")))
     rush = HawkerRush(arcade)
     rush_stats = RushStats(arcade)
+    rush_accounts = RushAccounts(arcade.path)
     rush_rooms = RushRooms()
     gate = GATE if gate is None else gate
     gateway_logins = GATEWAY_LOGINS if gateway_logins is None else {x.lower() for x in gateway_logins}
@@ -657,6 +666,46 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         limit("rush-stats", RUSH_STATS_PER_MINUTE)
         body = await _small_json(request, 1024)
         return await rush_call(rush_stats.record, body, market_today())
+
+    # 🏪 Hawker Rush accounts: their own usernames and logins (nothing shared with Hawker Haggle's accounts)
+    def rush_account_call(fn, *args):
+        try:
+            return fn(*args)
+        except RushAccountError as exc:
+            raise HTTPException(exc.code, exc.message) from exc
+
+    @app.post("/ai/arcade/hawker-rush/account/{what}")
+    async def rush_account(what: str, request: Request, authorization: str = Header(default="")):
+        body = await _small_json(request, 2 * 1024)
+        token = bearer(authorization)
+        if what in ("signup", "login", "password", "delete"):
+            limit("rush-account", RUSH_ACCOUNT_PER_MINUTE)
+        if what == "signup":
+            return rush_account_call(rush_accounts.signup, body.get("username"), body.get("password"))
+        if what == "login":
+            return rush_account_call(rush_accounts.login, body.get("username"), body.get("password"))
+        if what == "me":
+            return rush_account_call(rush_accounts.me, token)
+        if what == "logout":
+            return rush_account_call(rush_accounts.logout, token)
+        if what == "password":
+            return rush_account_call(rush_accounts.change_password, token, body.get("old"), body.get("new"))
+        if what == "delete":
+            return rush_account_call(rush_accounts.delete, token, body.get("password"))
+        raise HTTPException(404, "Not Found")
+
+    @app.post("/ai/arcade/hawker-rush/progress")
+    async def rush_progress_load(authorization: str = Header(default="")):
+        token = bearer(authorization)
+        limit("rush-save:" + token[:48], RUSH_SAVES_PER_MINUTE)
+        return rush_account_call(rush_accounts.load, token)
+
+    @app.post("/ai/arcade/hawker-rush/progress/save")
+    async def rush_progress_store(request: Request, authorization: str = Header(default="")):
+        token = bearer(authorization)
+        limit("rush-save:" + token[:48], RUSH_SAVES_PER_MINUTE)
+        body = await _small_json(request, 66 * 1024)
+        return rush_account_call(rush_accounts.save, token, body.get("data"), body.get("rev"))
 
     @app.post("/ai/arcade/hawker-rush/room/{what}")
     async def rush_room(what: str, request: Request):
