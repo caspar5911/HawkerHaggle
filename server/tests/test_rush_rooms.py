@@ -15,7 +15,7 @@ from hh.store import Store
 
 ROOM = "/ai/arcade/hawker-rush/room/"
 ORIGIN = {"Origin": "https://caspar5911.github.io"}
-SPEC = {"day": 6, "seed": "coop-abc123", "mode": "day", "upgrades": {"fan": 1}, "players": 2}
+SPEC = {"day": 6, "seed": "coop-abc123", "mode": "day", "upgrades": {"fan": 1}, "players": 2, "rules": 5}  # (rules: passed on, so friends can check they play the same version)
 
 
 @pytest.fixture
@@ -83,6 +83,7 @@ def test_friends_can_only_send_moves_and_cheers(client, msg, status):
 @pytest.mark.parametrize("msg", [
     {"t": "start", "spec": {**SPEC, "players": 5}}, {"t": "start", "spec": {**SPEC, "mode": "speed"}},
     {"t": "start", "spec": {**SPEC, "seed": "bad seed!"}}, {"t": "start", "spec": {**SPEC, "upgrades": {"fan": 99}}},
+    {"t": "start", "spec": {**SPEC, "rules": "5"}}, {"t": "start", "spec": {**SPEC, "rules": 0}},
     {"t": "frames", "upTo": 10, "actions": [[11, "base", "cup", -1, 0]]},
     {"t": "frames", "upTo": 10, "actions": [[5, "base", "cup", -1, 0], [4, "add", "kopi", -1, 0]]},
     {"t": "frames", "upTo": 10, "actions": [[5, "base", "cup", -1, 7]]}, {"t": "frames", "upTo": -1},

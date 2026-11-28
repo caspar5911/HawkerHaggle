@@ -71,11 +71,16 @@ def _clean(msg, seat: int):
         if not isinstance(spec, dict):
             raise RoomError(400, "Bad shift.")
         day, seed, upgrades, players = spec.get("day"), spec.get("seed"), spec.get("upgrades", {}), spec.get("players")
+        rules = spec.get("rules")  # (the host's rules version: friends on another version are told to update)
         if (not _int(day, 1, 9999) or not isinstance(seed, str) or not re.match(r"^[A-Za-z0-9-]{1,40}$", seed)
                 or spec.get("mode") != "day" or not _int(players, 1, MAX_PLAYERS) or not isinstance(upgrades, dict)
-                or len(upgrades) > 10 or not all(WORD.match(k) and _int(v, 0, 9) for k, v in upgrades.items())):
+                or len(upgrades) > 10 or not all(WORD.match(k) and _int(v, 0, 9) for k, v in upgrades.items())
+                or (rules is not None and not _int(rules, 1, 999))):
             raise RoomError(400, "Bad shift.")
-        return {"t": t, "spec": {"day": day, "seed": seed, "mode": "day", "upgrades": dict(upgrades), "players": players}}
+        out = {"day": day, "seed": seed, "mode": "day", "upgrades": dict(upgrades), "players": players}
+        if rules is not None:
+            out["rules"] = rules
+        return {"t": t, "spec": out}
     if t == "frames":
         up_to, actions = msg.get("upTo"), msg.get("actions", [])
         if not _int(up_to, 0, MAX_TICKS) or not isinstance(actions, list) or len(actions) > 120:
