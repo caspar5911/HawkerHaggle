@@ -24,6 +24,7 @@ from pydantic import BaseModel, ValidationError, Field
 from .accounts import SAVE_MAX, AccountError, Accounts
 from .arcade import Arcade
 from .hawker_rush import HawkerRush
+from .rush_stats import RushStats
 from .rush_rooms import RoomError, RushRooms
 from .coop import CoopError, Rooms
 from .ai import AI, Heard, fast_offer, heard_by_rules, money, plain_yes, rules
@@ -64,11 +65,14 @@ PUBLIC_PATHS = {"/ai/v1/chat/completions", "/ai/accounts/signup", "/ai/accounts/
                 "/ai/arcade/hawker-rush/ticket", "/ai/arcade/hawker-rush/score", "/ai/arcade/hawker-rush/top",
                 # 👫 Hawker Rush co-op rooms (friends sharing one stall)
                 "/ai/arcade/hawker-rush/room/create", "/ai/arcade/hawker-rush/room/join", "/ai/arcade/hawker-rush/room/send",
-                "/ai/arcade/hawker-rush/room/pull", "/ai/arcade/hawker-rush/room/leave"}
+                "/ai/arcade/hawker-rush/room/pull", "/ai/arcade/hawker-rush/room/leave",
+                # 📊 anonymous play stats (no names or addresses; players can switch it off)
+                "/ai/arcade/hawker-rush/stats"}
 ARCADE_TICKETS_PER_MINUTE = 240  # (everyone on the public side shares one address)
 ARCADE_SCORES_PER_MINUTE = 90
 RUSH_ROOMS_PER_MINUTE = 40     # new rooms and joins (everyone on the public side shares one address)
 RUSH_ROOM_CALLS_PER_MINUTE = 1500  # per player in a room (a phone sends and hears several frames a second)
+RUSH_STATS_PER_MINUTE = 600    # everyone together (they share one address); each phone is also capped per day
 ACCOUNT_PER_MINUTE = 30        # sign-ups and logins (all public players share the gateway's address)
 PUBLIC_AI_PER_MINUTE = 20      # per account
 PUBLIC_AI_PER_DAY = 600        # per account (a haggle move is about 2 calls)
@@ -117,6 +121,7 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
     accounts = accounts or Accounts(os.environ.get("HH_ACCOUNTS_DB", str(ROOT / "server" / "var" / "accounts.db")))
     arcade = arcade or Arcade(os.environ.get("HH_ARCADE_DB", str(ROOT / "server" / "var" / "arcade.db")))
     rush = HawkerRush(arcade)
+    rush_stats = RushStats(arcade)
     rush_rooms = RushRooms()
     gate = GATE if gate is None else gate
     gateway_logins = GATEWAY_LOGINS if gateway_logins is None else {x.lower() for x in gateway_logins}
@@ -645,6 +650,13 @@ def create_app(store: Store | None = None, ai: AI | None = None, accounts: Accou
         if game == "hawker-rush":
             return await rush_call(rush.top, body.get("mode"), name)
         return arcade.board(game, market_today(), name[:20] if isinstance(name, str) else "")
+
+    @app.post("/ai/arcade/hawker-rush/stats")
+    async def rush_stats_event(request: Request):
+        """📊 One anonymous play event (see rush_stats.py for exactly what's kept)."""
+        limit("rush-stats", RUSH_STATS_PER_MINUTE)
+        body = await _small_json(request, 1024)
+        return await rush_call(rush_stats.record, body, market_today())
 
     @app.post("/ai/arcade/hawker-rush/room/{what}")
     async def rush_room(what: str, request: Request):

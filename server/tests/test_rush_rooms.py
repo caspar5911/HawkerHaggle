@@ -15,7 +15,7 @@ from hh.store import Store
 
 ROOM = "/ai/arcade/hawker-rush/room/"
 ORIGIN = {"Origin": "https://caspar5911.github.io"}
-SPEC = {"day": 6, "seed": "coop-abc123", "mode": "day", "upgrades": {"fan": 1}, "players": 2, "rules": 5}  # (rules: passed on, so friends can check they play the same version)
+SPEC = {"day": 6, "seed": "coop-abc123", "mode": "day", "upgrades": {"fan": 1}, "players": 2, "rules": 6}  # (rules: passed on, so friends can check they play the same version)
 
 
 @pytest.fixture
