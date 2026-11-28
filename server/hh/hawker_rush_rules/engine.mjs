@@ -143,7 +143,81 @@ const round2 = v => Math.round(v * 100) / 100;
 
 // ---------------------------------------------------------------------------------------------------- menu and customers
 export function menuFor(day) {
+  if (day > DAYS) return endless(day).menu;
   return Object.keys(DISHES).filter(d => DISHES[d].day <= day);
+}
+
+// ---------------------------------------------------------------------------------------------------- ♾️ endless days
+// After the story (day 16 on) the days never run out. Each one is built from its number alone: the days come in
+// streets of ten (a gentle opening day first, a festival night last), and the eight days between take turns through
+// the twists, each street in its own order. A twist picks the day's menu (a few dishes, with a special) and its
+// crowd. How busy a day is eases up street by street towards a ceiling, so day 500 is no harder than day 100: what
+// keeps changing is the mix.
+export const STREET = 10;
+export const STREETS = ['Chinatown', 'Tiong Bahru', 'Kampong Glam', 'Little India', 'Katong', 'Toa Payoh', 'Geylang',
+  'Ang Mo Kio', 'Bedok', 'Jurong', 'Clementi', 'Serangoon', 'Holland Village', 'Changi', 'Sentosa'];
+// crowd: customers more or fewer than usual; patience: × how long they wait; kinds: [critic, group, regular] chances;
+// big: an extra dish for everyone (at least); menu: the dishes it always has (the rest of the day's menu is drawn)
+export const TWISTS = {
+  opening: { name: 'Opening day', icon: '🎀', what: 'Your first day on a new street: a gentle start', crowd: -2 },
+  lunch: { name: 'Big lunch rush', icon: '🍱', what: 'A quiet morning, then everyone comes at once', rush: true },
+  hot: { name: 'Hot day', icon: '🧊', what: 'Everyone wants a cold drink', crowd: 3, menu: ['kopi', 'kopiPeng', 'tehPeng', 'teh'],
+    special: ['kopiPeng', 'tehPeng'] },
+  breakfast: { name: 'Breakfast crowd', icon: '🍞', what: 'Kopi, kaya toast and eggs', crowd: 2, size: 6,
+    menu: ['kopi', 'kopiO', 'teh', 'toast', 'eggs'], special: ['toast'] },
+  prata: { name: 'Prata party', icon: '🫓', what: 'Roti prata and roti telur all morning', crowd: 0, menu: ['prata', 'rotiTelur'],
+    special: ['prata', 'rotiTelur'] },
+  family: { name: 'Family day', icon: '👨‍👩‍👧', what: 'Big groups with big orders, and big tips', crowd: -4, kinds: [.04, .3, .1] },
+  critics: { name: 'Critics in town', icon: '📝', what: 'Lots of food critics: serve them fast for a glowing review', crowd: 1,
+    kinds: [.18, .05, .1] },
+  regulars: { name: 'Regulars’ day', icon: '💕', what: 'All your regulars drop by for their favourite',
+    crowd: 1, menu: REGULARS.map(r => r.fav), kinds: [.03, .05, .45] },
+  rain: { name: 'Rainy day', icon: '🌧️', what: 'Fewer customers, but everyone orders more', crowd: -6, big: 1, patience: 1.1 },
+  // (the kitchen itself is different today: prep: counter spots fewer; slots: places on every stove fewer;
+  // heat: × cooking time and × time to burn)
+  tiny: { name: 'Tiny stall', icon: '🏠', what: 'A borrowed stall: one counter spot fewer', crowd: -3, prep: 1 },
+  gas: { name: 'Gas trouble', icon: '🔧', what: 'Every stove cooks one thing at a time', crowd: -2, slots: 1,
+    menu: ['toast', 'curryPuff', 'satay'] },
+  fierce: { name: 'Fierce fire', icon: '🔥', what: 'The stoves run hot: food cooks faster, and burns sooner', crowd: -3,
+    heat: [.7, .65], menu: ['toast', 'satay', 'prata'] },
+  festival: { name: 'Festival night', icon: '🏮', what: 'The busiest night on the street: the whole menu, and a double bonus',
+    crowd: 2, size: 99, kinds: [.07, .1, .12] },
+};
+const MIDDLE = ['lunch', 'hot', 'breakfast', 'prata', 'family', 'critics', 'regulars', 'rain', 'tiny', 'gas', 'fierce'];
+// how busy each day of a street is, before the street's own level (a breather after the hard days)
+const RHYTHM = [0, .2, .35, .5, .3, .6, .7, .45, .8, 1];
+// an endless day's customers, from the quietest day to the busiest (solo), and how much less patient they are
+const ENDLESS_CROWD = [20, 30];
+const ENDLESS_HURRY = [.08, .19];
+const ENDLESS_SPECIAL = .25; // (how often an order is the day's special, for each special)
+
+/** An endless day (16 on): { street, name, round, place (1–10), twist, menu, special, busy (0–1) }, or null. */
+export function endless(day) {
+  if (!Number.isInteger(day) || day <= DAYS) return null;
+  const street = Math.floor((day - DAYS - 1) / STREET), place = (day - DAYS - 1) % STREET;
+  const rng = mulberry32(hash(`hawker-rush-endless:${street}`));
+  const order = [...MIDDLE];
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  const twist = place === 0 ? 'opening' : place === STREET - 1 ? 'festival' : order[place - 1];
+  const t = TWISTS[twist];
+  // the day's menu: the twist's own dishes, then others drawn at random (8 dishes in all, or the size it asks for)
+  const pick = mulberry32(hash(`hawker-rush-endless-menu:${day}`));
+  const all = Object.keys(DISHES);
+  const menu = [...(t.menu ?? [])];
+  const size = Math.min(all.length, t.size ?? 8);
+  while (menu.length < size) {
+    const d = all[Math.floor(pick() * all.length)];
+    if (!menu.includes(d)) menu.push(d);
+  }
+  const special = t.special ? [...t.special] : twist === 'festival' ? [] : [menu[Math.floor(pick() * menu.length)]];
+  // busy: the street's level (climbing towards a ceiling) and where the day falls in the street
+  const level = 1 - .75 ** street;
+  const busy = Math.round((.55 * level + .45 * RHYTHM[place]) * 1000) / 1000;
+  return { street: street + 1, name: STREETS[street % STREETS.length], round: Math.floor(street / STREETS.length) + 1,
+    place: place + 1, twist, menu: all.filter(d => menu.includes(d)), special, busy };
 }
 
 export function newOn(day) {
@@ -179,18 +253,19 @@ export const seatsFor = players => SEATS + (players >= 2 ? 1 : 0) + (players >= 
 export const prepFor = (players, upgrades = {}) => PREP + (upgrades.prep ?? 0) + Math.min(3, 2 * (players - 1));
 
 /** How busy the stall is at second `t` (the waves, eased in on the first days). */
-function busyness(t, day) {
+function busyness(t, day, rush = false) {
   const ease = Math.min(1, day / 4);
   let w = 0;
   for (const [from, b] of WAVES) if (t >= from) w = b;
+  if (rush && w) w = w > 1 ? w * 1.45 : w * .45; // (a big lunch rush: the busy waves busier, the quiet ones quieter)
   return w === 0 ? 0 : 1 + ease * (w - 1);
 }
 
 /** When `count` customers arrive: spread by the waves (more in the rushes), each a little early or late. */
-function arrivalTimes(count, day, rng) {
+function arrivalTimes(count, day, rng, rush = false) {
   const step = .5, end = SHIFT - 20, start = 1.5;
   const cum = [0];
-  for (let t = start; t < end; t += step) cum.push(cum[cum.length - 1] + busyness(t, day) * step);
+  for (let t = start; t < end; t += step) cum.push(cum[cum.length - 1] + busyness(t, day, rush) * step);
   const total = cum[cum.length - 1];
   const out = [];
   for (let i = 0; i < count; i++) {
@@ -212,14 +287,20 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
   const rng = mulberry32(hash(`hawker-rush-3:${mode}:${seed}:${day}:${team}`));
   const speed = mode === 'speed';
   const menu = menuFor(speed ? DAYS : day);
-  const fresh = speed ? [] : newOn(day);
+  const far = speed ? null : endless(day); // (an endless day: its twist decides the crowd)
+  const twist = far ? TWISTS[far.twist] : {};
+  const fresh = speed ? [] : far ? far.special : newOn(day);
   // (after day 10 the crowd grows more slowly: the whole menu is on, and roti telur takes many taps)
-  const learning = !speed && day >= 9 && fresh.some(d => DISHES[d].cook); // (a new cooked dish: a learning day, a smaller crowd)
-  const solo = speed ? SPEED_CUSTOMERS : Math.min(30, 9 + Math.round(Math.min(day, 10) * 1.3 + Math.max(0, day - 10) * .6)) - (learning ? 2 : 0);
+  const learning = !speed && day >= 9 && fresh.some(d => DISHES[d].cook) && !far; // (a new cooked dish: a learning day, a smaller crowd)
+  const solo = speed ? SPEED_CUSTOMERS
+    : far ? Math.round(ENDLESS_CROWD[0] + (ENDLESS_CROWD[1] - ENDLESS_CROWD[0]) * far.busy) + (twist.crowd ?? 0)
+      : Math.min(30, 9 + Math.round(Math.min(day, 10) * 1.3 + Math.max(0, day - 10) * .6)) - (learning ? 2 : 0);
   const count = Math.round(solo * (1 + .6 * (team - 1)));
-  const times = speed ? null : arrivalTimes(count, day, rng);
+  const times = speed ? null : arrivalTimes(count, day, rng, Boolean(twist.rush));
   if (times) times[0] = 1.5; // (someone is always waiting when the stall opens)
-  const hard = speed ? .2 : day >= 11 ? .15 : Math.min(.2, day * .018);
+  const hard = speed ? .2 : far ? ENDLESS_HURRY[0] + (ENDLESS_HURRY[1] - ENDLESS_HURRY[0]) * far.busy
+    : day >= 11 ? .15 : Math.min(.2, day * .018);
+  const [criticAt, groupAt, regularAt] = twist.kinds ?? [.05, .06, .11];
   const people = [];
   const regularsToday = new Set();
   let at = 1.5;
@@ -227,10 +308,11 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
     if (speed) {
       if (i > 0) at += 1.2 + rng() * 1.3;
     } else at = times[i];
-    const big = speed ? (rng() < .35 ? 1 : 0) : day === 1 ? 0 : day < 4 ? (rng() < .3 ? 1 : 0) : (rng() < .2 ? 2 : rng() < .5 ? 1 : 0);
+    const big = Math.max(twist.big ?? 0,
+      speed ? (rng() < .35 ? 1 : 0) : day === 1 ? 0 : day < 4 ? (rng() < .3 ? 1 : 0) : (rng() < .2 ? 2 : rng() < .5 ? 1 : 0));
     const order = [];
     for (let k = 0; k <= big; k++) {
-      order.push(fresh.length && rng() < (day >= 9 ? .22 : .35) ? fresh[Math.floor(rng() * fresh.length)] : menu[Math.floor(rng() * menu.length)]);
+      order.push(fresh.length && rng() < (far ? ENDLESS_SPECIAL * fresh.length : day >= 9 ? .22 : .35) ? fresh[Math.floor(rng() * fresh.length)] : menu[Math.floor(rng() * menu.length)]);
     }
     let who = PEOPLE[Math.floor(rng() * PEOPLE.length)];
     // someone special? (story and daily shifts: a speed run is the same plain line for everyone)
@@ -238,11 +320,11 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
     if (!speed) {
       const roll = rng();
       const regulars = REGULARS.filter(r => menu.includes(r.fav) && !regularsToday.has(r.id));
-      if (day >= 4 && roll < .05) kind = 'critic';
-      else if (day >= 3 && roll < .11) {
+      if (day >= 4 && roll < criticAt) kind = 'critic';
+      else if (day >= 3 && roll < criticAt + groupAt) {
         kind = 'group';
         while (order.length < 3) order.push(menu[Math.floor(rng() * menu.length)]);
-      } else if (day >= 2 && roll < .22 && regulars.length) {
+      } else if (day >= 2 && roll < criticAt + groupAt + regularAt && regulars.length) {
         kind = 'regular';
         regular = regulars[Math.floor(rng() * regulars.length)];
         regularsToday.add(regular.id);
@@ -252,7 +334,7 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
     }
     const work = order.reduce((n, d) => n + steps(d), 0);
     const mood = kind === 'critic' ? .75 : kind === 'group' ? 1.35 : 1;
-    const patience = (16 + 4 * work) * who.patience * mood * (1 - hard) * (1 + .12 * (upgrades.fan ?? 0));
+    const patience = (16 + 4 * work) * who.patience * mood * (1 - hard) * (twist.patience ?? 1) * (1 + .12 * (upgrades.fan ?? 0));
     people.push({ id: i, at: round2(at), who: who.id, order, patience: round2(patience), ...(kind ? { kind } : {}), ...(regular ? { regular: regular.id } : {}) });
   }
   return people.sort((a, b) => a.at - b.at || a.id - b.id);
@@ -276,9 +358,10 @@ export function createShift(spec = {}) {
   const players = playersOf(spec);
   const people = schedule({ day, seed, mode, upgrades, players });
   const kitchen = kitchenFor(mode === 'speed' ? DAYS : day);
+  const twist = mode === 'speed' ? {} : TWISTS[endless(day)?.twist] ?? {}; // (an endless day's kitchen may be different)
   const stations = {};
   for (const id of kitchen.stations) {
-    stations[id] = { slots: Array.from({ length: STATIONS[id].slots + (upgrades.slots ?? 0) }, () => null) };
+    stations[id] = { slots: Array.from({ length: Math.max(1, STATIONS[id].slots + (upgrades.slots ?? 0) - (twist.slots ?? 0)) }, () => null) };
   }
   return {
     day, seed, mode, upgrades, kitchen, players,
@@ -286,7 +369,8 @@ export function createShift(spec = {}) {
     arrivals: people, next: 0,
     seats: Array.from({ length: seatsFor(players) }, () => null),
     queue: [],
-    prep: Array.from({ length: prepFor(players, upgrades) }, () => null),
+    prep: Array.from({ length: Math.max(2, prepFor(players, upgrades) - (twist.prep ?? 0)) }, () => null),
+    ...(twist.heat ? { heat: twist.heat } : {}),
     stations,
     coins: 0, tips: 0, served: 0, dishes: 0, lost: 0, passed: 0, burnt: 0, wasted: 0, combo: 0, bestCombo: 0,
     early: 0, earlyBonus: 0, feverUntil: 0, fevers: 0, reviews: 0,
@@ -295,8 +379,8 @@ export function createShift(spec = {}) {
   };
 }
 
-const cookTime = (shift, id) => STATIONS[id].cook * .85 ** (shift.upgrades.fast ?? 0);
-const burnTime = (shift, id) => STATIONS[id].burn + 2 * (shift.upgrades.timer ?? 0);
+const cookTime = (shift, id) => STATIONS[id].cook * .85 ** (shift.upgrades.fast ?? 0) * (shift.heat?.[0] ?? 1);
+const burnTime = (shift, id) => (STATIONS[id].burn + 2 * (shift.upgrades.timer ?? 0)) * (shift.heat?.[1] ?? 1);
 
 const sameMix = (d, item) => d.base === item.base && d.has.length === item.has.length && d.has.every(i => item.has.includes(i));
 
