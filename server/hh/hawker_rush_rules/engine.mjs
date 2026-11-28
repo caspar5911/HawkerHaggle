@@ -10,7 +10,7 @@
 // long: the next customer due soon walks straight in, so quick players get busier, and can close early for a bonus.
 // Deterministic: a seed and the list of actions replay exactly (for checked leaderboards).
 
-export const RULES = 6; // the rules version: the leaderboard server (ENGINE) and every phone in a co-op stall must agree
+export const RULES = 7; // the rules version: the leaderboard server (ENGINE) and every phone in a co-op stall must agree
 export const TICK = 1 / 30;
 export const SEATS = 4;
 export const QUEUE_MAX = 5;
@@ -25,19 +25,29 @@ export const FEVER_EVERY = 5; // every 5th customer served in a row starts Fever
 export const FEVER_TIME = 8; // …for this many seconds: tips are doubled (a customer storming off ends it)
 export const CRITIC_FINE = 5; // a food critic who storms off writes a bad review: this much off the takings
 // the regulars: the same faces come back, day after day, for their favourite
+// (`fav`: at the mixed Daily Rush; `favs`: what they always order at each stall)
 export const REGULARS = [
-  { id: 'huat', name: 'Uncle Huat', who: 'uncle', fav: 'kopi' },
-  { id: 'meiling', name: 'Mei Ling', who: 'student', fav: 'teh' },
-  { id: 'lily', name: 'Little Lily', who: 'kid', fav: 'toast' },
-  { id: 'siti', name: 'Kak Siti', who: 'auntie', fav: 'curryPuff' },
-  { id: 'rajan', name: 'Mr Rajan', who: 'office', fav: 'prata' },
-  { id: 'boon', name: 'Boon the builder', who: 'worker', fav: 'rice' },
+  { id: 'huat', name: 'Uncle Huat', who: 'uncle', fav: 'kopi',
+    favs: { kopitiam: 'kopi', drinks: 'sugarcane', prata: 'teh', chickenrice: 'rice', banmian: 'banmian', ckt: 'ckt' } },
+  { id: 'meiling', name: 'Mei Ling', who: 'student', fav: 'teh',
+    favs: { kopitiam: 'teh', drinks: 'bubbleTea', prata: 'cheesePrata', chickenrice: 'soup', banmian: 'malaMild', ckt: 'cktEgg' } },
+  { id: 'lily', name: 'Little Lily', who: 'kid', fav: 'toast',
+    favs: { kopitiam: 'toast', drinks: 'iceKachang', prata: 'rotiTissue', chickenrice: 'satay', banmian: 'eggMian', ckt: 'whiteCake' } },
+  { id: 'siti', name: 'Kak Siti', who: 'auntie', fav: 'curryPuff',
+    favs: { kopitiam: 'eggs', drinks: 'bandung', prata: 'curryPuff', chickenrice: 'satayKetupat', banmian: 'ikanBilisMian', ckt: 'blackCake' } },
+  { id: 'rajan', name: 'Mr Rajan', who: 'office', fav: 'prata',
+    favs: { kopitiam: 'kopiO', drinks: 'limeJuice', prata: 'prata', chickenrice: 'riceChilli', banmian: 'dryMian', ckt: 'cktCockles' } },
+  { id: 'boon', name: 'Boon the builder', who: 'worker', fav: 'rice',
+    favs: { kopitiam: 'tehPeng', drinks: 'caneLime', prata: 'murtabak', chickenrice: 'roastRice', banmian: 'malaHot', ckt: 'cktSpecial' } },
 ];
+/** A regular's favourite at a stall (or at the mixed Daily Rush). */
+export const favOf = (regular, stall) => (stall ? regular.favs[stall] : regular.fav);
 export const EARLY_BONUS = .15; // closing early: up to this much per second left on the clock (all served)
 
 // ---------------------------------------------------------------------------------------------------- the kitchen
 // bases: what a dish is built in
-export const BASES = { cup: { name: 'Cup' }, plate: { name: 'Plate' }, bowl: { name: 'Bowl' }, pastry: { name: 'Pastry' }, dough: { name: 'Dough' } };
+export const BASES = { cup: { name: 'Cup' }, plate: { name: 'Plate' }, bowl: { name: 'Bowl' }, pastry: { name: 'Pastry' }, dough: { name: 'Dough' },
+  glass: { name: 'Glass' }, icebowl: { name: 'Ice bowl' }, kwayteow: { name: 'Kway teow' }, carrotcake: { name: 'Carrot cake' } };
 
 // ingredients: what goes into which base (cooked ones come from a cooking station)
 export const INGREDIENTS = {
@@ -59,6 +69,59 @@ export const INGREDIENTS = {
   potato: { name: 'Potato', base: 'pastry' },
   curry: { name: 'Curry', base: 'pastry' },
   egg: { name: 'Egg', base: 'dough' },
+  // (the stalls: an ingredient belongs to one kind of base, so a few have a twin for another base, e.g. sugar)
+  evap: { name: 'Evaporated milk', base: 'cup' },
+  sugar: { name: 'Sugar', base: 'plate' },
+  pepper: { name: 'Pepper', base: 'bowl' },
+  onion: { name: 'Onion', base: 'dough' },
+  mutton: { name: 'Mutton', base: 'dough' },
+  cheese: { name: 'Cheese', base: 'dough' },
+  sugarD: { name: 'Sugar', base: 'dough' },
+  sardine: { name: 'Sardine', base: 'pastry' },
+  sambal: { name: 'Sambal', base: 'pastry' },
+  roast: { name: 'Roast chicken', base: 'plate', cooked: 'roaster' },
+  ketupat: { name: 'Ketupat', base: 'plate' },
+  ginger: { name: 'Ginger sauce', base: 'plate' },
+  broth: { name: 'Soup', base: 'bowl' },
+  scallion: { name: 'Spring onion', base: 'bowl' },
+  tofu: { name: 'Tofu', base: 'bowl' },
+  noodles: { name: 'Noodles', base: 'bowl', cooked: 'noodlepot' },
+  anchovy: { name: 'Ikan bilis', base: 'bowl' },
+  spinach: { name: 'Spinach', base: 'bowl' },
+  mince: { name: 'Minced pork', base: 'bowl' },
+  blackSauce: { name: 'Black sauce', base: 'bowl' },
+  mushroom: { name: 'Mushroom', base: 'bowl' },
+  mala: { name: 'Mala', base: 'bowl' },
+  driedChilli: { name: 'Dried chilli', base: 'bowl' },
+  fish: { name: 'Fish slices', base: 'bowl' },
+  peppercorn: { name: 'Sichuan pepper', base: 'bowl' },
+  cubes: { name: 'Ice', base: 'glass' },
+  lime: { name: 'Lime', base: 'glass' },
+  syrup: { name: 'Syrup', base: 'glass' },
+  rose: { name: 'Rose syrup', base: 'glass' },
+  freshMilk: { name: 'Milk', base: 'glass' },
+  milkTea: { name: 'Milk tea', base: 'glass' },
+  brownSugar: { name: 'Brown sugar', base: 'glass' },
+  cane: { name: 'Sugarcane juice', base: 'glass', cooked: 'juicer' },
+  pearls: { name: 'Pearls', base: 'glass', cooked: 'pearlpot' },
+  shaved: { name: 'Shaved ice', base: 'icebowl', cooked: 'shaver' },
+  colourSyrup: { name: 'Rainbow syrup', base: 'icebowl' },
+  corn: { name: 'Sweet corn', base: 'icebowl' },
+  beans: { name: 'Red beans', base: 'icebowl' },
+  jelly: { name: 'Green jelly', base: 'icebowl' },
+  coconut: { name: 'Coconut milk', base: 'icebowl' },
+  gula: { name: 'Gula melaka', base: 'icebowl' },
+  sweetMilk: { name: 'Condensed milk', base: 'icebowl' },
+  darkSauce: { name: 'Dark sauce', base: 'kwayteow' },
+  eggK: { name: 'Egg', base: 'kwayteow' },
+  sprouts: { name: 'Bean sprouts', base: 'kwayteow' },
+  cockles: { name: 'Cockles', base: 'kwayteow' },
+  sausage: { name: 'Lap cheong', base: 'kwayteow' },
+  prawn: { name: 'Prawns', base: 'kwayteow' },
+  eggC: { name: 'Egg', base: 'carrotcake' },
+  radish: { name: 'Chai poh', base: 'carrotcake' },
+  sweetSauce: { name: 'Sweet sauce', base: 'carrotcake' },
+  chilliC: { name: 'Chilli', base: 'carrotcake' },
 };
 
 // cooking stations (it all burns if left ready too long). Most cook one ingredient (bread on the charcoal grill...);
@@ -69,6 +132,14 @@ export const STATIONS = {
   grill: { name: 'Satay grill', makes: 'satay', cook: 4, burn: 4.5, slots: 2 },
   wok: { name: 'Wok', dishes: true, cook: 4, burn: 5, slots: 2 },
   griddle: { name: 'Prata griddle', dishes: true, flip: true, cook: 4, burn: 3.5, slots: 2 },
+  // (the stalls' own: `spoils` is what happens when it's left too long, if it isn't burning)
+  roaster: { name: 'Roast oven', makes: 'roast', cook: 4, burn: 5, slots: 2 },
+  noodlepot: { name: 'Noodle pot', makes: 'noodles', cook: 3.4, burn: 5.5, slots: 2, spoils: 'soggy' },
+  juicer: { name: 'Cane press', makes: 'cane', cook: 3, burn: 6, slots: 2, spoils: 'spilt' },
+  pearlpot: { name: 'Pearl pot', makes: 'pearls', cook: 4, burn: 6, slots: 2, spoils: 'mushy' },
+  shaver: { name: 'Ice shaver', makes: 'shaved', cook: 2.6, burn: 5, slots: 2, spoils: 'melted' },
+  bigwok: { name: 'Big wok', dishes: true, flip: true, toss: true, cook: 4, burn: 3.5, slots: 2 },
+  pan: { name: 'Flat pan', dishes: true, cook: 4, burn: 4.5, slots: 2 },
 };
 
 // dishes: a base and exactly these ingredients (in any order); `cook`: then cooked whole at that station;
@@ -87,7 +158,89 @@ export const DISHES = {
   riceChilli: { name: 'Chicken rice + chilli', base: 'plate', has: ['rice', 'chicken', 'cucumber', 'chilli'], price: 5.5, day: 9 },
   tehPeng: { name: 'Teh peng', base: 'cup', has: ['teh', 'milk', 'ice'], price: 2.5, day: 10 },
   rotiTelur: { name: 'Roti telur', base: 'dough', has: ['egg'], cook: 'griddle', price: 3.5, day: 11 },
+  // (the stalls' own dishes: no `day`, so they are never in the mixed Daily Rush and Speed Run)
+  kopiC: { name: 'Kopi-C', base: 'cup', has: ['kopi', 'evap'], price: 2 },
+  tehC: { name: 'Teh-C', base: 'cup', has: ['teh', 'evap'], price: 2 },
+  yuanyang: { name: 'Yuan yang', base: 'cup', has: ['kopi', 'teh', 'milk'], price: 2.5 },
+  pepperEggs: { name: 'Eggs with pepper', base: 'bowl', has: ['eggs', 'soy', 'pepper'], price: 2.5 },
+  sugarToast: { name: 'Butter sugar toast', base: 'plate', has: ['toast', 'butter', 'sugar'], price: 3 },
+  limeJuice: { name: 'Lime juice', base: 'glass', has: ['lime', 'syrup', 'cubes'], price: 2 },
+  bandung: { name: 'Bandung', base: 'glass', has: ['rose', 'freshMilk', 'cubes'], price: 2 },
+  sugarcane: { name: 'Sugarcane juice', base: 'glass', has: ['cane', 'cubes'], price: 2.5 },
+  caneLime: { name: 'Sugarcane lime', base: 'glass', has: ['cane', 'lime', 'cubes'], price: 3 },
+  bubbleTea: { name: 'Bubble tea', base: 'glass', has: ['milkTea', 'pearls'], price: 3.5 },
+  icedBoba: { name: 'Iced bubble tea', base: 'glass', has: ['milkTea', 'pearls', 'cubes'], price: 4 },
+  brownBoba: { name: 'Brown sugar boba', base: 'glass', has: ['freshMilk', 'brownSugar', 'pearls'], price: 4.5 },
+  roseBoba: { name: 'Bandung boba', base: 'glass', has: ['rose', 'freshMilk', 'pearls'], price: 4 },
+  iceKachang: { name: 'Ice kachang', base: 'icebowl', has: ['shaved', 'colourSyrup', 'corn', 'beans'], price: 4 },
+  chendol: { name: 'Chendol', base: 'icebowl', has: ['shaved', 'jelly', 'coconut', 'gula'], price: 4 },
+  kachangSpecial: { name: 'Ice kachang special', base: 'icebowl', has: ['shaved', 'colourSyrup', 'corn', 'beans', 'sweetMilk'], price: 5 },
+  rotiBawang: { name: 'Roti bawang', base: 'dough', has: ['onion'], cook: 'griddle', price: 3 },
+  telurBawang: { name: 'Roti telur bawang', base: 'dough', has: ['egg', 'onion'], cook: 'griddle', price: 4 },
+  murtabak: { name: 'Murtabak', base: 'dough', has: ['egg', 'onion', 'mutton'], cook: 'griddle', price: 6 },
+  cheesePrata: { name: 'Cheese prata', base: 'dough', has: ['cheese'], cook: 'griddle', price: 3.5 },
+  rotiTissue: { name: 'Roti tissue', base: 'dough', has: ['sugarD'], cook: 'griddle', price: 3.5 },
+  sardinePuff: { name: 'Sardine puff', base: 'pastry', has: ['sardine', 'sambal'], cook: 'wok', price: 3.5 },
+  soup: { name: 'Chicken soup', base: 'bowl', has: ['broth', 'scallion'], price: 2 },
+  tofuSoup: { name: 'Tofu soup', base: 'bowl', has: ['broth', 'scallion', 'tofu'], price: 2.5 },
+  roastRice: { name: 'Roast chicken rice', base: 'plate', has: ['rice', 'roast', 'cucumber'], price: 5 },
+  roastChilli: { name: 'Roast chicken rice + chilli', base: 'plate', has: ['rice', 'roast', 'cucumber', 'chilli'], price: 5.5 },
+  riceSpecial: { name: 'Chicken rice special', base: 'plate', has: ['rice', 'chicken', 'cucumber', 'chilli', 'ginger'], price: 6 },
+  roastSpecial: { name: 'Roast chicken special', base: 'plate', has: ['rice', 'roast', 'cucumber', 'chilli', 'ginger'], price: 6.5 },
+  satayKetupat: { name: 'Satay with ketupat', base: 'plate', has: ['satay', 'peanut', 'ketupat'], price: 5.5 },
+  sataySet: { name: 'Satay set', base: 'plate', has: ['satay', 'peanut', 'ketupat', 'cucumber'], price: 6 },
+  banmian: { name: 'Ban mian', base: 'bowl', has: ['noodles', 'broth'], price: 3.5 },
+  ikanBilisMian: { name: 'Ikan bilis ban mian', base: 'bowl', has: ['noodles', 'broth', 'anchovy'], price: 4 },
+  spinachMian: { name: 'Ban mian with spinach', base: 'bowl', has: ['noodles', 'broth', 'anchovy', 'spinach'], price: 4.5 },
+  eggMian: { name: 'Ban mian with egg', base: 'bowl', has: ['noodles', 'broth', 'anchovy', 'eggs'], price: 5 },
+  fishMian: { name: 'Fish ban mian', base: 'bowl', has: ['noodles', 'broth', 'fish', 'spinach'], price: 5.5 },
+  dryMian: { name: 'Dry ban mian', base: 'bowl', has: ['noodles', 'blackSauce', 'mince'], price: 4 },
+  mushroomMian: { name: 'Mushroom dry ban mian', base: 'bowl', has: ['noodles', 'blackSauce', 'mince', 'mushroom'], price: 5 },
+  malaMild: { name: 'Mala ban mian (mild)', base: 'bowl', has: ['noodles', 'mala', 'mince'], price: 4.5 },
+  malaHot: { name: 'Mala ban mian (hot)', base: 'bowl', has: ['noodles', 'mala', 'mince', 'driedChilli'], price: 5 },
+  malaEgg: { name: 'Mala ban mian with egg', base: 'bowl', has: ['noodles', 'mala', 'mince', 'eggs'], price: 5.5 },
+  malaExtra: { name: 'Mala ban mian (extra hot)', base: 'bowl', has: ['noodles', 'mala', 'mince', 'driedChilli', 'peppercorn'], price: 6 },
+  ckt: { name: 'Char kway teow', base: 'kwayteow', has: ['darkSauce'], cook: 'bigwok', price: 3.5 },
+  cktEgg: { name: 'Char kway teow + egg', base: 'kwayteow', has: ['darkSauce', 'eggK'], cook: 'bigwok', price: 4 },
+  cktSprouts: { name: 'Char kway teow + sprouts', base: 'kwayteow', has: ['darkSauce', 'eggK', 'sprouts'], cook: 'bigwok', price: 4.5 },
+  cktCockles: { name: 'Char kway teow + cockles', base: 'kwayteow', has: ['darkSauce', 'eggK', 'sprouts', 'cockles'], cook: 'bigwok', price: 5.5 },
+  cktSausage: { name: 'Char kway teow + lap cheong', base: 'kwayteow', has: ['darkSauce', 'eggK', 'sausage'], cook: 'bigwok', price: 5 },
+  cktPrawn: { name: 'Prawn char kway teow', base: 'kwayteow', has: ['darkSauce', 'eggK', 'sprouts', 'prawn'], cook: 'bigwok', price: 6 },
+  cktSpecial: { name: 'Char kway teow special', base: 'kwayteow', has: ['darkSauce', 'eggK', 'sprouts', 'cockles', 'sausage'], cook: 'bigwok', price: 6.5 },
+  whiteCake: { name: 'White carrot cake', base: 'carrotcake', has: ['eggC', 'radish'], cook: 'pan', price: 3.5 },
+  blackCake: { name: 'Black carrot cake', base: 'carrotcake', has: ['eggC', 'radish', 'sweetSauce'], cook: 'pan', price: 4 },
+  spicyWhite: { name: 'White carrot cake (spicy)', base: 'carrotcake', has: ['eggC', 'radish', 'chilliC'], cook: 'pan', price: 4 },
+  spicyBlack: { name: 'Black carrot cake (spicy)', base: 'carrotcake', has: ['eggC', 'radish', 'sweetSauce', 'chilliC'], cook: 'pan', price: 4.5 },
 };
+
+// 🏪 the stalls: each its own story of 15 days, a dish (or two) joining the menu on its day, and its own endless streets.
+// A stall opens when the one before it has its day OPEN_AT cleared. (A shift without a stall is the mixed menu of the
+// Daily Rush and the Speed Run: the dishes with a `day` above.)
+export const OPEN_AT = 5;
+export const STALLS = {
+  kopitiam: { name: 'Kopitiam', icon: '☕', what: 'Kopi, teh, kaya toast and eggs',
+    menu: { kopi: 1, kopiO: 2, toast: 2, eggs: 3, teh: 4, kopiPeng: 5, kopiC: 6, pepperEggs: 7, tehPeng: 8, yuanyang: 9, sugarToast: 10, tehC: 11 } },
+  drinks: { streets: 0.86, pace: .76, name: 'Drinks stall', icon: '🧋', what: 'Lime juice, sugarcane, bubble tea and ice kachang',
+    menu: { limeJuice: 1, bandung: 2, sugarcane: 3, iceKachang: 4, bubbleTea: 5, caneLime: 6, chendol: 7, icedBoba: 8, brownBoba: 9,
+      kachangSpecial: 10, roseBoba: 11 } },
+  prata: { streets: 0.88, pace: .95, name: 'Prata stall', icon: '🫓', what: 'Roti prata, murtabak, curry puffs and teh',
+    menu: { prata: 1, teh: 2, rotiTelur: 3, curryPuff: 4, rotiBawang: 5, sardinePuff: 6, telurBawang: 7, tehPeng: 8, murtabak: 9,
+      cheesePrata: 10, rotiTissue: 11 } },
+  chickenrice: { streets: 0.94, pace: .82, name: 'Chicken rice & satay', icon: '🍗', what: 'Chicken rice, roast chicken, satay and soup',
+    menu: { rice: 1, soup: 2, satay: 3, riceChilli: 4, roastRice: 5, satayKetupat: 6, roastChilli: 7, sataySet: 8, riceSpecial: 9,
+      tofuSoup: 10, roastSpecial: 11 } },
+  banmian: { streets: 0.88, pace: .85, name: 'Ban mian & mala', icon: '🍜', what: 'Noodles in soup, dry, and mala from mild to extra hot',
+    menu: { banmian: 1, ikanBilisMian: 2, dryMian: 3, spinachMian: 4, malaMild: 5, eggMian: 6, malaHot: 7, mushroomMian: 8, fishMian: 9,
+      malaEgg: 10, malaExtra: 11 } },
+  ckt: { streets: 0.86, pace: .85, name: 'Char kway teow', icon: '🔥', what: 'Char kway teow and carrot cake, tossed in a roaring wok',
+    menu: { ckt: 1, cktEgg: 2, whiteCake: 3, cktSprouts: 4, blackCake: 5, cktCockles: 6, cktSausage: 7, spicyWhite: 8, cktSpecial: 9,
+      cktPrawn: 10, spicyBlack: 11 } },
+};
+export const stallOf = id => (Object.hasOwn(STALLS, id) ? id : null);
+// the mixed menu (Daily Rush, Speed Run): the dishes with a `day`
+const CLASSIC = Object.keys(DISHES).filter(d => DISHES[d].day);
+/** Every dish a shift's kitchen knows (what a dish on the counter could still become). */
+export const poolFor = stall => (stallOf(stall) ? Object.keys(STALLS[stall].menu) : CLASSIC);
 
 // the counter's prep spots (where dishes are built)
 export const PREP = 3;
@@ -142,8 +295,10 @@ export function hash(text) {
 const round2 = v => Math.round(v * 100) / 100;
 
 // ---------------------------------------------------------------------------------------------------- menu and customers
-export function menuFor(day) {
-  if (day > DAYS) return endless(day).menu;
+/** The menu on `day` (of a stall's story, or of the mixed menu without a stall). */
+export function menuFor(day, stall = null) {
+  if (day > DAYS) return endless(day, stall).menu;
+  if (stallOf(stall)) return Object.keys(STALLS[stall].menu).filter(d => STALLS[stall].menu[d] <= day);
   return Object.keys(DISHES).filter(d => DISHES[d].day <= day);
 }
 
@@ -157,46 +312,71 @@ export const STREET = 10;
 export const STREETS = ['Chinatown', 'Tiong Bahru', 'Kampong Glam', 'Little India', 'Katong', 'Toa Payoh', 'Geylang',
   'Ang Mo Kio', 'Bedok', 'Jurong', 'Clementi', 'Serangoon', 'Holland Village', 'Changi', 'Sentosa'];
 // crowd: customers more or fewer than usual; patience: × how long they wait; kinds: [critic, group, regular] chances;
-// big: an extra dish for everyone (at least); menu: the dishes it always has (the rest of the day's menu is drawn)
+// big: an extra dish for everyone (at least); menu: the dishes it always has (the rest of the day's menu is drawn);
+// special: the day's specials (else one drawn); stall: only at that stall (null: the mixed menu); cooked: its menu is
+// three of the stall's dishes that need the stove; favs: its menu is the regulars' favourites
 export const TWISTS = {
   opening: { name: 'Opening day', icon: '🎀', what: 'Your first day on a new street: a gentle start', crowd: -2 },
   lunch: { name: 'Big lunch rush', icon: '🍱', what: 'A quiet morning, then everyone comes at once', rush: true },
-  hot: { name: 'Hot day', icon: '🧊', what: 'Everyone wants a cold drink', crowd: 3, menu: ['kopi', 'kopiPeng', 'tehPeng', 'teh'],
-    special: ['kopiPeng', 'tehPeng'] },
-  breakfast: { name: 'Breakfast crowd', icon: '🍞', what: 'Kopi, kaya toast and eggs', crowd: 2, size: 6,
-    menu: ['kopi', 'kopiO', 'teh', 'toast', 'eggs'], special: ['toast'] },
-  prata: { name: 'Prata party', icon: '🫓', what: 'Roti prata and roti telur all morning', crowd: 0, menu: ['prata', 'rotiTelur'],
-    special: ['prata', 'rotiTelur'] },
   family: { name: 'Family day', icon: '👨‍👩‍👧', what: 'Big groups with big orders, and big tips', crowd: -4, kinds: [.04, .3, .1] },
   critics: { name: 'Critics in town', icon: '📝', what: 'Lots of food critics: serve them fast for a glowing review', crowd: 1,
     kinds: [.18, .05, .1] },
   regulars: { name: 'Regulars’ day', icon: '💕', what: 'All your regulars drop by for their favourite',
-    crowd: 1, menu: REGULARS.map(r => r.fav), kinds: [.03, .05, .45] },
+    crowd: 1, favs: true, kinds: [.03, .05, .45] },
   rain: { name: 'Rainy day', icon: '🌧️', what: 'Fewer customers, but everyone orders more', crowd: -6, big: 1, patience: 1.1 },
   // (the kitchen itself is different today: prep: counter spots fewer; slots: places on every stove fewer;
   // heat: × cooking time and × time to burn)
   tiny: { name: 'Tiny stall', icon: '🏠', what: 'A borrowed stall: one counter spot fewer', crowd: -3, prep: 1 },
-  gas: { name: 'Gas trouble', icon: '🔧', what: 'Every stove cooks one thing at a time', crowd: -2, slots: 1,
-    menu: ['toast', 'curryPuff', 'satay'] },
+  gas: { name: 'Gas trouble', icon: '🔧', what: 'Every stove cooks one thing at a time', crowd: -2, slots: 1, cooked: true },
   fierce: { name: 'Fierce fire', icon: '🔥', what: 'The stoves run hot: food cooks faster, and burns sooner', crowd: -3,
-    heat: [.7, .65], menu: ['toast', 'satay', 'prata'] },
+    heat: [.7, .65], cooked: true },
   festival: { name: 'Festival night', icon: '🏮', what: 'The busiest night on the street: the whole menu, and a double bonus',
     crowd: 2, size: 99, kinds: [.07, .1, .12] },
+  // each stall's own (and the mixed menu's)
+  hot: { name: 'Hot day', icon: '🧊', what: 'Everyone wants a cold drink', crowd: 3, stall: ['kopitiam', null],
+    menu: ['kopi', 'kopiPeng', 'tehPeng', 'teh'], special: ['kopiPeng', 'tehPeng'] },
+  breakfast: { name: 'Breakfast crowd', icon: '🍞', what: 'Kopi, kaya toast and eggs', crowd: 2, size: 6, stall: ['kopitiam', null],
+    menu: ['kopi', 'kopiO', 'teh', 'toast', 'eggs'], special: ['toast'] },
+  prata: { name: 'Prata party', icon: '🫓', what: 'Roti prata and roti telur all morning', crowd: 0, stall: ['prata', null],
+    menu: ['prata', 'rotiTelur'], special: ['prata', 'rotiTelur'] },
+  murtabak: { name: 'Murtabak night', icon: '🌙', what: 'Big, stuffed and flipped: murtabak for everyone', crowd: -2, stall: ['prata'],
+    menu: ['murtabak', 'telurBawang'], special: ['murtabak'] },
+  heatwave: { name: 'Heatwave', icon: '🥵', what: 'Everyone wants a big bowl of shaved ice', crowd: -1, stall: ['drinks'],
+    menu: ['iceKachang', 'chendol', 'kachangSpecial'], special: ['iceKachang', 'chendol'] },
+  boba: { name: 'Bubble tea craze', icon: '🧋', what: 'The queue is all bubble tea', crowd: 1, stall: ['drinks'],
+    menu: ['bubbleTea', 'icedBoba', 'brownBoba', 'roseBoba'], special: ['bubbleTea', 'brownBoba'] },
+  satayNight: { name: 'Satay night', icon: '🍢', what: 'Sticks and sticks of satay on the grill', crowd: 0, stall: ['chickenrice'],
+    menu: ['satay', 'satayKetupat', 'sataySet'], special: ['satay', 'sataySet'] },
+  roastDay: { name: 'Roast day', icon: '🍗', what: 'Everyone wants the roast chicken', crowd: 0, stall: ['chickenrice'],
+    menu: ['roastRice', 'roastChilli', 'roastSpecial'], special: ['roastRice'] },
+  mala: { name: 'Mala madness', icon: '🌶️', what: 'Everyone wants it spicy: mild, hot and extra hot', crowd: 0, stall: ['banmian'],
+    menu: ['malaMild', 'malaHot', 'malaExtra'], special: ['malaHot', 'malaExtra'] },
+  soupWeather: { name: 'Soup weather', icon: '🍲', what: 'A cool day: bowls of noodles in hot soup', crowd: 1, stall: ['banmian'],
+    menu: ['banmian', 'ikanBilisMian', 'spinachMian', 'fishMian'], special: ['fishMian'] },
+  kwayteow: { name: 'Kway teow craze', icon: '🥢', what: 'Plate after plate of char kway teow', crowd: 0, stall: ['ckt'],
+    menu: ['ckt', 'cktEgg', 'cktCockles', 'cktSpecial'], special: ['cktCockles'] },
+  carrot: { name: 'Carrot cake morning', icon: '🥕', what: 'White, black and spicy carrot cake', crowd: 1, stall: ['ckt'],
+    menu: ['whiteCake', 'blackCake', 'spicyWhite', 'spicyBlack'], special: ['blackCake'] },
 };
-const MIDDLE = ['lunch', 'hot', 'breakfast', 'prata', 'family', 'critics', 'regulars', 'rain', 'tiny', 'gas', 'fierce'];
+const GENERAL = ['lunch', 'family', 'critics', 'regulars', 'rain', 'tiny', 'gas', 'fierce'];
+/** The twists the days between a street's opening and its festival take turns through, at a stall. */
+export const twistsFor = (stall = null) => [...GENERAL, ...Object.keys(TWISTS).filter(id => TWISTS[id].stall?.includes(stallOf(stall)))];
 // how busy each day of a street is, before the street's own level (a breather after the hard days)
 const RHYTHM = [0, .2, .35, .5, .3, .6, .7, .45, .8, 1];
 // an endless day's customers, from the quietest day to the busiest (solo), and how much less patient they are
 const ENDLESS_CROWD = [20, 30];
 const ENDLESS_HURRY = [.08, .19];
 const ENDLESS_SPECIAL = .25; // (how often an order is the day's special, for each special)
+const usesStove = d => Boolean(DISHES[d].cook || DISHES[d].has.some(i => INGREDIENTS[i].cooked));
 
-/** An endless day (16 on): { street, name, round, place (1–10), twist, menu, special, busy (0–1) }, or null. */
-export function endless(day) {
+/** An endless day (16 on) at a stall: { street, name, round, place (1–10), twist, menu, special, busy (0–1) }, or null. */
+export function endless(day, stall = null) {
   if (!Number.isInteger(day) || day <= DAYS) return null;
+  stall = stallOf(stall);
+  const tag = stall ? `${stall}:` : '';
   const street = Math.floor((day - DAYS - 1) / STREET), place = (day - DAYS - 1) % STREET;
-  const rng = mulberry32(hash(`hawker-rush-endless:${street}`));
-  const order = [...MIDDLE];
+  const rng = mulberry32(hash(`hawker-rush-endless:${tag}${street}`));
+  const order = twistsFor(stall);
   for (let i = order.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [order[i], order[j]] = [order[j], order[i]];
@@ -204,15 +384,25 @@ export function endless(day) {
   const twist = place === 0 ? 'opening' : place === STREET - 1 ? 'festival' : order[place - 1];
   const t = TWISTS[twist];
   // the day's menu: the twist's own dishes, then others drawn at random (8 dishes in all, or the size it asks for)
-  const pick = mulberry32(hash(`hawker-rush-endless-menu:${day}`));
-  const all = Object.keys(DISHES);
-  const menu = [...(t.menu ?? [])];
-  const size = Math.min(all.length, t.size ?? 8);
+  const pick = mulberry32(hash(`hawker-rush-endless-menu:${tag}${day}`));
+  const all = poolFor(stall);
+  let own = t.menu ?? [];
+  if (t.favs) own = REGULARS.map(r => favOf(r, stall));
+  if (t.cooked) {
+    const hot = all.filter(usesStove);
+    own = [];
+    while (own.length < Math.min(3, hot.length)) {
+      const d = hot[Math.floor(pick() * hot.length)];
+      if (!own.includes(d)) own.push(d);
+    }
+  }
+  const menu = own.filter(d => all.includes(d));
+  const size = Math.min(all.length, Math.max(menu.length, t.size ?? 8));
   while (menu.length < size) {
     const d = all[Math.floor(pick() * all.length)];
     if (!menu.includes(d)) menu.push(d);
   }
-  const special = t.special ? [...t.special] : twist === 'festival' ? [] : [menu[Math.floor(pick() * menu.length)]];
+  const special = t.special ? t.special.filter(d => menu.includes(d)) : twist === 'festival' ? [] : [menu[Math.floor(pick() * menu.length)]];
   // busy: the street's level (climbing towards a ceiling) and where the day falls in the street
   const level = 1 - .75 ** street;
   const busy = Math.round((.55 * level + .45 * RHYTHM[place]) * 1000) / 1000;
@@ -220,14 +410,15 @@ export function endless(day) {
     place: place + 1, twist, menu: all.filter(d => menu.includes(d)), special, busy };
 }
 
-export function newOn(day) {
+export function newOn(day, stall = null) {
+  if (stallOf(stall)) return Object.keys(STALLS[stall].menu).filter(d => STALLS[stall].menu[d] === day);
   return Object.keys(DISHES).filter(d => DISHES[d].day === day);
 }
 
 /** The ingredients, bases and stations a day needs (the kitchen shows only these). */
-export function kitchenFor(day) {
+export function kitchenFor(day, stall = null) {
   const bases = new Set(), ingredients = new Set(), stations = new Set();
-  for (const d of menuFor(day)) {
+  for (const d of menuFor(day, stall)) {
     bases.add(DISHES[d].base);
     if (DISHES[d].cook) stations.add(DISHES[d].cook);
     for (const i of DISHES[d].has) {
@@ -282,20 +473,24 @@ function arrivalTimes(count, day, rng, rush = false) {
  * The customers of a shift. `mode`: 'day' (a story or daily shift, in waves), or 'speed' (a speed run: a steady line
  * of customers, every dish on the menu). `players`: friends sharing the stall (more of them, more customers).
  */
-export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, players = 1 } = {}) {
+export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, players = 1, stall = null } = {}) {
   const team = playersOf({ players });
-  const rng = mulberry32(hash(`hawker-rush-3:${mode}:${seed}:${day}:${team}`));
   const speed = mode === 'speed';
-  const menu = menuFor(speed ? DAYS : day);
-  const far = speed ? null : endless(day); // (an endless day: its twist decides the crowd)
+  stall = speed ? null : stallOf(stall); // (a speed run is always the mixed menu)
+  const rng = mulberry32(hash(`hawker-rush-3:${mode}:${seed}:${day}:${team}` + (stall ? `:${stall}` : '')));
+  const menu = menuFor(speed ? DAYS : day, stall);
+  const far = speed ? null : endless(day, stall); // (an endless day: its twist decides the crowd)
   const twist = far ? TWISTS[far.twist] : {};
-  const fresh = speed ? [] : far ? far.special : newOn(day);
+  const fresh = speed ? [] : far ? far.special : newOn(day, stall);
   // (after day 10 the crowd grows more slowly: the whole menu is on, and roti telur takes many taps)
   const learning = !speed && day >= 9 && fresh.some(d => DISHES[d].cook) && !far; // (a new cooked dish: a learning day, a smaller crowd)
   const solo = speed ? SPEED_CUSTOMERS
     : far ? Math.round(ENDLESS_CROWD[0] + (ENDLESS_CROWD[1] - ENDLESS_CROWD[0]) * far.busy) + (twist.crowd ?? 0)
       : Math.min(30, 9 + Math.round(Math.min(day, 10) * 1.3 + Math.max(0, day - 10) * .6)) - (learning ? 2 : 0);
-  const count = Math.round(solo * (1 + .6 * (team - 1)));
+  // (a stall with more cooking to do gets a smaller crowd: `pace`; and on its streets, where any of its dishes can
+  // come up any day, `streets` more)
+  const pace = stall ? (STALLS[stall].pace ?? 1) * (far ? STALLS[stall].streets ?? 1 : 1) : 1;
+  const count = Math.round((stall ? Math.round(solo * pace) : solo) * (1 + .6 * (team - 1)));
   const times = speed ? null : arrivalTimes(count, day, rng, Boolean(twist.rush));
   if (times) times[0] = 1.5; // (someone is always waiting when the stall opens)
   const hard = speed ? .2 : far ? ENDLESS_HURRY[0] + (ENDLESS_HURRY[1] - ENDLESS_HURRY[0]) * far.busy
@@ -319,7 +514,7 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
     let kind = null, regular = null;
     if (!speed) {
       const roll = rng();
-      const regulars = REGULARS.filter(r => menu.includes(r.fav) && !regularsToday.has(r.id));
+      const regulars = REGULARS.filter(r => menu.includes(favOf(r, stall)) && !regularsToday.has(r.id));
       if (day >= 4 && roll < criticAt) kind = 'critic';
       else if (day >= 3 && roll < criticAt + groupAt) {
         kind = 'group';
@@ -328,7 +523,7 @@ export function schedule({ day = 1, seed = 1, mode = 'day', upgrades = {}, playe
         kind = 'regular';
         regular = regulars[Math.floor(rng() * regulars.length)];
         regularsToday.add(regular.id);
-        order[0] = regular.fav;
+        order[0] = favOf(regular, stall);
         who = PEOPLE.find(p => p.id === regular.who);
       }
     }
@@ -356,15 +551,16 @@ export function starsFor(coins, goal) {
 export function createShift(spec = {}) {
   const { day = 1, seed = 1, mode = 'day', upgrades = {} } = spec;
   const players = playersOf(spec);
-  const people = schedule({ day, seed, mode, upgrades, players });
-  const kitchen = kitchenFor(mode === 'speed' ? DAYS : day);
-  const twist = mode === 'speed' ? {} : TWISTS[endless(day)?.twist] ?? {}; // (an endless day's kitchen may be different)
+  const stall = mode === 'speed' ? null : stallOf(spec.stall); // (none: the mixed menu of the Daily Rush and Speed Run)
+  const people = schedule({ day, seed, mode, upgrades, players, stall });
+  const kitchen = kitchenFor(mode === 'speed' ? DAYS : day, stall);
+  const twist = mode === 'speed' ? {} : TWISTS[endless(day, stall)?.twist] ?? {}; // (an endless day's kitchen may be different)
   const stations = {};
   for (const id of kitchen.stations) {
     stations[id] = { slots: Array.from({ length: Math.max(1, STATIONS[id].slots + (upgrades.slots ?? 0) - (twist.slots ?? 0)) }, () => null) };
   }
   return {
-    day, seed, mode, upgrades, kitchen, players,
+    day, seed, mode, upgrades, kitchen, players, ...(stall ? { stall } : {}),
     t: 0, ticks: 0, phase: 'running', wave: -1,
     arrivals: people, next: 0,
     seats: Array.from({ length: seatsFor(players) }, () => null),
@@ -400,10 +596,11 @@ export function readyToCook(item) {
   return null;
 }
 
-/** Which dishes this item could still become (by adding more, or cooking it). */
-export function couldBe(item) {
-  if (item.cooked) return Object.keys(DISHES).filter(id => DISHES[id].cook && sameMix(DISHES[id], item));
-  return Object.keys(DISHES).filter(id => {
+/** Which dishes this item could still become (by adding more, or cooking it). `pool`: the dishes to think of (a
+ * shift's: `poolFor(shift.stall)`). */
+export function couldBe(item, pool = Object.keys(DISHES)) {
+  if (item.cooked) return pool.filter(id => DISHES[id].cook && sameMix(DISHES[id], item));
+  return pool.filter(id => {
     const d = DISHES[id];
     return d.base === item.base && item.has.every(i => d.has.includes(i));
   });
@@ -428,7 +625,7 @@ export function autoSpot(shift, ingredient) {
   let best = -1, bestScore = -1;
   shift.prep.forEach((item, i) => {
     if (!item || item.cooked || item.base !== base || item.has.includes(ingredient)) return;
-    const options = couldBe({ base, has: [...item.has, ingredient] });
+    const options = couldBe({ base, has: [...item.has, ingredient] }, poolFor(shift.stall));
     if (!options.length) return;
     // a dish someone is waiting for is best; then any dish it could still become
     const score = options.some(d => need.includes(d)) ? 2 : 1;
@@ -470,7 +667,7 @@ export function addIngredient(shift, ingredient, spot = -1) {
   const i = spot >= 0 ? spot : autoSpot(shift, ingredient);
   const item = shift.prep[i];
   if (!item || item.cooked || item.base !== ing.base || item.has.includes(ingredient) ||
-      !couldBe({ base: item.base, has: [...item.has, ingredient] }).length) {
+      !couldBe({ base: item.base, has: [...item.has, ingredient] }, poolFor(shift.stall)).length) {
     shift.events.push({ type: 'wrong', ingredient, spot: i });
     return false;
   }

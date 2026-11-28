@@ -72,14 +72,18 @@ def _clean(msg, seat: int):
             raise RoomError(400, "Bad shift.")
         day, seed, upgrades, players = spec.get("day"), spec.get("seed"), spec.get("upgrades", {}), spec.get("players")
         rules = spec.get("rules")  # (the host's rules version: friends on another version are told to update)
+        stall = spec.get("stall")  # (which stall: kopitiam, drinks... ; none on older versions)
         if (not _int(day, 1, 9999) or not isinstance(seed, str) or not re.match(r"^[A-Za-z0-9-]{1,40}$", seed)
                 or spec.get("mode") != "day" or not _int(players, 1, MAX_PLAYERS) or not isinstance(upgrades, dict)
                 or len(upgrades) > 10 or not all(WORD.match(k) and _int(v, 0, 9) for k, v in upgrades.items())
-                or (rules is not None and not _int(rules, 1, 999))):
+                or (rules is not None and not _int(rules, 1, 999))
+                or (stall is not None and not (isinstance(stall, str) and WORD.match(stall)))):
             raise RoomError(400, "Bad shift.")
         out = {"day": day, "seed": seed, "mode": "day", "upgrades": dict(upgrades), "players": players}
         if rules is not None:
             out["rules"] = rules
+        if stall is not None:
+            out["stall"] = stall
         return {"t": t, "spec": out}
     if t == "frames":
         up_to, actions = msg.get("upTo"), msg.get("actions", [])
@@ -93,9 +97,10 @@ def _clean(msg, seat: int):
             last = a[0]
         return {"t": t, "upTo": up_to, "actions": [list(a) for a in actions]}
     if t == "day":
-        if not _int(msg.get("day"), 1, 9999):
+        stall = msg.get("stall")
+        if not _int(msg.get("day"), 1, 9999) or (stall is not None and not (isinstance(stall, str) and WORD.match(stall))):
             raise RoomError(400, "Bad day.")
-        return {"t": t, "day": msg["day"]}
+        return {"t": t, "day": msg["day"], **({"stall": stall} if stall is not None else {})}
     if t in ("pause", "resume", "over", "lobby"):
         return {"t": t}
     raise RoomError(400, "Bad message.")

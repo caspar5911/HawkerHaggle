@@ -169,7 +169,12 @@ class RushAccounts:
                     raise ValueError  # (nothing saved yet)
                 data = json.loads(r["data"])
                 xp = data.get("xp") if isinstance(data.get("xp"), int) else 0
-                glance = {"day": data.get("day") if isinstance(data.get("day"), int) else 1,
+                # (each stall has its own story: the furthest one; a save from before the stalls has one "day")
+                stalls = {k: v.get("day") for k, v in data.get("stalls", {}).items()
+                          if isinstance(v, dict) and isinstance(v.get("day"), int)} if isinstance(data.get("stalls"), dict) else {}
+                stall = max(stalls, key=stalls.get) if stalls else None
+                glance = {"day": stalls[stall] if stall else data.get("day") if isinstance(data.get("day"), int) else 1,
+                          **({"stall": stall} if stall else {}),
                           "wallet": data.get("wallet") if isinstance(data.get("wallet"), (int, float)) else 0,
                           "level": max(1, int((1 + (1 + 4 * max(0, xp) / 15) ** .5) / 2))}
             except (ValueError, TypeError, AttributeError):

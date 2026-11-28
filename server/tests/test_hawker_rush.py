@@ -52,7 +52,7 @@ def test_leaderboard_replays_and_keeps_each_nicknames_best(web, mode, period, fi
     bodies = [run(ticket(client, mode), "Bea", True), run(ticket(client, mode), "Chef", True),
               run(ticket(client, mode), "cHEF")]
     assert len({b["ticket"] for b in bodies}) == 3
-    assert all(b["period"] == period and b["engine"] == 6 for b in bodies)
+    assert all(b["period"] == period and b["engine"] == 7 for b in bodies)
     clock[0] += 130
     for body in bodies:
         response = post(client, "score", body)

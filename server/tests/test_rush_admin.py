@@ -50,6 +50,13 @@ def test_the_owner_sees_players_stats_and_boards(setup):
     out = client.post(f"{ADMIN}/overview", json={}, headers=OWNER).json()
     assert [a["username"] for a in out["accounts"]] == ["Boon", "MeiLing"]
     assert {k: out["accounts"][1][k] for k in ("day", "wallet", "level")} == {"day": 6, "wallet": 88.5, "level": 3}
+    # (a save with stalls: the furthest stall's day)
+    boon = client.post("/ai/arcade/hawker-rush/account/login", json={"username": "Boon", "password": "first-pw"}, headers=PUBLIC).json()
+    stalls = {"kopitiam": {"day": 6, "best": {}}, "drinks": {"day": 3, "best": {}}, "nope": "?"}
+    client.post("/ai/arcade/hawker-rush/progress/save", json={"data": json.dumps({"stalls": stalls, "wallet": 5, "xp": 0}), "rev": 0},
+                headers={**PUBLIC, "Authorization": "Bearer " + boon["token"]})
+    acct = client.post(f"{ADMIN}/overview", json={}, headers=OWNER).json()["accounts"][0]
+    assert (acct["username"], acct["day"], acct["stall"]) == ("Boon", 6, "kopitiam")
     assert set(out["stats"]) >= {"players", "came_back", "story_days", "furthest_day"} and set(out["boards"]) == {"daily", "speed"}
 
 
